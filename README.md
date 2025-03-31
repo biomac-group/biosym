@@ -77,7 +77,7 @@ readthedocs.io; sphinx? I really don't think doxygen is very useful
 
 ### First steps
 This project is really ambitious, and I think we should start with a small subset of the toolbox. I would suggest to start with the following:
-1. From Yipeng Zhang's project (branch ), refine the parser and optimal control functions to the above structure.
+1. From Yipeng Zhang's project [branch](https://mad-srv.informatik.uni-erlangen.de/MadLab/Biomech-Simu/student-code/p_zhang_yipeng/-/tree/optimal_control?ref_type=heads), refine the parser and optimal control functions to the above structure.
 2. Objectives: translate from matlab to jax, where applicable.
 3. Start with small subset, make it a minimum viable product (a bit cleaner than the previous implementation), then refine and add further features.
 
