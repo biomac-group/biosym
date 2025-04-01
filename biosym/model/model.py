@@ -181,6 +181,7 @@ class BiosymModel:
         self.body_origins = {}
         self.rigid_bodies = {}
         self.reference_frames = {}
+        self.mass_centers = {}
         self.loads = []
         # kinematic differential equations: d coordinates - speeds = 0
         self.kd_eqs = [a-b for a,b in zip([self._dynamic[i].diff() for i in _slice(self.coordinates)], [self._dynamic[i] for i in _slice(self.speeds)])]
@@ -221,41 +222,39 @@ class BiosymModel:
                 parent_origin = self.origin if parent_origin is None else parent_origin
 
                 body_origin = Point(f"{body_name}_origin")
-                total_pos_offset = _to_sympy_vector([self._v[i] for i in range(self.offset['idx']+3*body_idx,self.offset['idx']+3*(body_idx+1))], parent_frame) 
-                body_origin.set_pos(parent_origin, total_pos_offset)
-                body_frame = ReferenceFrame(f"{body_name}_frame")
-
-                # Accumulate joint axes, this is currently very messy and needs to be fixed
-                # Yipeng's code is a bit cleaner, but has some double-setting values
-                slide_axis = [0] * 3
-                hinge_axis = [0] * 3
-                slide_vel = [0] * 3
-                hinge_vel = [0] * 3
+                joint_offset = _to_sympy_vector([self._v[i] for i in range(self.offset['idx']+3*body_idx,self.offset['idx']+3*(body_idx+1))], parent_frame) 
+                joint_speed = 0
+                # Slide joint logic
+                n_hinges = 0
                 for joint in body['joints']:
-                    joint_idx = self.coordinates['names'].index(f"q_{joint['name']}")
                     if joint['type'] == "slide":
-                        for i in range(3):
-                            slide_axis[i] += self._dynamic[self.coordinates['idx']+joint_idx]*joint['axis'][i]
-                            slide_vel[i] += self._dynamic[self.speeds['idx']+joint_idx]*joint['axis'][i]
-                    if joint['type'] == "hinge":
-                        for i in range(3):
-                            hinge_axis[i] += joint['axis'][i]#self._v[self.coordinates['idx']+joint_idx]*joint['axis'][i]
-                            hinge_vel[i] += self._dynamic[self.speeds['idx']+joint_idx]*joint['axis'][i]
-                slide_axis = _to_sympy_vector(slide_axis, parent_frame)
-                hinge_axis = _to_sympy_vector(hinge_axis, parent_frame)
-                slide_vel = _to_sympy_vector(slide_vel, parent_frame)
-                hinge_vel = _to_sympy_vector(hinge_vel, parent_frame)
-                body_origin.set_pos(parent_origin, slide_axis)
-                body_origin.set_vel(parent_frame, slide_vel)
+                        joint_offset += _to_sympy_vector(joint['axis'], parent_frame) * self._dynamic[self.coordinates['idx']+self.coordinates['names'].index(f"q_{joint['name']}")]
+                        joint_speed += _to_sympy_vector(joint['axis'], parent_frame) * self._dynamic[self.speeds['idx']+self.speeds['names'].index(f"qd_{joint['name']}")]
+                    elif joint['type'] == "hinge":
+                        n_hinges += 1
+                body_origin.set_pos(parent_origin, joint_offset)
+                body_origin.set_vel(parent_frame, joint_speed)
                 self.body_origins[body_name] = body_origin
-                print(f"Body {body_name} has slide axis {slide_axis} and hinge axis {hinge_axis}")
-                if hinge_axis != 0:
-                    body_frame.orient(parent_frame, 'Axis', (self._dynamic[self.coordinates['idx']+joint_idx]*joint['axis'][i], hinge_axis))
-                    body_frame.set_ang_vel(parent_frame, hinge_vel)
+                body_frame = ReferenceFrame(f"{body_name}_frame")
                 
-                if slide_axis != 0:
-                    print(slide_axis)
-                    body_frame.set_ang_vel(parent_frame, body_origin.vel(parent_frame) + slide_vel * slide_axis)
+                intermediate_frames = [parent_frame] # We use one frame per rotation
+                for idx, joint in enumerate(body['joints']):
+                    if joint['type'] == "hinge":
+                        # Check if we need to add a new frame
+                        symbol = self._dynamic[self.coordinates['idx']+self.coordinates['names'].index(f"q_{joint['name']}")]
+                        symbol_dot = self._dynamic[self.speeds['idx']+self.speeds['names'].index(f"qd_{joint['name']}")]
+                        joint_angle = _to_sympy_vector(joint['axis'], parent_frame)
+                        joint_angvel = _to_sympy_vector(joint['axis'], parent_frame)
+
+                        if idx == n_hinges - 1:
+                            # I think that we need add the joints iteratively to the frame, order matters
+                            body_frame.orient(intermediate_frames[-1], 'Axis', (symbol, joint_angle))
+                            body_frame.set_ang_vel(intermediate_frames[-1], joint_angvel * symbol_dot)
+                        else:
+                            new_frame = ReferenceFrame(f"{body_name}_{joint['name']}frame_{idx}")
+                            new_frame.orient(intermediate_frames[-1], 'Axis', (symbol, joint_angle))
+                            new_frame.set_ang_vel(intermediate_frames[-1], joint_angvel * symbol_dot)
+                            intermediate_frames.append(new_frame)
                 
                 self.reference_frames[body_name] = body_frame
                 build_reference_frames(children,body_frame, body_origin)
@@ -266,32 +265,33 @@ class BiosymModel:
                 body_name = node["name"]
                 body_idx = [body['name'] for body in self.dicts['bodies']].index(body_name)
                 children = node["children"]
-                body_origin = self.origins[body_name]
+                body_origin = self.body_origins[body_name]
                 body_frame = self.reference_frames[body_name]
 
                 # Set pos and lin_vel for the body
                 mass_center_point = Point(f"{body_name}_mass_center")
                 com_pos = _to_sympy_vector([self._v[i] for i in range(self.com['idx']+3*body_idx,self.com['idx']+3*(body_idx+1))], body_frame)
                 mass_center_point.set_pos(body_origin, com_pos)
-                mass_center_point.set_vel(body_origin, self.ground_frame, body_frame)
+                mass_center_point.v2pt_theory(body_origin, self.ground_frame, body_frame)
                 self.mass_centers[body_name] = mass_center_point
 
                 # set inertia tensor
-                inertia_tensor = [[self._v[i] for i in self.inertia['idx']+6*body_idx+i] for i in range(6)]
+                inertia_tensor = [self._v[i+self.inertia['idx']+6*body_idx] for i in range(6)]
                 body_inertia = Inertia.from_inertia_scalars(mass_center_point, body_frame, *inertia_tensor)
 
                 # Create the body
-                body = RigidBody(body_name, mass_center_point, body_frame, [self._v[i] for i in self.masses['idx']+body_idx], body_inertia)
+                body = RigidBody(body_name, mass_center_point, body_frame, self._v[self.masses['idx']+body_idx], body_inertia)
                 self.rigid_bodies[body_name] = body
 
-            build_bodies(children)
+                build_bodies(children)
+        build_bodies(topology_tree)
         
         # Add gravitational forces
         for bodyname, rigid_body in self.rigid_bodies.items():
-            gravity_f = rigid_body.mass * (self.ground_frame.x * [self._v[i] for i in self.g['idx']] +
-                                                self.ground_frame.y * [self._v[i] for i in self.g['idx']+1] +
-                                                self.ground_frame.z * [self._v[i] for i in self.g['idx']+2])
-            self.loads.append(gravity_f)
+            gravity_f = rigid_body.mass * (self.ground_frame.x * self._v[self.g['idx']] +
+                                                self.ground_frame.y * self._v[self.g['idx']+1] +
+                                                self.ground_frame.z * self._v[self.g['idx']+2])
+            self.loads.append((rigid_body.masscenter, gravity_f))
 
         # Add external forces - double check if this is correct
         # We are using body.origin to apply the force, but it could also be applied to the mass center or an arbitrary point - that is tbd
@@ -343,27 +343,18 @@ class BiosymModel:
         """
         # Create the equations of motion using KanesMethod
         km = KanesMethod(self.ground_frame, 
-                         q_ind = [self._dynamic[i] for i in _slice(self.coordinates)]
-                            , u_ind = [self._dynamic[i] for i in _slice(self.speeds)]
-                            , kd_eqs = self.kd_eqs)
+                         q_ind = [self._dynamic[i] for i in _slice(self.coordinates)],
+                         u_ind = [self._dynamic[i] for i in _slice(self.speeds)],
+                         kd_eqs = self.kd_eqs)
         self.fr, self.frstar = km.kanes_equations(list(self.rigid_bodies.values()), self.loads)
         self.kane = km
         self.constants_sym = [self._v[i] for i in range(self.n_states, self._nv)]
         self.state_vector_sym = [self._v[i] for i in range(0,self.n_states)]
         self.eom = self.fr + self.frstar
         # replace the accelerations in the EOM with the v_ states
-        print('Replacing accelerations in the EOM with the v_ states')
-        in_ = [self._dynamic[i+self.speeds['idx']].diff() for i in range(self.speeds['n'])] 
-        out_ = [self._v[i+self.accs['idx']] for i in range(self.accs['n'])] 
-        self.eom = self.eom.xreplace(dict(zip(in_, out_)))
-        print('Replacing speeds in the EOM with the v_ states')
-        in_ = [self._dynamic[i+self.speeds['idx']] for i in range(self.speeds['n'])]
-        out_ = [self._v[i+self.speeds['idx']] for i in range(self.speeds['n'])]
-        self.eom = self.eom.xreplace(dict(zip(in_, out_)))
-        print('Replacing coordinates in the EOM with the v_ states')
-        in_ = [self._dynamic[i+self.coordinates['idx']] for i in range(self.coordinates['n'])]
-        out_ = [self._v[i+self.coordinates['idx']] for i in range(self.coordinates['n'])]
-        self.eom = self.eom.xreplace(dict(zip(in_, out_)))
+        print('Replacing dynamic symbols in the EOM with the v_ states, this might take a while...')
+        self.eom = self._replace_dyn(self.eom)
+        
 
     def _create_jax_eom(self):
         """
@@ -389,13 +380,16 @@ class BiosymModel:
         for _, point in self.body_origins.items():
             pos_vector.append([point.pos_from(self.origin).dot(frame_dim) for frame_dim in [self.ground_frame.x, self.ground_frame.y, self.ground_frame.z]])
         pos_vector = Matrix(pos_vector)
+        pos_vector = self._replace_dyn(pos_vector)
         pos_vector = lambdify(self._v, pos_vector, modules='jax', cse=True, docstring_limit=2)
         self._precompile_fn(pos_vector, self._nv, 'FK')
 
         if get_FK_dot:
             vel_vector = []
-            vel_vector.append([point.vel(self.ground_frame).dot(frame_dim) for frame_dim in [self.ground_frame.x, self.ground_frame.y, self.ground_frame.z]])
+            for _, point in self.body_origins.items():
+                vel_vector.append([point.vel(self.ground_frame).dot(frame_dim) for frame_dim in [self.ground_frame.x, self.ground_frame.y, self.ground_frame.z]])
             vel_vector = Matrix(vel_vector)
+            vel_vector = self._replace_dyn(vel_vector)
             vel_vector = lambdify(self._v, vel_vector, modules='jax', cse=True, docstring_limit=2)
             self._precompile_fn(vel_vector, self._nv, 'FK_dot')
 
@@ -413,6 +407,20 @@ class BiosymModel:
         re_.call(np.zeros(input_length, dtype=np.float32))
         # Add the function to the run dictionary
         self.run[name] = re_.call
+
+    def _replace_dyn(self, function):
+        """
+            Replace the dynamicsymbols in the function with the corresponding v_ states.
+            This is needed to get the correct output from the function.
+        """
+        # First get rid of the accelerations
+        in_ = [self._dynamic[i].diff() for i in _slice(self.speeds)]
+        out_ = [self._v[i] for i in _slice(self.accs)]
+        function = function.xreplace(dict(zip(in_, out_)))
+        # This is not 100% clean: we assume that coordinates is always first (which is true for now)
+        in_ = [self._dynamic[i] for i in range(self.coordinates['n']+self.speeds['n'])]
+        out_ = [self._v[i] for i in range(self.coordinates['n']+self.speeds['n'])]
+        return function.xreplace(dict(zip(in_, out_)))
         
 
 
@@ -456,10 +464,17 @@ def load_model(model_file, force_rebuild=False):
 if __name__ == "__main__":
     model = load_model("tests/test_models/pendulum.xml",True)
     print(model.run['confun'](np.ones(model._nv)))
+    print(model.eom)
     print(model.run['jacobian'](np.ones(model._nv)))
     print(model.run['FK'](np.ones(model._nv)))
     print(model.run['FK_dot'](np.ones(model._nv)))
-    print(model.fr+model.frstar)
-    print(model.n_states, model.n_constants)
-    print(model.state_vector)
+    print(model.eom)
+    for val, name in zip(model.default_values, model.state_vector + model.constants):
+        print(name, val)#
     print(model.constants)
+    print(model.offset)
+
+    import time
+    start = time.time()
+    load_model("tests/test_models/pendulum_10.xml",True)
+    print(f"Compilin 10 dof model in {time.time()-start} seconds")
