@@ -1,6 +1,9 @@
 import os 
-os.environ["JAX_COMPILATION_CACHE_DIR"] = "~/.biosym/jax_cache" # This needs to happen before importing jax
-os.makedirs(os.path.expanduser("~/.biosym/jax_cache"), exist_ok=True)
+_cachedir = os.path.expanduser("~/.biosym/jax_cache")
+_model_cache = os.path.expanduser("~/.biosym/")
+os.environ["JAX_COMPILATION_CACHE_DIR"] = _cachedir # This needs to happen before importing jax
+os.makedirs((_cachedir), exist_ok=True)
+
 from biosym.model.parsers import *
 import sympy
 from sympy import symbols, Matrix, lambdify, sqrt, Derivative, simplify
@@ -9,6 +12,8 @@ import jax.numpy as jnp
 import numpy as np
 import jax
 import jax.export as export
+import hashlib
+import cloudpickle
 
 class BiosymModel:
     """
@@ -16,15 +21,10 @@ class BiosymModel:
         It will contain all functionality to load, save, and manipulate the model.
         Docstrings need to be added.
     """
-    def __init__(self, definition_file, force_rebuild=False):
-        # First, there should be a check if a pickled version of the model exists.
-        if not force_rebuild:
-            # Check if a pickled version of the model exists
-            print('Warning: Loading from pickled model is not implemented yet.')
-            # return the pickled file instead
-            return # 
+    def __init__(self, definition_file):
 
         # I think that it makes sense to force .yaml files at some point, because there are settings that are not represented in the model files
+        # .yaml files can define additional variables, for mujoco that would be ground contact
         if definition_file.endswith(".xml"):
             parser = mujoco_parser.MujocoParser(definition_file)
         elif definition_file.endswith(".osim"):
@@ -456,13 +456,26 @@ def load_model(model_file, force_rebuild=False):
         The file can be in .xml, .osim, or .yaml format.
         The function will return a Model object.
     """
-    # We should generate a hash of the config / or xml tree and save the cloudpickled model in the cache
-    model = BiosymModel(model_file, force_rebuild)
+    # Generate a hash of the config / or xml tree and save the cloudpickled model in the cache
+    with open(model_file, 'rb') as f:
+        model_hash = hashlib.sha256(f.read()).hexdigest()
+        # replace the hash with a string
+    if not force_rebuild:
+        if os.path.exists(os.path.join(_model_cache, f"{model_hash}.cpkl")):
+            print(f"Loading model from cache: {model_hash}.cpkl")
+            with open(os.path.join(_model_cache, f"{model_hash}.cpkl"), 'rb') as f:
+                model = cloudpickle.load(f)
+                return model
+            
+    model = BiosymModel(model_file)
+    # Save the model to the cache
+    with open(os.path.join(_model_cache, f"{model_hash}.cpkl"), 'wb') as f:
+        cloudpickle.dump(model, f)
     return model
 
 # Small testing script
 if __name__ == "__main__":
-    model = load_model("tests/test_models/pendulum.xml",True)
+    model = load_model("tests/test_models/pendulum.xml",False)
     print(model.run['confun'](np.ones(model._nv)))
     print(model.eom)
     print(model.run['jacobian'](np.ones(model._nv)))
@@ -476,5 +489,13 @@ if __name__ == "__main__":
 
     import time
     start = time.time()
-    load_model("tests/test_models/pendulum_10.xml",True)
-    print(f"Compilin 10 dof model in {time.time()-start} seconds")
+    load_model("tests/test_models/pendulum_10.xml",False)
+    print(f"Reloading? 10 dof model in {time.time()-start} seconds")
+    start = time.time()
+    for _ in range(1):
+        model.run['confun'](np.ones(model._nv))
+    print(f"100 confuns in in {time.time()-start} seconds (with reimporting)")
+    start = time.time()
+    for _ in range(100):
+        model.run['confun'](np.ones(model._nv))
+    print(f"100 confuns in in {time.time()-start} seconds")

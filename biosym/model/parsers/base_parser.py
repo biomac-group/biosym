@@ -87,4 +87,4 @@ class BaseParser(ABC):
             Returns the gravity vector in the model.
         """
         pass
-    
+

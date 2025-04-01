@@ -115,13 +115,16 @@ class MujocoParser(BaseParser):
     def get_n_external_forces(self):
         """
             Returns the number of bodies, where external forces can be applied.
+            In mujoco, ground contact isn't explicitly stated, so that should be in a config somewhere
         """
+        return 0
         return len(self.external_forces_bodies) * 3
     
     def get_external_forces_bodies(self):
         """
             Returns the list of bodies, where external forces can be applied.
         """
+        return []
         return self.external_forces_bodies
     
     def get_n_internal_forces(self):
