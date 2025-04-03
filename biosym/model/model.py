@@ -238,14 +238,16 @@ class BiosymModel:
                 body_frame = ReferenceFrame(f"{body_name}_frame")
                 
                 intermediate_frames = [parent_frame] # We use one frame per rotation
-                for idx, joint in enumerate(body['joints']):
+                idx_h = 0 # hidden iterator to only iterate over hinges
+                idx = 0 # iterator for all jointss
+                while idx < n_hinges: 
+                    joint == body['joints'][idx_h]
                     if joint['type'] == "hinge":
                         # Check if we need to add a new frame
                         symbol = self._dynamic[self.coordinates['idx']+self.coordinates['names'].index(f"q_{joint['name']}")]
                         symbol_dot = self._dynamic[self.speeds['idx']+self.speeds['names'].index(f"qd_{joint['name']}")]
                         joint_angle = _to_sympy_vector(joint['axis'], parent_frame)
                         joint_angvel = _to_sympy_vector(joint['axis'], parent_frame)
-
                         if idx == n_hinges - 1:
                             # I think that we need add the joints iteratively to the frame, order matters
                             body_frame.orient(intermediate_frames[-1], 'Axis', (symbol, joint_angle))
@@ -255,6 +257,8 @@ class BiosymModel:
                             new_frame.orient(intermediate_frames[-1], 'Axis', (symbol, joint_angle))
                             new_frame.set_ang_vel(intermediate_frames[-1], joint_angvel * symbol_dot)
                             intermediate_frames.append(new_frame)
+                        idx += 1
+                    idx_h += 1
                 
                 self.reference_frames[body_name] = body_frame
                 build_reference_frames(children,body_frame, body_origin)
@@ -393,13 +397,16 @@ class BiosymModel:
             vel_vector = lambdify(self._v, vel_vector, modules='jax', cse=True, docstring_limit=2)
             self._precompile_fn(vel_vector, self._nv, 'FK_dot')
 
-    def _precompile_fn(self, function, input_length, name):
+    def _precompile_fn(self, function, input_length, name, skip_compile=False):
         """
             Precompile a function using JAX's jit for faster execution.
             This is useful for functions that will be called multiple times with the same input shape.
             We use a hacky way: by serializing the function and then deserializing it again, the caching mechanism of jax doesn't miss parts of the function. 
             This actually doesn't even seem to be slower than the normal jax.jit
         """
+        if skip_compile:
+            function(np.zeros(input_length, dtype=np.float32))
+            self.run[name] = function
         input_dummy = jax.ShapeDtypeStruct([input_length], np.float32)
         exported = jax.export.export(jax.jit(function))(input_dummy)
         re_ = jax.export.deserialize(exported.serialize(vjp_order=1))
