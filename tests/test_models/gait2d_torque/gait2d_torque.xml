@@ -15,7 +15,7 @@
       <general gainprm="5 0 0 0 0 0 0 0 0 0"></general>
     </default>
   </default>
-  <option gravity="0 -9.81 0" integrator="RK4" timestep="0.01"/></option>
+  <option gravity="0 -9.81 0" integrator="RK4" timestep="0.01"></option>
   <size njmax="1000" nconmax="400" nuser_jnt="1"></size>
   <worldbody>
     <geom name="floor" pos="0 0 0" size="10 10 0.125" type="plane" material="MatPlane" condim="3"></geom>
