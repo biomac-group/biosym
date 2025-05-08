@@ -129,9 +129,11 @@ class ContactPoints(BaseContact):
         """
         moment_arms = self.get_cp_moment_arms(states, constants, model)
         cp_forces = self.get_cp_forces(states, constants, model)
+
+        
         # Get F and M in the global frame
-        #print(self.body_mapping, cp_forces.shape)
         length = self.get_n_bodies()
+        # Bincount is only 1D, therefore vmap it to 2D (note: vmap the whole model --> gpu version)
         def _bincount(arr, weights):
             return jnp.bincount(arr, weights=weights, length=length)
         foot_forces = jax.vmap(_bincount)(self.body_mapping, cp_forces.T).T
