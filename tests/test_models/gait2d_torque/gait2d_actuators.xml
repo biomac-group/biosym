@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<actuators type="general">
+  <general name="hip_r_torque" joint="hip_r" gear="500" ctrllimited="true" ctrlrange="-1 1" bias="0.0"></general>
+  <general name="knee_r_torque" joint="knee_r" gear="500" ctrllimited="true" ctrlrange="-1 1" bias="0.0"></general>
+  <general name="ankle_r_torque" joint="ankle_r" gear="500" ctrllimited="true" ctrlrange="-1 1" bias="0.0"></general>
+  <general name="hip_l_torque" joint="hip_l" gear="500" ctrllimited="true" ctrlrange="-1 1" bias="0.0"></general>
+  <general name="knee_l_torque" joint="knee_l" gear="500" ctrllimited="true" ctrlrange="-1 1" bias="0.0"></general>
+  <general name="ankle_l_torque" joint="ankle_l" gear="500" ctrllimited="true" ctrlrange="-1 1" bias="0.0"></general>
+</actuators>

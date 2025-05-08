@@ -28,9 +28,10 @@ class MujocoParser(BaseParser):
             body_offset = [float(x) for x in pos.split()]  # Convert to list of floats 
 
             # Extract mass, inertia, and com the same way
-            body_mass = [float(body_element.get("mass", "0"))]
-            body_inertia = [float(x) for x in body_element.get("inertia", "0 0 0 0 0 0").split()]
-            body_com = [float(x) for x in body_element.get("com", "0 0 0").split()]
+            inertia_element = body_element.find('inertial')
+            body_mass = [float(inertia_element.get("mass", "0"))]
+            body_inertia = [float(x) for x in inertia_element.get("fullinertia", "0 0 0 0 0 0").split()]
+            body_com = [float(x) for x in inertia_element.get("pos", "0 0 0").split()]
 
             # Parsing joint information in the current body
             body_joints = []
@@ -73,13 +74,18 @@ class MujocoParser(BaseParser):
         for body in self.root.findall(".//worldbody/body"):
             parse_body(body)
 
-        # Mujoco does not have an explicit ground contact model stated, so we set all joints to possibly be in contact
-        # For bigger models, it will be better to have fewer - so that they don't bother about compile time
-        self.external_forces_bodies = [name for name in self.data['bodies'] if name['name']]
+        # Mujoco often does not have an explicit ground contact model stated, so we set all joints to possibly be in contact
+        # The contact model should come from a yaml file.
+        # Mujoco GC models are currently not supported
+        self.external_forces_bodies = None 
 
         # Get the default gravity vector - if <option gravity> is not set, it defaults to [0, -9.81, 0]
         gravity = self.root.find(".//option").get("gravity", "0 -9.81 0")
         self.gravity = [float(x) for x in gravity.split()]
+
+        # We currently only allow externally specified actuators
+        # to be in the mujoco model file, so we set the actuator list to None
+        self.actuators = None
 
         if verbose:
             # Print all parsed 'body_offset'
@@ -132,21 +138,13 @@ class MujocoParser(BaseParser):
         """
             Returns the number of internal forces in the model.
         """
-        import warnings
-        warnings.warn("Internal forces are not parsed yet.")
-        print("Returning n_joints as n_internal forces")
-        return len(self.data['joints'])
-        raise NotImplementedError("Internal forces are not parsed yet.")
+        return len(self.actuators) if self.actuators is not None else 0
     
     def get_internal_forces(self):
         """
             Returns the list of internal forces in the model.
         """
-        import warnings
-        warnings.warn("Internal forces are not parsed yet.")
-        print("Returning joints as internal forces")
-        return self.data['joints']
-        raise NotImplementedError("Internal forces are not parsed yet.")
+        return self.actuators
     
     def get_gravity(self):
         """

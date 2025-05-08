@@ -24,7 +24,6 @@ class ContactPoints(BaseContact):
                     cps[cp_name][key] = np.array([float(x) for x in cp.get(key, value).split()])
                 else:
                     cps[cp_name][key] = cp.get(key, value)
-        n_cps = len(cps)
         self.bodies = [cps[cp]['body'] for cp in cps]
         _, self.body_mapping = np.unique(self.bodies, return_inverse=True)
         self.body_mapping = np.tile(self.body_mapping, (3, 1))
@@ -37,13 +36,12 @@ class ContactPoints(BaseContact):
         self.p_cy_0 = [1e-3]*len(self.k) # Transition region size for position
         self.v_cx_0 = [1e-2]*len(self.k) # Transition region size for velocity
 
-    def process_eom(self, model, body_weight=1):
+    def process_eom(self, model, **kwargs):
         """ 
             Build the eom for the contact model with symbolic variables.
         """
+        body_weight = kwargs.get('body_weight', 1)
         self.k = [k*body_weight for k in self.k]
-        print(self.cps)
-        cps_sympy = []
         pos_vector, vel_vector = [], []
         force_vector = []
         for i, cp in enumerate(self.cps):
@@ -113,7 +111,7 @@ class ContactPoints(BaseContact):
             Returns the moment arms for every contact point wrt to the body origin.
         """
         body_idx = np.array([list(model.rigid_bodies.keys()).index(p) for p in self.bodies])
-        pos_bodies = model.run["FK"](states, constants)[body_idx]
+        pos_bodies = model.run["FK_uncompiled"](*states['model'], *constants['model'])[body_idx]
         pos_cps = self.pos_vector(*states['model'], *constants['model'])
         return pos_cps - pos_bodies
 
@@ -130,7 +128,7 @@ class ContactPoints(BaseContact):
         moment_arms = self.get_cp_moment_arms(states, constants, model)
         cp_forces = self.get_cp_forces(states, constants, model)
 
-        
+
         # Get F and M in the global frame
         length = self.get_n_bodies()
         # Bincount is only 1D, therefore vmap it to 2D (note: vmap the whole model --> gpu version)
