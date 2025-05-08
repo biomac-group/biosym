@@ -5,6 +5,8 @@ os.environ["JAX_COMPILATION_CACHE_DIR"] = _cachedir # This needs to happen befor
 os.makedirs((_cachedir), exist_ok=True)
 
 from biosym.model.parsers import *
+from biosym.model.contact import *
+from biosym.model.actuators import *
 import sympy
 from sympy import symbols, Matrix, lambdify, sqrt, Derivative, simplify
 from sympy.physics.mechanics import KanesMethod, ReferenceFrame, Point, RigidBody, dynamicsymbols, Inertia
@@ -14,6 +16,7 @@ import jax
 import jax.export as export
 import hashlib
 import cloudpickle
+import yaml
 
 class BiosymModel:
     """
@@ -21,29 +24,58 @@ class BiosymModel:
         It will contain all functionality to load, save, and manipulate the model.
         Docstrings need to be added.
     """
-    def __init__(self, definition_file):
-
+    def __init__(self, definition_file, get_hash=False):
         # I think that it makes sense to force .yaml files at some point, because there are settings that are not represented in the model files
         # .yaml files can define additional variables, for mujoco that would be ground contact
+        cfg = None
+        if definition_file.endswith(".yaml"):
+            # Load the yaml file and check for the model name
+            with open(definition_file, 'r') as f:
+                cfg = yaml.safe_load(f)
+            # Replace the definition file with the model name
+            definition_file = os.path.join(os.path.dirname(definition_file), cfg['model']['name'])
+
         if definition_file.endswith(".xml"):
             parser = mujoco_parser.MujocoParser(definition_file)
         elif definition_file.endswith(".osim"):
-            raise NotImplementedError("OSIM models not supported yet.")
-        elif definition_file.endswith(".yaml"):
-            raise NotImplementedError("Loading models from yaml files is not supported yet.")
+            raise NotImplementedError("OSIM models not supported yet.")                
         else:
             raise ValueError("Model definition file must be in .xml, .osim, or .yaml format.")
         
+        # Check for additional parameters
+        if cfg is not None:
+            if 'additional_parameters' in cfg['model']:
+                if 'ground_contact' in cfg['model']['additional_parameters']:
+                    gc_model_file = os.path.join(os.path.dirname(definition_file), cfg['model']['additional_parameters']['ground_contact']['file'])
+                    self.gc_model = contact_parser.get(gc_model_file)
+                    if cfg['model']['additional_parameters']['ground_contact']['replace_existing'] == True:
+                        parser.external_forces_bodies = self.gc_model.get_bodies()
+                    else:
+                        raise NotImplementedError("Adding ground contact to existing models is not implemented yet. Try replacing them instead.")
+                if 'actuators' in cfg['model']['additional_parameters']:
+                    actuator_model_file = os.path.join(os.path.dirname(definition_file), cfg['model']['additional_parameters']['actuators']['file'])
+                    #actuator_model = actuator_parser.get(actuator_model_file)
+                if 'joints' in cfg['model']['additional_parameters']:
+                    pass # Joint limits not implemented yet # Limit actuators is also an actuator in the end 
+        
         self.run = {}
-    
         self._create_dictionaries(parser)
+        if get_hash:
+            return 
         self._create_sympy_model()
         # Future work: (These should be disabled or enabled by a flag in the config file); so that we don't need to compile everything every time
         self._create_eom()
         self._create_jax_eom()
         self._create_FK(True)
+        if self.gc_model is not None:
+            self.gc_model.process_eom(self, body_weight=1) # If the GC model needs to add extra equations of motion, it will do so here
+            self._register_contact_model(self.gc_model)
+        if self.actuators is not None:
+            self.actuators.process_eom(self)
+            self._register_actuator_model(self.actuators)
         # self._create_FK(parser)
         # self._create_IMU(parser) ....
+
 
     def _create_dictionaries(self, parser):
         """
@@ -96,14 +128,14 @@ class BiosymModel:
         # The first representation of external forces is a list of bodies, where the forces can be applied
         n_ext_forces = parser.get_n_external_forces()
         self.ext_forces = {
-            'names': [f"m_{force['name']}_{dim}" for force in parser.get_external_forces_bodies() for dim in ['x','y','z']],
+            'names': [f"m_{force}_{dim}" for force in parser.get_external_forces_bodies() for dim in ['x','y','z']],
             'idx': 3 * n_dof + n_forces,
             'n': n_ext_forces,
         } 
         
         # And torques
         self.ext_torques = {
-            'names': [f"t_{force['name']}_{dim}" for force in parser.get_external_forces_bodies() for dim in ['x','y','z']],
+            'names': [f"t_{force}_{dim}" for force in parser.get_external_forces_bodies() for dim in ['x','y','z']],
             'idx': 3 * n_dof + n_forces + n_ext_forces,
             'n': n_ext_forces,
         }
@@ -162,6 +194,17 @@ class BiosymModel:
         self.n_constants = len(self.constants)
 
         self.gravity = parser.get_gravity()
+        self.default_inputs = {
+            'states': {
+                'model': np.zeros(self.n_states),
+                'gc_model': np.zeros(0),
+                'actuator_model': np.zeros(0),},
+            'constants': {
+                'model': np.zeros(self.n_constants),
+                'gc_model': np.zeros(0),
+                'actuator_model': np.zeros(0),},
+            'input_names': ['model'],
+        }
 
     def _create_sympy_model(self):
         """
@@ -171,7 +214,7 @@ class BiosymModel:
         self._nv = self.n_states + self.n_constants
         # We set everything with the IndexedBase, so that it is vectorized
         # However, coordinates and speeds need to be dynamicsymbols, therefore we create a separate vector for them and merge them later
-        self._v = sympy.IndexedBase('v', shape=(self._nv,))
+        self._v = Matrix(self._nv, 1, lambda i, _: symbols(f'v{i}'))
         self._dynamic = Matrix(2*self.coordinates['n'], 1, lambda i, _: dynamicsymbols(f'dyn{i}'))
         # Maybe the IndexedBase needs to be initialized with its data types
         # e.g. [self._v[i] for i in :self.n_states] = [dynamicsymbols(name) for name in self.state_vector]; [self._v[i] for i in self.n_states:] = [symbols(name) for name in self.constants]
@@ -300,20 +343,23 @@ class BiosymModel:
         # Add external forces - double check if this is correct
         # We are using body.origin to apply the force, but it could also be applied to the mass center or an arbitrary point - that is tbd
         for force in self.ext_forces['names']:
-            body_name = force.split("_")[1]
+            body_name = "_".join(force.split("_")[1:-1])
             body_idx = [body['name'] for body in self.dicts['bodies']].index(body_name)
             force_idx = self.ext_forces['idx'] + 3 * body_idx
             force_vector = _to_sympy_vector([self._v[i] for i in range(force_idx,force_idx+3)], self.ground_frame)
             force_body = (self.body_origins[body_name], force_vector)
             self.loads.append(force_body)
+
         # Add external torques - also double check if this is correct
         for torque in self.ext_torques['names']:
-            body_name = torque.split("_")[1]
+            body_name = "_".join(torque.split("_")[1:-1])
             body_idx = [body['name'] for body in self.dicts['bodies']].index(body_name)
             torque_idx = self.ext_torques['idx'] + 3 * body_idx
             torque_vector = _to_sympy_vector([self._v[i] for i in range(torque_idx,torque_idx+3)], self.ground_frame)
             torque_body = (self.reference_frames[body_name], torque_vector)
             self.loads.append(torque_body)
+
+        # Add internal forces -- 
 
     def _create_topology_tree(self):
         """
@@ -365,11 +411,20 @@ class BiosymModel:
             Create the equations of motion (EOM) for the model using JAX.
             Every value should be stored in the vector self._v.
         """
-        print('Lambdifying the EOM, this might take a while...')
+        import time
+        a = time.time()
         self.confun = lambdify(self._v, self.eom, modules='jax', cse=True, docstring_limit=2)
+        print(f'Lambdifying the EOM took {time.time()-a} seconds')
+        a = time.time()
         self.jacobian = jax.jacobian(self.confun)
-        self._precompile_fn(self.jacobian, self._nv, 'jacobian')
-        self._precompile_fn(self.confun, self._nv, 'confun')
+        print(f'Calculating the Jacobian took {time.time()-a} seconds')
+        a = time.time()
+        jacobian = self._precompile_fn(self.jacobian, self.default_inputs, 'jacobian')
+        print(f'Precompiling the Jacobian took {time.time()-a} seconds')
+        a = time.time()
+        confun = self._precompile_fn(self.confun, self.default_inputs, 'confun')
+        print(f'Precompiling the confun took {time.time()-a} seconds')
+        a = time.time()
     
     def _create_FK(self, get_FK_dot=True):
         """
@@ -386,7 +441,7 @@ class BiosymModel:
         pos_vector = Matrix(pos_vector)
         pos_vector = self._replace_dyn(pos_vector)
         pos_vector = lambdify(self._v, pos_vector, modules='jax', cse=True, docstring_limit=2)
-        self._precompile_fn(pos_vector, self._nv, 'FK')
+        pos_vector = self._precompile_fn(pos_vector, self.default_inputs, 'FK')
 
         if get_FK_dot:
             vel_vector = []
@@ -395,23 +450,42 @@ class BiosymModel:
             vel_vector = Matrix(vel_vector)
             vel_vector = self._replace_dyn(vel_vector)
             vel_vector = lambdify(self._v, vel_vector, modules='jax', cse=True, docstring_limit=2)
-            self._precompile_fn(vel_vector, self._nv, 'FK_dot')
+            vel_vector = self._precompile_fn(vel_vector, self.default_inputs, 'FK_dot')
 
-    def _precompile_fn(self, function, input_length, name, skip_compile=False):
+    def _precompile_fn(self, function, inputs, name, skip_compile=False):
         """
             Precompile a function using JAX's jit for faster execution.
             This is useful for functions that will be called multiple times with the same input shape.
             We use a hacky way: by serializing the function and then deserializing it again, the caching mechanism of jax doesn't miss parts of the function. 
             This actually doesn't even seem to be slower than the normal jax.jit
         """
+        def _jit_function_template(function, states, constants, input_names = ['model']):
+            """
+                The to-be registered function should take states and constants dicts as inputs.
+                We use this wrapper to unpack the vectors for each function.
+            """
+            l_inputs = []
+            for key in input_names:
+                if key not in states:
+                    continue
+                l_inputs += [*states[key]]
+                l_inputs += [*constants[key]]
+            return function(*l_inputs)
+
+        states0, constants0, input_names0 = inputs['states'], inputs['constants'], inputs['input_names']
+        jit_function = lambda states_, constants_: _jit_function_template(function, states_, constants_, input_names0)
+
         if skip_compile:
-            function(np.zeros(input_length, dtype=np.float32))
-            self.run[name] = function
-        input_dummy = jax.ShapeDtypeStruct([input_length], np.float32)
-        exported = jax.export.export(jax.jit(function))(input_dummy)
+            jit_function(states0, constants0)
+            self.run[name] = jit_function
+            return
+        states_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in states0.items()}
+        constants_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in constants0.items()}
+        # Export+Import of the same function reconfigures the "lambda" function somehow -> faster re-compilation from cache
+        exported = jax.export.export(jax.jit(jit_function))(states_input_dummy, constants_input_dummy)
         re_ = jax.export.deserialize(exported.serialize(vjp_order=1))
         # Trigger the jit compilation
-        re_.call(np.zeros(input_length, dtype=np.float32))
+        re_.call(states0, constants0)
         # Add the function to the run dictionary
         self.run[name] = re_.call
 
@@ -428,9 +502,37 @@ class BiosymModel:
         in_ = [self._dynamic[i] for i in range(self.coordinates['n']+self.speeds['n'])]
         out_ = [self._v[i] for i in range(self.coordinates['n']+self.speeds['n'])]
         return function.xreplace(dict(zip(in_, out_)))
+    
+    def _register_contact_model(self, contact_model):
+        """
+            Register the forward function of the contact model as a function in the run dictionary and precompile it.
+        """
+        input_dummy = self.default_inputs.copy()
+        input_dummy['states']['gc_model'] = np.zeros(contact_model.get_n_states())
+        input_dummy['constants']['gc_model'] = np.zeros(contact_model.get_n_constants())
+        input_dummy['input_names'] = ['model', 'gc_model']
+        lambda_func = lambda states, constants: contact_model.forward(states, constants, self)
+        # Run precompilation - cannot use the generic precompile function, because the contact model has a generic input structure
+        states_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in input_dummy['states'].items()}
+        constants_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in input_dummy['constants'].items()}
+        exported = jax.export.export(jax.jit(lambda_func))(states_input_dummy, constants_input_dummy)
+        re_ = jax.export.deserialize(exported.serialize(vjp_order=1))
+        # Trigger the jit compilation
+        re_.call(input_dummy['states'], input_dummy['constants'])
+        # Add the function to the run dictionary
+        self.run['gc_model'] = re_.call
+        self.run['gc_model_jacobian'] = jax.jacobian(self.run['gc_model'], argnums=2)
+
+    def _get_hash(self):
+        # Create a string of all model state names (Is that really enough?)
+        all_state_names = self.state_vector + self.constants
+        all_state_names = ''.join(all_state_names)
+        # Create a hash of the string
+        return hashlib.sha256(all_state_names.encode()).hexdigest()
+
+
+
         
-
-
 def _slice(dictionary):
     """
         Slice the state vector according to the dictionary
@@ -455,7 +557,7 @@ def _to_sympy_vector(values, reference_frame):
         values[0] * reference_frame.x +
         values[1] * reference_frame.y +
         values[2] * reference_frame.z
-    )          
+    )
 
 def load_model(model_file, force_rebuild=False):
     """
@@ -464,9 +566,8 @@ def load_model(model_file, force_rebuild=False):
         The function will return a Model object.
     """
     # Generate a hash of the config / or xml tree and save the cloudpickled model in the cache
-    with open(model_file, 'rb') as f:
-        model_hash = hashlib.sha256(f.read()).hexdigest()
-        # replace the hash with a string
+    model_hash = BiosymModel(model_file, get_hash=True)._get_hash()
+    # replace the hash with a string
     if not force_rebuild:
         if os.path.exists(os.path.join(_model_cache, f"{model_hash}.cpkl")):
             print(f"Loading model from cache: {model_hash}.cpkl")
@@ -480,29 +581,48 @@ def load_model(model_file, force_rebuild=False):
         cloudpickle.dump(model, f)
     return model
 
+def clear_caches():
+    """
+        Clear the caches for JAX and the model.
+    """
+    # Clear the JAX cache
+    print("Clearing the JAX cache...")
+    if os.path.exists(_cachedir):
+        for file in os.listdir(_cachedir):
+            os.remove(os.path.join(_cachedir, file))
+    print('Done.')
+    # Clear the model cache
+    assert input("Are you sure you want to clear the model cache? This deletes all compiled sympy models (y/n)") == "y", "You need to confirm the deletion of the model cache."
+    if os.path.exists(_model_cache):
+        for file in os.listdir(_model_cache):
+            if file.endswith(".cpkl"):
+                os.remove(os.path.join(_model_cache, file))
+    print('Done.')
+        
+
 # Small testing script
 if __name__ == "__main__":
-    model = load_model("tests/test_models/pendulum.xml",False)
-    print(model.run['confun'](np.ones(model._nv)))
-    print(model.eom)
-    print(model.run['jacobian'](np.ones(model._nv)))
-    print(model.run['FK'](np.ones(model._nv)))
-    print(model.run['FK_dot'](np.ones(model._nv)))
-    print(model.eom)
-    for val, name in zip(model.default_values, model.state_vector + model.constants):
-        print(name, val)#
-    print(model.constants)
-    print(model.offset)
-
     import time
     start = time.time()
-    load_model("tests/test_models/pendulum_10.xml",False)
-    print(f"Reloading? 10 dof model in {time.time()-start} seconds")
+    model = load_model("tests/test_models/gait2d/gait2d.yaml",True)
+    asd = asd
+    print(f"Reloading model in {time.time()-start} seconds")
+    start = time.time()
+    for _ in range(1):
+        model.run['jacobian'](np.ones(model._nv))
+    print(f"1 jacobian in in {time.time()-start} seconds (with reimporting)")
+    start = time.time()
+    import timeit
+    a = np.ones(model._nv)
+    a = timeit.timeit(lambda: model.run['jacobian'](a), number=10000)
+    print(f"jacobian runs in {a/10000} seconds")
+
     start = time.time()
     for _ in range(1):
         model.run['confun'](np.ones(model._nv))
-    print(f"100 confuns in in {time.time()-start} seconds (with reimporting)")
+    print(f"1 confun in in {time.time()-start} seconds (with reimporting)")
     start = time.time()
-    for _ in range(100):
-        model.run['confun'](np.ones(model._nv))
-    print(f"100 confuns in in {time.time()-start} seconds")
+    import timeit
+    a = np.ones(model._nv)
+    a = timeit.timeit(lambda: model.run['confun'](a), number=10000)
+    print(f"confun runs in {a/10000} seconds")

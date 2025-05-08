@@ -85,7 +85,7 @@ class MujocoParser(BaseParser):
             # Print all parsed 'body_offset'
             print("\nParsed Body Offsets:")
             for body in self.data['bodies']:
-                body_offset = body.get('body_offset')  
+                body_offset = body.get('body_offset')
                 print(f"  Body: {body['name']}, Offset: {body_offset}")
 
     def get_n_bodies(self):
@@ -117,14 +117,15 @@ class MujocoParser(BaseParser):
             Returns the number of bodies, where external forces can be applied.
             In mujoco, ground contact isn't explicitly stated, so that should be in a config somewhere
         """
-        return 0
+        if self.external_forces_bodies is None:
+            import warnings
+            warnings.warn("No external forces bodies found -> No contact model found")
         return len(self.external_forces_bodies) * 3
     
     def get_external_forces_bodies(self):
         """
             Returns the list of bodies, where external forces can be applied.
         """
-        return []
         return self.external_forces_bodies
     
     def get_n_internal_forces(self):
