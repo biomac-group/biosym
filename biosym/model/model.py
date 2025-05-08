@@ -674,12 +674,12 @@ if __name__ == "__main__":
     print("gc_model jacobian shape:", model.run['gc_model_jacobian'](states, constants)[0]['model'].shape)
 
     print("----------------------")
-    for state in model.state_vector:
-        print(state, model.default_values[model.state_vector.index(state)])
+    for i, state in enumerate(model.state_vector):
+        print(state, model.default_values[i])
     print("----------------------")
-    for state in model.constants:
-        print(state, model.default_values[model.constants.index(state)])
-
+    for i, state in enumerate(model.constants):
+        print(state, model.default_values[i+model.n_states])
+        
     print("----------------------")
     print(len(model.coordinates['names']), model.coordinates['n'])
     print(len(model.speeds['names']), model.speeds['n'])
