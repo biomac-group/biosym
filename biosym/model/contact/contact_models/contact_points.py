@@ -139,3 +139,7 @@ class ContactPoints(BaseContact):
         moment_cps = jnp.cross(moment_arms, cp_forces)
         foot_moments = jax.vmap(_bincount)(self.body_mapping, moment_cps.T).T
         return foot_forces, foot_moments
+    
+    def reset():
+        # No hidden states to reset
+        pass

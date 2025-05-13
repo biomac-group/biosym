@@ -14,3 +14,16 @@ class BaseActuator(ABC):
             Returns the number of actuators in the model.
         """
         pass
+
+    @abstractmethod
+    def reset(self):
+        """
+            Resets the actuator behaviour.
+        """
+        pass
+
+    def process_eom(self, model):
+        """
+            Processes the equations of motion for the actuator.
+        """
+        pass

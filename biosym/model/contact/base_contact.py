@@ -70,3 +70,11 @@ class BaseContact(ABC):
             Returns the contact forces for the given bodies in the global frame.
         """
         pass
+
+    @abstractmethod
+    def reset():
+        """
+            Resets the contact model.
+            This is called at the beginning of each simulation.
+        """
+        pass

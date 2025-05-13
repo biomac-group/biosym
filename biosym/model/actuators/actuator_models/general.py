@@ -30,3 +30,31 @@ class General(BaseActuator):
             Returns the list of actuators in the model.
         """
         return self.actuators
+    
+    def is_torque_actuator(self):
+        """
+            Returns True if the actuator is a torque actuator.
+        """
+        return True
+
+    def reset(self):
+        """
+            Resets the actuator behaviour.
+        """
+        pass
+
+
+    
+class GeneralMujoco(General):
+    """
+        General actuator model for Mujoco.
+    """
+    def __init__(self, acutator_list):
+        self.actuators = {}
+        for actuator in acutator_list:
+            actuator_name = actuator.get("name", "actuator has no name")
+            if actuator_name is None:
+                raise ValueError("Actuator name is not specified.")
+            self.actuators[actuator_name] = {}
+            for key, value in actuator.attrib.items():
+                self.actuators[actuator_name][key] = value
