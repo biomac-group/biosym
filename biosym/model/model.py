@@ -17,6 +17,7 @@ import jax.export as export
 import hashlib
 import cloudpickle
 import yaml
+import pandas as pd
 
 class BiosymModel:
     """
@@ -86,6 +87,7 @@ class BiosymModel:
         if hasattr(self, 'actuators'):
             self.actuators.process_eom(self)
             self._register_actuator_model(self.actuators)
+        self._create_variable_dataframe()
         # self._create_FK(parser)
         # self._create_IMU(parser) ....
 
@@ -599,6 +601,26 @@ class BiosymModel:
                 self.run['actuator_model_jacobian'] = re_.call
             else:
                 self.run['actuator_model'] = re_.call
+
+    def _create_variable_dataframe(self):
+        """
+            Create a dataframe with all variables in the model.
+        """
+        df = pd.DataFrame(columns=['type', 'name', 'x0', 'xmin', 'xmax'])
+        for i, name in enumerate(self.state_vector):
+            type = 'state'
+            x0 = self.default_values[i]
+            xmin = -3.14 #-np.inf
+            xmax = 3.14 #np.inf
+            # @todo: parse limits and find reasonable limits
+            df.loc[len(df)] = [type, name, x0, xmin, xmax]
+        for i, name in enumerate(self.constants):
+            type = 'constant'
+            x0 = self.default_values[i + self.n_states]
+            xmin = -np.inf
+            xmax = np.inf
+            df.loc[len(df)] = [type, name, x0, xmin, xmax]
+        self.variables = df
 
     def _get_hash(self):
         # Create a string of all model state names (Is that really enough?)

@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.experimental.ode import odeint
+import copy
 
 class SimulationEnvironment:
     def __init__(self, model, dt=0.01, integrator="RK4", n_steps=1000, stopping_criteria=None, initial_state="neutral", **kwargs):
@@ -30,20 +31,36 @@ class SimulationEnvironment:
             Create the simulation ODE function.
             This function is used to compute the state derivatives for the simulation.
         """
-        def simulation_ode(states, t, constants, model):
-            M = model.run['mass_matrix'](states, constants)
-            F = model.run['forcing'](states, constants)
+        def simulation_ode(model_state_vector, t, others, model):
+            constants, controls, all_states = others
+            all_states['model'] = model_state_vector.copy()
+            # Run actuator model
+            if hasattr(model, "actuator_model"):
+                actuator_signals = model.run['actuator_model'](all_states)
+            else:
+                actuator_signals = controls
+
+            model_state_vector.at[model.forces['idx']:model.forces['idx'] + model.forces['n']].set(actuator_signals)
+
+            # Run ground contact model
+            if hasattr(model, "contact_model"):
+                contact_signals = model.run['contact_model'](all_states)
+            else:
+                contact_signals = jnp.zeros(model.ext_forces['n']), jnp.zeros(model.ext_torques['n'])
+
+            model_state_vector.at[model.ext_forces['idx']:model.ext_forces['idx'] + model.ext_forces['n']].set(contact_signals[0])
+            model_state_vector.at[model.ext_torques['idx']:model.ext_torques['idx'] + model.ext_torques['n']].set(contact_signals[1])
+            M = model.run['mass_matrix'](all_states, constants)
+            F = model.run['forcing'](all_states, constants)
             acc = jnp.linalg.solve(M, F).squeeze()
-            return_states = states.copy()
-            for key in return_states.keys():
-                return_states[key] *= 0
-            return_states['model'].at[model.coordinates['idx']:model.coordinates['idx'] + model.coordinates['n']].set(states['model'][model.speeds['idx']:model.speeds['idx'] + model.speeds['n']])
-            return_states['model'].at[model.speeds['idx']:model.speeds['idx'] + model.speeds['n']].set(acc)
+            return_states = jnp.zeros_like(model_state_vector)
+            return_states = return_states.at[model.coordinates['idx']:model.coordinates['idx'] + model.coordinates['n']].set(model_state_vector[model.speeds['idx']:model.speeds['idx'] + model.speeds['n']])
+            return_states = return_states.at[model.speeds['idx']:model.speeds['idx'] + model.speeds['n']].set(acc)
             return return_states
 
         #states = self.model.default_inputs['states']
         #constants = self.model.default_inputs['constants']
-        self.simulation_ode = lambda states, t, constants: simulation_ode(states, t, constants, self.model)
+        self.simulation_ode = lambda states, t, others: simulation_ode(states, t, others, self.model)
 
     def step(self, controls):
         """
@@ -58,7 +75,7 @@ class SimulationEnvironment:
                 truncated: A boolean indicating if the simulation has been truncated.
                 info: Additional information about the simulation step.
         """
-        def _step_internal(controls, state, model, dt, simulation_ode):
+        def _step_internal(controls, state, dt, simulation_ode):
             """
                 This function runs 3 computations:
                     1. Compute the torque signal from the actuator model.
@@ -66,37 +83,17 @@ class SimulationEnvironment:
                     3. Integrate the state using the ODE function.
             """
             assert state is not None, "Simulation environment not initialized. Call reset() first."
-
-            # Run actuator model
-            if hasattr(model, "actuator_model"):
-                actuator_signals = model.run['actuator_model'](state)
-            else:
-                actuator_signals = controls
-
-            state['states']['model'].at[model.forces['idx']:model.forces['idx'] + model.forces['n']].set(actuator_signals)
-
-            # Run ground contact model
-            if hasattr(model, "contact_model"):
-                contact_signals = model.run['contact_model'](state)
-            else:
-                contact_signals = jnp.zeros(model.ext_forces['n']), jnp.zeros(model.ext_torques['n'])
-
-            state['states']['model'].at[model.ext_forces['idx']:model.ext_forces['idx'] + model.ext_forces['n']].set(contact_signals[0])
-            state['states']['model'].at[model.ext_torques['idx']:model.ext_torques['idx'] + model.ext_torques['n']].set(contact_signals[1])
-
             # Integrate the state using the ODE function
             # Time array with two points: initial time and initial time + dt
             t = jnp.array([0.0, dt])
-            state['states'] = odeint(simulation_ode, state['states'], t, state['constants'])
+            new_state_ = odeint(simulation_ode, state['states']['model'], t, (state['constants'], controls, state['states']))
             # The current state is only the last value of the integration
-            for key in state['states'].keys():
-                state['states'][key] = state['states'][key][-1]
-            return state
+            return new_state_[-1]
         
         if not hasattr(self, "_step"):
             _step_internal(controls, self.state, self.model, self.dt, self.simulation_ode)
-            self._step = jax.jit(_step_internal, static_argnames=["model", "dt", "simulation_ode"])
-        self.state = self._step(controls, self.state, self.model, self.dt, self.simulation_ode)
+            self._step = jax.jit(_step_internal, static_argnames=["model", "simulation_ode"])
+        self.state['states']['model'] = self._step(controls, self.state, self.dt, self.simulation_ode)
         # Check for callbacks for rewards and stopping criteria
         reward = self.reward_callback(self.state, controls, self.model) if hasattr(self, "reward_callback") else 0.0
         terminated = self.termination_callback(self.state, self.model) if hasattr(self, "termination_callback") else False
@@ -121,9 +118,12 @@ class SimulationEnvironment:
             np.random.seed(seed)
         
         if self.initial_state == "neutral":
-            self.state = self.model.default_inputs
+            self.state = copy.deepcopy(self.model.default_inputs)
         elif self.initial_state == "random":
-            raise NotImplementedError("Simulation: random initial state generation is not implemented yet.")
+            self.state = copy.deepcopy(self.model.default_inputs)
+            for i, row in self.model.variables.iterrows():
+                if row.type == "state":
+                    self.state['states']['model'][i] = np.random.uniform(row['xmin'], row['xmax'])
         else:
             raise ValueError(f"Simulation: initial state '{self.initial_state}' is not supported.")
         
