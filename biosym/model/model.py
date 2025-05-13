@@ -37,6 +37,12 @@ class BiosymModel:
 
         if definition_file.endswith(".xml"):
             parser = mujoco_parser.MujocoParser(definition_file)
+            if parser.has_actuators():
+                self.actuators = actuator_parser.get(parser.get_actuators())
+                parser.actuators = self.actuators.get_actuators()
+            if parser.has_contact_model():
+                self.contact_model = contact_parser.get(parser.get_contact_model())
+                parser.external_forces_bodies = self.contact_model.get_bodies()
         elif definition_file.endswith(".osim"):
             raise NotImplementedError("OSIM models not supported yet.")                
         else:
@@ -54,9 +60,9 @@ class BiosymModel:
                         raise NotImplementedError("Adding ground contact to existing models is not implemented yet. Try replacing them instead.")
                 if 'actuators' in cfg['model']['additional_parameters']:
                     actuator_model_file = os.path.join(os.path.dirname(definition_file), cfg['model']['additional_parameters']['actuators']['file'])
-                    actuator_model = actuator_parser.get(actuator_model_file)
+                    self.actuators = actuator_parser.get(actuator_model_file)
                     if cfg['model']['additional_parameters']['actuators']['replace_existing'] == True:
-                        parser.actuators = actuator_model.get_actuators()
+                        parser.actuators = self.actuators.get_actuators()
                     else:
                         raise NotImplementedError("Adding actuators to existing models is not implemented yet. Try replacing them instead.")
                     #actuator_model = actuator_parser.get(actuator_model_file)
@@ -257,6 +263,7 @@ class BiosymModel:
         for value_dict, value in zip([self.com, self.offset, self.inertia],['com', 'body_offset', 'inertia']):
             self.default_values[_slice(value_dict)] = concat_defaults(value)
 
+        self.default_inputs['constants']['model'] = self.default_values[self.n_states:]
         # Get the model topology (A tree-like to help navigating the model)
         # This might change the indexing order of the bodies --> needs to be tested
         # Use body_idx as a substitute for now to be safe
@@ -352,6 +359,7 @@ class BiosymModel:
 
         # Add internal forces
         for i, joint_name in enumerate(self.forces['names']):
+            assert joint_name in [j['name'] for j in self.dicts['joints']], f"Joint {joint_name} not found in the model definition file, but has an actuator defined."
             joint_idx = [j['name'] for j in self.dicts['joints']].index(joint_name)
             axis = self.dicts['joints'][joint_idx]['axis']
             parent_body = self.dicts['joints'][joint_idx]['parent']
@@ -366,6 +374,7 @@ class BiosymModel:
         # We are using body.origin to apply the force, but it could also be applied to the mass center or an arbitrary point - that is tbd
         for force in self.ext_forces['names']:
             body_name = "_".join(force.split("_")[1:-1])
+            assert body_name in [body['name'] for body in self.dicts['bodies']], f"Body {body_name} not found in the model, but has an external force defined."
             body_idx = [body['name'] for body in self.dicts['bodies']].index(body_name)
             force_idx = self.ext_forces['idx'] + 3 * body_idx
             force_vector = _to_sympy_vector([self._v[i] for i in range(force_idx,force_idx+3)], self.ground_frame)
@@ -443,6 +452,14 @@ class BiosymModel:
         a = time.time()
         self._precompile_fn(self.confun, self.default_inputs, 'confun')
         print(f'Precompiling the confun took {time.time()-a} seconds')
+        a = time.time()
+        self.mass_matrix = lambdify(self._v, self._replace_dyn(self.kane.mass_matrix), modules='jax', cse=True, docstring_limit=2)
+        self._precompile_fn(self.mass_matrix, self.default_inputs, 'mass_matrix')
+        print(f'Precompiling the mass matrix took {time.time()-a} seconds')
+        a = time.time()
+        self.forcing = lambdify(self._v, self._replace_dyn(self.kane.forcing), modules='jax', cse=True, docstring_limit=2)
+        self._precompile_fn(self.forcing, self.default_inputs, 'forcing')
+        print(f'Precompiling the forcing took {time.time()-a} seconds')
         a = time.time()
     
     def _create_FK(self, get_FK_dot=True):
@@ -530,12 +547,15 @@ class BiosymModel:
         input_dummy['states']['gc_model'] = np.zeros(contact_model.get_n_states())
         input_dummy['constants']['gc_model'] = np.zeros(contact_model.get_n_constants())
         input_dummy['input_names'] = ['model', 'gc_model']
+        self.default_inputs['states']['gc_model'] = np.zeros(contact_model.get_n_states())
+        self.default_inputs['constants']['gc_model'] = np.zeros(contact_model.get_n_constants())
         lambda_func = lambda states, constants: contact_model.forward(states, constants, self)
         states_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in input_dummy['states'].items()}
         constants_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in input_dummy['constants'].items()}
         for fun in ['forward', 'jacobian']:
             if fun == 'jacobian':
                 self.run['gc_model_jacobian_uncompiled'] = lambda_func # We might need this for the constraints at some point
+                # Uncompiled functions are not exported, so we need to use the compiled version
                 exported = jax.export.export(jax.jit(jax.jacobian(lambda_func)))(states_input_dummy, constants_input_dummy)                
             else:
                 self.run['gc_model_uncompiled'] = lambda_func # We might need this for the constraints at some point
@@ -548,7 +568,37 @@ class BiosymModel:
                 self.run['gc_model_jacobian'] = re_.call
             else:
                 self.run['gc_model'] = re_.call
-        
+
+    def _register_actuator_model(self, actuator_model):
+        """
+            TODO: Refactor the _register functions, they are almost identical
+        """
+        if actuator_model.is_torque_actuator():
+            return
+        input_dummy = self.default_inputs.copy()
+        input_dummy['states']['actuator_model'] = np.zeros(actuator_model.get_n_states())
+        input_dummy['constants']['actuator_model'] = np.zeros(actuator_model.get_n_constants())
+        input_dummy['input_names'] = ['model', 'actuator_model']
+        self.default_inputs['states']['actuator_model'] = np.zeros(actuator_model.get_n_states())
+        self.default_inputs['constants']['actuator_model'] = np.zeros(actuator_model.get_n_constants())
+        lambda_func = lambda states, constants: actuator_model.forward(states, constants, self)
+        states_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in input_dummy['states'].items()}
+        constants_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in input_dummy['constants'].items()}
+        for fun in ['forward', 'jacobian']:
+            if fun == 'jacobian':
+                self.run['actuator_model_jacobian_uncompiled'] = lambda_func
+                exported = jax.export.export(jax.jit(jax.jacobian(lambda_func)))(states_input_dummy, constants_input_dummy)
+            else:
+                self.run['actuator_model_uncompiled'] = lambda_func
+                exported = jax.export.export(jax.jit(lambda_func))(states_input_dummy, constants_input_dummy)
+            re_ = jax.export.deserialize(exported.serialize(vjp_order=1))
+            # Trigger the jit compilation
+            re_.call(input_dummy['states'], input_dummy['constants'])
+            # Add the function to the run dictionary
+            if fun == 'jacobian':
+                self.run['actuator_model_jacobian'] = re_.call
+            else:
+                self.run['actuator_model'] = re_.call
 
     def _get_hash(self):
         # Create a string of all model state names (Is that really enough?)
@@ -630,7 +680,9 @@ def clear_caches():
 if __name__ == "__main__":
     import time
     start = time.time()
-    model = load_model("tests/test_models/gait2d_torque/gait2d_torque.yaml", True)
+    model_file = "tests/test_models/pendulum.xml"
+    #model_file = "tests/test_models/gait2d_torque/gait2d_torque.yaml"
+    model = load_model(model_file, True)
     print(f"Reloading model in {time.time()-start} seconds")
     start = time.time()
     states = {
@@ -672,28 +724,4 @@ if __name__ == "__main__":
     print("jacobian shape:", model.run['jacobian'](states, constants)['model'].shape)
     print("gc_model shape:", model.run['gc_model'](states, constants)[1].shape)
     print("gc_model jacobian shape:", model.run['gc_model_jacobian'](states, constants)[0]['model'].shape)
-
-    print("----------------------")
-    for i, state in enumerate(model.state_vector):
-        print(state, model.default_values[i])
-    print("----------------------")
-    for i, state in enumerate(model.constants):
-        print(state, model.default_values[i+model.n_states])
-        
-    print("----------------------")
-    print(len(model.coordinates['names']), model.coordinates['n'])
-    print(len(model.speeds['names']), model.speeds['n'])
-    print(len(model.accs['names']), model.accs['n'])
-    print(len(model.forces['names']), model.forces['n'])
-    print(len(model.ext_forces['names']), model.ext_forces['n'])
-    print(len(model.ext_torques['names']), model.ext_torques['n'])
-    print("----------------------")
-    print(len(model.g['names']), model.g['n'])
-    print(len(model.masses['names']), model.masses['n'])
-    print(len(model.inertia['names']), model.inertia['n'])
-    print(len(model.com['names']), model.com['n'])
-    print(len(model.offset['names']), model.offset['n'])
-    print("----------------------")
-
-    
 

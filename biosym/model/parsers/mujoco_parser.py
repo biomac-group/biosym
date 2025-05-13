@@ -76,8 +76,14 @@ class MujocoParser(BaseParser):
 
         # Mujoco often does not have an explicit ground contact model stated, so we set all joints to possibly be in contact
         # The contact model should come from a yaml file.
-        # Mujoco GC models are currently not supported
-        self.external_forces_bodies = None 
+        # Mujoco GC models are currently not supported - but the definition in the mujoco file is possible
+        self.external_forces_bodies = [] 
+        self.contact_elements = self.root.findall(".//contact")
+        if self.contact_elements != []:
+            assert len(self.contact_elements) == 1, "Only one contact element is allowed in the mujoco model file"
+            self.contact_elements = self.contact_elements[0]
+        else:
+            self.contact_elements = None
 
         # Get the default gravity vector - if <option gravity> is not set, it defaults to [0, -9.81, 0]
         gravity = self.root.find(".//option").get("gravity", "0 -9.81 0")
@@ -85,7 +91,12 @@ class MujocoParser(BaseParser):
 
         # We currently only allow externally specified actuators
         # to be in the mujoco model file, so we set the actuator list to None
-        self.actuators = None
+        self.actuator_elements = self.root.findall(".//actuator")
+        if self.actuator_elements != []:
+            assert len(self.actuator_elements) == 1, "Only one actuator element is allowed in the mujoco model file"
+            self.actuator_elements = self.actuator_elements[0]
+        else:
+            self.actuator_elements = None
 
         if verbose:
             # Print all parsed 'body_offset'
@@ -123,9 +134,6 @@ class MujocoParser(BaseParser):
             Returns the number of bodies, where external forces can be applied.
             In mujoco, ground contact isn't explicitly stated, so that should be in a config somewhere
         """
-        if self.external_forces_bodies is None:
-            import warnings
-            warnings.warn("No external forces bodies found -> No contact model found")
         return len(self.external_forces_bodies) * 3
     
     def get_external_forces_bodies(self):
@@ -164,3 +172,26 @@ class MujocoParser(BaseParser):
         """
         return self.data['joints']
     
+    def has_actuators(self):
+        """
+            Returns True if the model has actuators, False otherwise.
+        """
+        return self.actuator_elements is not None
+    
+    def get_actuators(self):
+        """
+            Returns the xml entries for the actuators in the model.
+        """
+        return self.actuator_elements
+    
+    def has_contact_model(self):
+        """
+            Returns True if the model has a contact model, False otherwise.
+        """
+        return self.contact_elements is not None
+    
+    def get_contact_model(self):
+        """
+            Returns the xml entries for the contact model in the model.
+        """
+        return self.contact_elements
