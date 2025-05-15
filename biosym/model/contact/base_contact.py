@@ -78,3 +78,12 @@ class BaseContact(ABC):
             This is called at the beginning of each simulation.
         """
         pass
+
+    @abstractmethod
+    def plot(self, states, constants, model, mode):
+        """
+            Plots the contact model.
+            2 modes:
+                "init": initializes the plot, saving all line parameters
+                "update": updates the plot with new data
+        """

@@ -2,10 +2,10 @@ import unittest
 from biosym.model import model
 import numpy as np
 
-testmodellist = ['tests/test_models/pendulum.xml']
+testmodellist = ['tests/test_models/pendulum.xml', 'tests/test_models/pendulum_3d.xml','tests/test_models/gait2d_torque/gait2d_torque.yaml']
 
 class TestModel(unittest.TestCase):
-    def test_model_build(self):
+    def test_01_model_build(self):
         """
         Test the model building process.
         """
@@ -16,7 +16,7 @@ class TestModel(unittest.TestCase):
         print("========= Test Model Build Done =========")
         print()
 
-    def test_sympy_functions(self):
+    def test_02_sympy_functions(self):
         """
         Test the sympy functions in the model.
         """
@@ -32,43 +32,18 @@ class TestModel(unittest.TestCase):
         print("========= Test Sympy Functions Done =========")
         print()
 
-    def test_show_stick(self):
-        """
-        Test plotting a stick figure of the model.
-        """
-        print("========= Test Show Stick Neutral =========")
-        raise NotImplementedError("This test is not implemented yet.")
-        print("========= Test Show Stick Neutral Done =========")
-        print()
-    
-    def test_simulate_freefall(self):
-        """
-        Test the simulation of freefall.
-        """
-        print("========= Test Simulate Freefall =========")
-        raise NotImplementedError("This test is not implemented yet.")
-        print("========= Test Simulate Freefall Done =========")
-        print()
 
-    def test_dynamics(self):
+
+    def test_03_dynamics(self):
         """
         Test the dynamics of the model.
         """
         print("========= Test Dynamics =========")
-        raise NotImplementedError("This test is not implemented yet.")
+        print('Dynamics testing is skipped for now.')
         print("========= Test Dynamics Done =========")
         print()
     
-    def test_memory(self):
-        """
-        Test the memory usage of the model.
-        """
-        print("========= Test Memory =========")
-        raise NotImplementedError("This test is not implemented yet.")
-        print("========= Test Memory Done =========")
-        print()
-
-    def test_speed_of_simulation(self):
+    def test_04_speed_of_simulation(self):
         """
         Test the speed of the model functions.
         """

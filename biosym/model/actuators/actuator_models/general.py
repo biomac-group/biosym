@@ -49,9 +49,9 @@ class GeneralMujoco(General):
     """
         General actuator model for Mujoco.
     """
-    def __init__(self, acutator_list):
+    def __init__(self, actuator_list):
         self.actuators = {}
-        for actuator in acutator_list:
+        for actuator in actuator_list:
             actuator_name = actuator.get("name", "actuator has no name")
             if actuator_name is None:
                 raise ValueError("Actuator name is not specified.")

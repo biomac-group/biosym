@@ -2,6 +2,8 @@ import os
 _cachedir = os.path.expanduser("~/.biosym/jax_cache")
 _model_cache = os.path.expanduser("~/.biosym/")
 os.environ["JAX_COMPILATION_CACHE_DIR"] = _cachedir # This needs to happen before importing jax
+#os.environ["jax_persistent_cache_min_compile_time_secs".upper()] = "10"
+
 os.makedirs((_cachedir), exist_ok=True)
 
 from biosym.model.parsers import *
@@ -42,8 +44,8 @@ class BiosymModel:
                 self.actuators = actuator_parser.get(parser.get_actuators())
                 parser.actuators = self.actuators.get_actuators()
             if parser.has_contact_model():
-                self.contact_model = contact_parser.get(parser.get_contact_model())
-                parser.external_forces_bodies = self.contact_model.get_bodies()
+                self.gc_model = contact_parser.get(parser.get_contact_model())
+                parser.external_forces_bodies = self.gc_model.get_bodies()
         elif definition_file.endswith(".osim"):
             raise NotImplementedError("OSIM models not supported yet.")                
         else:
@@ -77,12 +79,14 @@ class BiosymModel:
         if get_hash:
             return 
         self._create_sympy_model()
-        # Future work: (These should be disabled or enabled by a flag in the config file); so that we don't need to compile everything every time
+        self._set_default_values()
+
+        # Future work, tbd: (These should be disabled or enabled by a flag in the config file); so that we don't need to compile everything every time
         self._create_eom()
         self._create_jax_eom()
         self._create_FK(True)
         if hasattr(self, 'gc_model'):
-            self.gc_model.process_eom(self, body_weight=1) # If the GC model needs to add extra equations of motion, it will do so here
+            self.gc_model.process_eom(self, body_weight=sum(self.default_values[_slice(self.masses)])) # If the GC model needs to add extra equations of motion, it will do so here
             self._register_contact_model(self.gc_model)
         if hasattr(self, 'actuators'):
             self.actuators.process_eom(self)
@@ -136,7 +140,7 @@ class BiosymModel:
         n_forces = parser.get_n_internal_forces()
         int_forces_dict = parser.get_internal_forces()
         self.forces = {
-            'names': [int_forces_dict[name]['joint'] for name in int_forces_dict.keys()],
+            'names': [f"M_{int_forces_dict[name]['joint']}" for name in int_forces_dict.keys()],
             'idx': 3 * n_dof,
             'n': n_forces,
         }
@@ -222,6 +226,32 @@ class BiosymModel:
             'input_names': ['model'],
         }
 
+    def _set_default_values(self):
+        """
+            Create default values for the model.
+            These are used to initialize the model and can be changed later.
+        """
+        # The slicing for bodies is not super clean - the idx are 
+        self.default_values = np.zeros(self._nv)
+        self.default_values[_slice(self.g)] = np.array(self.gravity)
+        self.default_values[_slice(self.masses)] = np.array([body['mass'] for body in self.dicts['bodies']]).squeeze()
+
+        def concat_defaults(value):
+            """
+                Concatenate all default values for the bodies
+            """
+            all_values = []
+            for body in self.dicts['bodies']:
+                all_values.append(body[value])
+            # return a 
+            return np.array(all_values).flatten()
+
+        # Get all values that are stored as lists
+        for value_dict, value in zip([self.com, self.offset, self.inertia],['com', 'body_offset', 'inertia']):
+            self.default_values[_slice(value_dict)] = concat_defaults(value)
+
+        self.default_inputs['constants']['model'] = self.default_values[self.n_states:]
+
     def _create_sympy_model(self):
         """
             Create the equations of motion (EOM) for the model.
@@ -245,31 +275,11 @@ class BiosymModel:
         # kinematic differential equations: d coordinates - speeds = 0
         self.kd_eqs = [a-b for a,b in zip([self._dynamic[i].diff() for i in _slice(self.coordinates)], [self._dynamic[i] for i in _slice(self.speeds)])]
         
-        # Create all bodies 
-        # The slicing for bodies is not super clean - the idx are 
-        self.default_values = np.zeros(self._nv)
-        self.default_values[_slice(self.g)] = np.array(self.gravity)
-        self.default_values[_slice(self.masses)] = np.array([body['mass'] for body in self.dicts['bodies']]).squeeze()
 
-        def concat_defaults(value):
-            """
-                Concatenate all default values for the bodies
-            """
-            all_values = []
-            for body in self.dicts['bodies']:
-                all_values.append(body[value])
-            # return a 
-            return np.array(all_values).flatten()
-
-        # Get all values that are stored as lists
-        for value_dict, value in zip([self.com, self.offset, self.inertia],['com', 'body_offset', 'inertia']):
-            self.default_values[_slice(value_dict)] = concat_defaults(value)
-
-        self.default_inputs['constants']['model'] = self.default_values[self.n_states:]
         # Get the model topology (A tree-like to help navigating the model)
         # This might change the indexing order of the bodies --> needs to be tested
         # Use body_idx as a substitute for now to be safe
-        topology_tree = self._create_topology_tree()
+        self.topology_tree = self._create_topology_tree()
         def build_reference_frames(topology, parent_frame=None, parent_origin=None):
             for idx, node in enumerate(topology):
                 body_name = node["name"]
@@ -293,6 +303,7 @@ class BiosymModel:
                         joint_speed += _to_sympy_vector(joint['axis'], parent_frame) * self._dynamic[self.speeds['idx']+self.speeds['names'].index(f"qd_{joint['name']}")]
                     elif joint['type'] == "hinge":
                         n_hinges += 1
+                
                 body_origin.set_pos(parent_origin, joint_offset)
                 body_origin.set_vel(parent_frame, joint_speed)
                 self.body_origins[body_name] = body_origin
@@ -303,13 +314,13 @@ class BiosymModel:
                 idx_h = 0 # hidden iterator to only iterate over hinges
                 idx = 0 # iterator for all jointss
                 while idx < n_hinges: 
-                    joint == body['joints'][idx_h]
+                    joint = body['joints'][idx_h]
                     if joint['type'] == "hinge":
                         # Check if we need to add a new frame
                         symbol = self._dynamic[self.coordinates['idx']+self.coordinates['names'].index(f"q_{joint['name']}")]
                         symbol_dot = self._dynamic[self.speeds['idx']+self.speeds['names'].index(f"qd_{joint['name']}")]
-                        joint_angle = _to_sympy_vector(joint['axis'], parent_frame)
-                        joint_angvel = _to_sympy_vector(joint['axis'], parent_frame)
+                        joint_angle = _to_sympy_vector(joint['axis'], intermediate_frames[-1])
+                        joint_angvel = _to_sympy_vector(joint['axis'], intermediate_frames[-1])
                         if idx == n_hinges - 1:
                             # I think that we need add the joints iteratively to the frame, order matters
                             body_frame.orient(intermediate_frames[-1], 'Axis', (symbol, joint_angle))
@@ -324,7 +335,7 @@ class BiosymModel:
                 
                 self.reference_frames[body_name] = body_frame
                 build_reference_frames(children,body_frame, body_origin)
-        build_reference_frames(topology_tree)
+        build_reference_frames(self.topology_tree)
 
         def build_bodies(topology):
             for idx, node in enumerate(topology):
@@ -350,7 +361,7 @@ class BiosymModel:
                 self.rigid_bodies[body_name] = body
 
                 build_bodies(children)
-        build_bodies(topology_tree)
+        build_bodies(self.topology_tree)
         
         # Add gravitational forces
         for bodyname, rigid_body in self.rigid_bodies.items():
@@ -361,6 +372,7 @@ class BiosymModel:
 
         # Add internal forces
         for i, joint_name in enumerate(self.forces['names']):
+            joint_name = '_'.join(joint_name.split("_")[1:])
             assert joint_name in [j['name'] for j in self.dicts['joints']], f"Joint {joint_name} not found in the model definition file, but has an actuator defined."
             joint_idx = [j['name'] for j in self.dicts['joints']].index(joint_name)
             axis = self.dicts['joints'][joint_idx]['axis']
@@ -374,21 +386,26 @@ class BiosymModel:
 
         # Add external forces - double check if this is correct
         # We are using body.origin to apply the force, but it could also be applied to the mass center or an arbitrary point - that is tbd
-        for force in self.ext_forces['names']:
+        for idx, force in enumerate(self.ext_forces['names']):
+            # Only parse every 3rd entry, because they are x,y,z
+            if idx % 3 != 0:
+                continue
             body_name = "_".join(force.split("_")[1:-1])
             assert body_name in [body['name'] for body in self.dicts['bodies']], f"Body {body_name} not found in the model, but has an external force defined."
-            body_idx = [body['name'] for body in self.dicts['bodies']].index(body_name)
-            force_idx = self.ext_forces['idx'] + 3 * body_idx
+            force_idx = self.ext_forces['idx'] + idx
             force_vector = _to_sympy_vector([self._v[i] for i in range(force_idx,force_idx+3)], self.ground_frame)
+            #print(f"Force vector: {force_vector} at {self.body_origins[body_name]}")
             force_body = (self.body_origins[body_name], force_vector)
             self.loads.append(force_body)
 
         # Add external torques - also double check if this is correct
-        for torque in self.ext_torques['names']:
+        for idx, torque in enumerate(self.ext_torques['names']):
+            if idx % 3 != 0:
+                continue
             body_name = "_".join(torque.split("_")[1:-1])
-            body_idx = [body['name'] for body in self.dicts['bodies']].index(body_name)
-            torque_idx = self.ext_torques['idx'] + 3 * body_idx
+            torque_idx = self.ext_torques['idx'] + idx
             torque_vector = _to_sympy_vector([self._v[i] for i in range(torque_idx,torque_idx+3)], self.ground_frame)
+            #print(f"Torque vector: {torque_vector} at {self.body_origins[body_name]}")
             torque_body = (self.reference_frames[body_name], torque_vector)
             self.loads.append(torque_body)
 
@@ -456,10 +473,12 @@ class BiosymModel:
         print(f'Precompiling the confun took {time.time()-a} seconds')
         a = time.time()
         self.mass_matrix = lambdify(self._v, self._replace_dyn(self.kane.mass_matrix), modules='jax', cse=True, docstring_limit=2)
+        self.run['mass_matrix_uncompiled'] = self.mass_matrix
         self._precompile_fn(self.mass_matrix, self.default_inputs, 'mass_matrix')
         print(f'Precompiling the mass matrix took {time.time()-a} seconds')
         a = time.time()
         self.forcing = lambdify(self._v, self._replace_dyn(self.kane.forcing), modules='jax', cse=True, docstring_limit=2)
+        self.run['forcing_uncompiled'] = self.forcing
         self._precompile_fn(self.forcing, self.default_inputs, 'forcing')
         print(f'Precompiling the forcing took {time.time()-a} seconds')
         a = time.time()
@@ -491,7 +510,7 @@ class BiosymModel:
             vel_vector = lambdify(self._v, vel_vector, modules='jax', cse=True, docstring_limit=2)
             vel_vector = self._precompile_fn(vel_vector, self.default_inputs, 'FK_dot')
 
-    def _precompile_fn(self, function, inputs, name, jacobian=False):
+    def _precompile_fn(self, function, inputs, name, jacobian=False, skip_export=False):
         """
             Precompile a function using JAX's jit for faster execution.
             This is useful for functions that will be called multiple times with the same input shape.
@@ -514,6 +533,9 @@ class BiosymModel:
         states0, constants0, input_names0 = inputs['states'], inputs['constants'], inputs['input_names']
         jit_function = lambda states_, constants_: _jit_function_template(function, states_, constants_, input_names0)
 
+        if skip_export:
+            self.run[name] = jit_function
+            return
         states_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in states0.items()}
         constants_input_dummy = {k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in constants0.items()}
         # Export+Import of the same function reconfigures the "lambda" function somehow -> faster re-compilation from cache

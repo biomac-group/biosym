@@ -13,6 +13,7 @@ class MujocoParser(BaseParser):
         self.data = {
             'bodies': [],
             'joints': [],
+            'sites': [], # Sites are plotting elements in mujoco
         }
         self._parse(verbose)
 
@@ -195,3 +196,4 @@ class MujocoParser(BaseParser):
             Returns the xml entries for the contact model in the model.
         """
         return self.contact_elements
+    
