@@ -54,6 +54,18 @@ class MujocoParser(BaseParser):
                     'range': joint_range_values,
                     'parent': body_name,
                 })
+            
+            for site in body_element.findall("site"):
+                site_name = site.get("name")
+                if not site_name:
+                    continue
+                # print(f"Site found in {body_name}: {site_name}")
+                site_pos = [float(x) for x in site.get("pos", "0 0 0").split()]
+                self.data['sites'].append({
+                    'name': site_name,
+                    'pos': site_pos,
+                    'parent': body_name,
+                })
 
             self.data['joints'] += body_joints  # Add joints to the main list
             # Store the parsed body and its joints
@@ -129,6 +141,18 @@ class MujocoParser(BaseParser):
             Returns the list of joints in the model.
         """
         return self.data['joints']
+    
+    def get_n_sites(self):
+        """
+            Returns the number of sites in the model.
+        """
+        return len(self.data['sites'])
+    
+    def get_sites(self):
+        """
+            Returns the list of sites in the model.
+        """
+        return self.data['sites']
     
     def get_n_external_forces(self):
         """

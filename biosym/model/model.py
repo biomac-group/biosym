@@ -117,6 +117,7 @@ class BiosymModel:
         self.dicts = {
             "bodies": parser.get_bodies(),
             "joints": parser.get_joints(),
+            "sites": parser.get_sites(),
         }
 
         # Create overviews of all states
@@ -495,11 +496,29 @@ class BiosymModel:
         pos_vector = []
         for _, point in self.body_origins.items():
             pos_vector.append([point.pos_from(self.origin).dot(frame_dim) for frame_dim in [self.ground_frame.x, self.ground_frame.y, self.ground_frame.z]])
-        pos_vector = Matrix(pos_vector)
-        pos_vector = self._replace_dyn(pos_vector)
-        pos_vector = lambdify(self._v, pos_vector, modules='jax', cse=True, docstring_limit=2)
-        self.run['FK_uncompiled'] = pos_vector
-        pos_vector = self._precompile_fn(pos_vector, self.default_inputs, 'FK')
+        pos_vector_ = Matrix(pos_vector)
+        pos_vector_ = self._replace_dyn(pos_vector_)
+        pos_vector_ = lambdify(self._v, pos_vector_, modules='jax', cse=True, docstring_limit=2)
+        self.run['FK_uncompiled'] = pos_vector_
+        pos_vector_ = self._precompile_fn(pos_vector_, self.default_inputs, 'FK')
+
+        if self.dicts['sites'] is not None:
+            # Visualization version of pos_vector
+            for site_ in self.dicts['sites']:
+                # Create a sympy point for the site
+                site = Point(site_['name'])
+                parent = site_['parent']
+                parent_frame = self.reference_frames[parent]
+                site.set_pos(self.body_origins[parent], _to_sympy_vector(site_['pos'], parent_frame))
+                pos_vector.append([site.pos_from(self.origin).dot(frame_dim) for frame_dim in [self.ground_frame.x, self.ground_frame.y, self.ground_frame.z]])
+            pos_vector = Matrix(pos_vector)
+            pos_vector = self._replace_dyn(pos_vector)
+            pos_vector = lambdify(self._v, pos_vector, modules='jax', cse=True, docstring_limit=2)
+            self.run['FK_vis_uncompiled'] = pos_vector
+            pos_vector = self._precompile_fn(pos_vector, self.default_inputs, 'FK_vis', skip_export=True)
+        else:
+            self.run['FK_vis_uncompiled'] = self.run['FK_uncompiled']
+            self.run['FK_vis'] = self.run['FK']
 
         if get_FK_dot:
             vel_vector = []

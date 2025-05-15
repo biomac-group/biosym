@@ -48,20 +48,20 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
 
     # First node joint positions
     if isinstance(states, list):
-        joint_positions = model.run['FK'](states[0]['states'], states[0]['constants'])
+        joint_positions = model.run['FK_vis'](states[0]['states'], states[0]['constants'])
     else:
         if len(states['states']['model'].shape) == 1:
-            joint_positions = model.run['FK'](states['states'], states['constants'])
+            joint_positions = model.run['FK_vis'](states['states'], states['constants'])
         else:
-            joint_positions = model.run['FK'](states['states'][0], states['constants'][0])
+            joint_positions = model.run['FK_vis'](states['states'][0], states['constants'][0])
     # Following frames joint positions
     anim_joint_positions = []
     if n_frames > 1:
         for i in range(n_frames):
             if isinstance(states, list):
-                joint_positions = model.run['FK'](states[i]['states'], states[i]['constants'])
+                joint_positions = model.run['FK_vis'](states[i]['states'], states[i]['constants'])
             else:
-                joint_positions = model.run['FK'](states['states'][i], states['constants'][i])
+                joint_positions = model.run['FK_vis'](states['states'][i], states['constants'][i])
             anim_joint_positions.append(joint_positions)
         anim_joint_positions = np.array(anim_joint_positions)    
 
@@ -119,7 +119,11 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
                 child_idx = [body['name'] for body in model.dicts['bodies']].index(child_name)
                 connections.append((body_idx, child_idx))
             _get_child_connections(children, model)
-
+        for idx, site in enumerate(model.dicts['sites']):
+            parent_name = site['parent']
+            site_idx = len(model.dicts['bodies']) + idx
+            parent_idx = [body['name'] for body in model.dicts['bodies']].index(parent_name)
+            connections.append((parent_idx, site_idx))
     _get_child_connections(model.topology_tree, model)
     connections = np.array(connections)
 

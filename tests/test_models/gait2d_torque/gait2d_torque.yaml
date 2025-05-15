@@ -12,7 +12,6 @@ model:
       file: "gait2d_actuators.xml" # Load from definition file
 
 
-
 # Conf setup (using omegaconf probably):
 # When loading a conf file, also load defaults, then merge
 # Conf starts with "model", therefore load defaults/model.yaml.
