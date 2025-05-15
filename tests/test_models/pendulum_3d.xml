@@ -27,11 +27,7 @@
         <site name="tip" pos="0 1 0" size="0.01 0.01"/>
         <!-- To plot the end of the body, we can set it in an .xml file OR create a massless body with an extra joint (This will make computation slower) -->
         <!-- Here, we see an issue: the body cannot be exactly "massless", because that will cause NaNs in the forward simulation, so i've set it to 1e-12 -->
-        <!-- That still makes our mass matrix instable, so using "site" as an extra IK point is the only correct thing -->
-        <body name="tip2" pos="0 1 0">
-          <inertial pos="0 0 0" mass="1" fullinertia="1 1 1 0 0 0"></inertial>
-          <joint axis="0 0 1" name="hinge3" pos="0 0 0" type="hinge"></joint>
-        </body>
+        <!-- That still makes our mass matrix instable, so using "site" as an extra IK point is the only correct thing -->x
       </body>
     </body>
   </worldbody>
