@@ -1,9 +1,11 @@
 from biosym.model.actuators.base_actuator import BaseActuator
 
+
 class General(BaseActuator):
     """
-        General actuator model.
+    General actuator model.
     """
+
     def __init__(self, xml_root):
         super().__init__(xml_root)
         actuators = {}
@@ -21,34 +23,33 @@ class General(BaseActuator):
 
     def get_n_actuators(self):
         """
-            Returns the number of actuators in the model.
+        Returns the number of actuators in the model.
         """
         return self.n_actuators
-    
+
     def get_actuators(self):
         """
-            Returns the list of actuators in the model.
+        Returns the list of actuators in the model.
         """
         return self.actuators
-    
+
     def is_torque_actuator(self):
         """
-            Returns True if the actuator is a torque actuator.
+        Returns True if the actuator is a torque actuator.
         """
         return True
 
     def reset(self):
         """
-            Resets the actuator behaviour.
+        Resets the actuator behaviour.
         """
-        pass
 
 
-    
 class GeneralMujoco(General):
     """
-        General actuator model for Mujoco.
+    General actuator model for Mujoco.
     """
+
     def __init__(self, actuator_list):
         self.actuators = {}
         for actuator in actuator_list:

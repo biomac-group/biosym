@@ -1,1 +1,1 @@
-__all__ = ['base_contact', 'contact_parser']
+__all__ = ["base_contact", "contact_parser"]
