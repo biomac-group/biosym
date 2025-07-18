@@ -13,6 +13,7 @@ import hashlib
 
 import cloudpickle
 import jax
+import jax.export
 import numpy as np
 import pandas as pd
 import yaml
@@ -1039,7 +1040,7 @@ if __name__ == "__main__":
     import time
 
     start = time.time()
-    model_file = "tests/test_models/pendulum.xml"
+    model_file = "tests/models/pendulum.xml"
     # model_file = "tests/test_models/gait2d_torque/gait2d_torque.yaml"
     model = load_model(model_file, True)
     print(f"Reloading model in {time.time()-start} seconds")

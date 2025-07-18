@@ -1,0 +1,31 @@
+collocation:
+  name: script2d_torque_driven
+  description: Setup file for 2D gait model with torque-driven actuators
+  settings:
+    model: tests/models/gait2d_torque/gait2d_torque.yaml
+    nnodes: 1
+    discretization:
+      type: euler
+      mode: backward
+    output:
+      file: "~/.biosym/standing2d.pkl"
+
+  objectives:
+    - name: minimize_torques
+      weight: 1
+      args:
+        exponent: 3
+
+  constraints:
+    - name: dynamics
+      weight: 1
+    - name: ground_contact
+      weight: 1
+
+  initial_guess:
+    type: random
+    seed: 42
+  bounds:
+    from_model: true
+    start_at_origin: true
+    

@@ -22,16 +22,17 @@ This is my personal opinion, everything can be discussed or changed. Please use 
       |- collocation.yaml
     |- models
     |- .yaml files
-  |- collocation
+  |- ocp
     |- collocation.py
-    |- solve_ipopt.py # old "solver" folder
+    |- confun.py
+    |- objfun.py # Base class for objectives
     |- utils # I guess we need that folder at some point
-    |- objectives
-      |- base_objective.py # Base class
-      |- ... # jax translations
-    |- constraints
-      |- base_constraint.py # Base class
-      |- ... # jax translations
+  |- objectives
+    |- base_objective.py # Base class
+    |- ... # jax translations
+  |- constraints
+    |- base_constraint.py # Base class
+    |- ... # jax translations
   |- forward sim / DL / other stuff
   |- utils # whatever is needed
   |- tests 
@@ -92,8 +93,3 @@ result = problem.solve()
 ```
 
 [Check out the BT "OCP Radar Tracking" implementation for a current use of config files](https://mad-srv.informatik.uni-erlangen.de/MadLab/Biomech-Simu/radar-tracking/-/blob/main/data/benchmarks/T02/T02_periodic.yaml?ref_type=heads)
-
-
-
-
-
