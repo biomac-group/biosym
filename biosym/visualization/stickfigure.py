@@ -8,9 +8,7 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
     Plot a stick figure of the model.
 
     Depending on the use-case, states may be:
-        - A single state dictionary ({'states':{'model':, 'gc_model':, 'actuator_model':}, 'constants':{'model':, 'gc_model':, 'actuator_model':}})
-        - A list of state dictionaries as above
-        - A dictionary where each entry is a 2D array of shape (t, n_states/n_constants)
+        - A StatesDict instance, which is used for collocation and physics-informed learning.
     Different types of states are used for different purposes:
         - For forward simulation, the states are usually a list of state dictionaries
         - For collocation & physics-informed learning, the states are usually a dictionary where each entry is a 2D array of shape (t, n_states/n_constants)
@@ -23,39 +21,8 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
         frame: The frame to be plotted. If None, all frames will be plotted in a video (if there is more than one frame).
     """
     # Check inputs and frame selection
-    if isinstance(states, dict):
-        # Check if the states dictionary contains all the necessary keys
-        if (
-            "model" not in states["states"]
-            or "gc_model" not in states["states"]
-            or "actuator_model" not in states["states"]
-        ):
-            raise ValueError(
-                "Invalid states dictionary. Must contain 'model', 'gc_model', and 'actuator_model' keys."
-            )
-        if (
-            "model" not in states["constants"]
-            or "gc_model" not in states["constants"]
-            or "actuator_model" not in states["constants"]
-        ):
-            raise ValueError(
-                "Invalid constants dictionary. Must contain 'model', 'gc_model', and 'actuator_model' keys."
-            )
-        if frame is not None:
-            states["states"] = {k: v[frame] for k, v in states["states"].items()}
-            states["constants"] = {k: v[frame] for k, v in states["constants"].items()}
-        if len(states["states"]["model"].shape) == 1:
-            n_frames = 1
-        else:
-            n_frames = states["states"]["model"].shape[0]
-    elif isinstance(states, list):
-        if frame is not None:
-            states = [states[frame]]
-        n_frames = len(states)
-    else:
-        raise ValueError(
-            "Invalid states format. Must be a dictionary or a list of dictionaries."
-        )
+    states, globals = states
+    n_frames = len(states)
 
     # Check if the model has a contact model
     hascontact = hasattr(model, "gc_model") and model.gc_model is not None
@@ -63,13 +30,13 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
     # First node joint positions
     if isinstance(states, list):
         joint_positions = model.run["FK_vis"](
-            states[0]["states"], states[0]["constants"]
+            states[0].states, states[0].constants
         )
-    elif len(states["states"]["model"].shape) == 1:
-        joint_positions = model.run["FK_vis"](states["states"], states["constants"])
+    elif len(states.states.model.shape) == 1:
+        joint_positions = model.run["FK_vis"](states[0].states, states[0].constants)
     else:
         joint_positions = model.run["FK_vis"](
-            states["states"][0], states["constants"][0]
+            states[0].states, states[0].constants
         )
     # Following frames joint positions
     anim_joint_positions = []
@@ -77,11 +44,11 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
         for i in range(n_frames):
             if isinstance(states, list):
                 joint_positions = model.run["FK_vis"](
-                    states[i]["states"], states[i]["constants"]
+                    states[i].states, states[i].constants
                 )
             else:
                 joint_positions = model.run["FK_vis"](
-                    states["states"][i], states["constants"][i]
+                    states[i].states, states[i].constants
                 )
             anim_joint_positions.append(joint_positions)
         anim_joint_positions = np.array(anim_joint_positions)
@@ -125,6 +92,21 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
             ax.set_xlim(min_[0], max_[0])
             ax.set_ylim(min_[1], max_[1])
             ax.set_zlim(min_[2], max_[2])
+
+    else: # Single frame, set limits to the joint positions
+        min_ = np.min(joint_positions)
+        max_ = np.max(joint_positions)
+        d = np.abs((max_ - min_) * 0.05)  # 5% padding
+        min_ -= d 
+        max_ += d
+        # Set limits of the plot
+        if case_ == "2D":
+            ax.set_xlim(min_, max_)
+            ax.set_ylim(min_, max_)
+        else:
+            ax.set_xlim(min_, max_)
+            ax.set_ylim(min_, max_)
+            ax.set_zlim(min_, max_)
 
     # @todo: Make this function jittable, if it is slow for larger models
     connections = []

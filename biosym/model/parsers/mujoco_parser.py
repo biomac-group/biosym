@@ -65,7 +65,8 @@ class MujocoParser(BaseParser):
                         "type": joint_type,
                         "axis": joint_axis_values,
                         "range": joint_range_values,
-                        "parent": body_name,
+                        "parent": parent_name,
+                        "child": body_name,
                     }
                 )
 

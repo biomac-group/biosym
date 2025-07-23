@@ -48,8 +48,7 @@ class Constraint(BaseConstraint):
         :param states_list: Dictionary containing the current states.
         :return: The dynamics constraint function.
         """
-        return jax.jit(lambda states_list, globals_dict: confun(self.model.run['confun'], states_list, globals_dict, self.settings, self._get_info()))
-
+        return jax.jit(partial(confun, self.model.run['confun'], settings=self.settings, info=self._get_info()))
 
     def get_jacobian(self):
         """
@@ -58,8 +57,7 @@ class Constraint(BaseConstraint):
         :param states_list: Dictionary containing the current states.
         :return: The Jacobian of the dynamics constraint function.
         """
-        return lambda states_list, globals_dict: jacobian(self.model.run['jacobian'], states_list, globals_dict, self.settings, self._get_info())
-
+        return jax.jit(partial(jacobian, self.model.run['jacobian'], settings=self.settings, info=self._get_info()))
     def get_n_constraints(self):
         """
         Get the number of constraints defined by this dynamics constraint.
@@ -96,7 +94,7 @@ def confun(modelfn, states_list, globals_dict, settings, info):
     ncons_sympy = info['ncons']
     def body_fun(n, carry):
         data_out = carry
-        state_ = utils.get_state_row(states_list, n)
+        state_ = states_list[n]
         val = modelfn(state_.states, state_.constants).squeeze()
         start = n * ncons_sympy
         data_out = jax.lax.dynamic_update_slice(data_out, val, (start,))
@@ -104,8 +102,6 @@ def confun(modelfn, states_list, globals_dict, settings, info):
     data_out = jax.lax.fori_loop(0, nnodes, body_fun, data_out)
     return data_out
 
-
-@partial(jax.jit,static_argnums=(2,))
 def jacobian(modelfn, states_list, globals_dict, settings, info):
     """
     Placeholder for the Jacobian of the constraint function.
@@ -128,22 +124,24 @@ def jacobian(modelfn, states_list, globals_dict, settings, info):
     block_size = ncons_sympy * nvpn
     def body_fun(n, carry):
         rows_out, cols_out, data_out = carry
-        state_ = utils.get_single_state(states_list, n)
-        jac = modelfn(state_['states'], state_['constants'])['model'].squeeze()
+        state_ = states_list[n]
+        jac = modelfn(state_.states, state_.constants)  
+
         row_block = n * ncons_sympy + jnp.arange(ncons_sympy)
         col_block = nvpn * n + jnp.arange(nvpn)
 
         rows_block = jnp.repeat(row_block, nvpn)   # Shape: (ncons_sympy * nvpn,)
         cols_block = jnp.tile(col_block, ncons_sympy)  # Shape: (ncons_sympy * nvpn,)
-        data_block = jac.flatten()  # Flatten the block
+        data_block = jac.model.flatten()  # Flatten the block
 
         start = n * block_size # Calculate where to insert this block
 
         rows_out = jax.lax.dynamic_update_slice(rows_out, rows_block, (start,))
         cols_out = jax.lax.dynamic_update_slice(cols_out, cols_block, (start,))
         data_out = jax.lax.dynamic_update_slice(data_out, data_block, (start,))
+
         return (rows_out, cols_out, data_out)
-    
+
     rows_out, cols_out, data_out = jax.lax.fori_loop(0, nnodes, body_fun, (rows_out, cols_out, data_out))
     return rows_out, cols_out, data_out
 

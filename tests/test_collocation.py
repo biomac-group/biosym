@@ -1,4 +1,12 @@
 import biosym.ocp.collocation as collocation
+from biosym.ocp.utils import states_dict_to_x, x_to_states_dict
+from biosym.utils.states import StatesDict
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+# Import sparse for sparse matrix operations
+import numpy as np
+import jax
+
 
 class TestObjectiveFunction: 
     """
@@ -28,27 +36,109 @@ class TestObjectiveFunction:
         """ :return: The gradient of the objective function. """
         return lambda x,y: 0
 
+def derivativetest(problem, x, eps = 1e-3):
+    """
+    Test the derivative of the objective function.
+    :param problem: The collocation problem instance.
+    :param x: The input state vector.
+    :return: The derivative of the objective function.
+    """
+    x = np.array(x, dtype=np.float64)
+    jac_jax_0 = problem.problem.jacobian(x)
+    grad_jax = problem.problem.gradient(x)
+    jacstruct = problem.problem.jacobianstructure()
+    jac_jax = np.zeros((len(x), problem.constraints.ncon))
+    jac_jax[jacstruct[1], jacstruct[0]] = jac_jax_0
 
-standing_problem = collocation.Collocation("tests/collocation/standing2d.yaml")
+    obj_0 = problem.problem.objective(x)
+    con_0 = problem.problem.constraints(x)
 
+    jac_num = np.zeros_like(jac_jax)
+    grad_num = np.zeros_like(grad_jax)
+    x0 = x.copy()
+    for i in range(len(x)):
+        x = x0.copy()
+        x[i] += eps  # Perturb the i-th element
+        obj_1 = problem.problem.objective(x)
+        con_1 = problem.problem.constraints(x)
+
+        x = x0.copy()
+        x[i] -= eps  # Perturb the i-th element in the opposite direction
+        obj_2 = problem.problem.objective(x)
+        con_2 = problem.problem.constraints(x)
+        grad_num[i] = (obj_1 - obj_2) / (2 * eps)
+        jac_num[i] = (con_1 - con_2) / (2 * eps)
+        
+    print("Jacobian JAX vs Numerical:", jnp.allclose(jac_jax, jac_num, atol=1e-6))
+    print("Gradient JAX vs Numerical:", jnp.allclose(grad_jax, grad_num, atol=1e-6))
+
+    if not jnp.allclose(jac_jax, jac_num, atol=1e-6):
+        # Print the max deviation and index of the first mismatch
+        max_deviation = jnp.max(jnp.abs(jac_jax - jac_num))
+        first_mismatch_index = np.unravel_index(np.argmax(np.abs(jac_jax - jac_num), axis=None), jac_jax.shape)
+        print(f"Max deviation in Jacobian: {jac_jax[first_mismatch_index], jac_num[first_mismatch_index]} at index {first_mismatch_index}")
+    if not jnp.allclose(grad_jax, grad_num, atol=1e-6):
+        # Print the max deviation and index of the first mismatch
+        max_deviation = jnp.max(jnp.abs(grad_jax - grad_num))
+        first_mismatch_index = np.unravel_index(np.argmax(np.abs(grad_jax - grad_num), axis=None), grad_jax.shape)
+        print(f"Max deviation in Gradient: {grad_jax[first_mismatch_index], grad_num[first_mismatch_index]} at index {first_mismatch_index}")
+
+    fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    ax[0].spy(jac_jax.T, label='Jacobian JAX')
+    ax[1].spy(jac_num.T, label='Jacobian Numerical')
+    ax[0].set_title('Jacobian JAX')
+    ax[1].set_title('Jacobian Numerical')
+    ax[0].legend()
+    ax[1].legend()
+    # Set model.states as the xticks for both axes
+    ax[0].set_xticks(np.arange(len(problem.model.state_vector)))
+    ax[0].set_xticklabels(problem.model.state_vector, rotation=90)
+    ax[1].set_xticks(np.arange(len(problem.model.state_vector)))
+    ax[1].set_xticklabels(problem.model.state_vector, rotation=90)
+    plt.show()
+    plt.scatter(np.arange(len(jac_jax.flatten())), jac_jax.flatten())
+    plt.scatter(np.arange(len(jac_num.flatten())), jac_num.flatten(), alpha=0.5)    
+    plt.show()
+
+
+standing_problem = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
+
+print(standing_problem.initial_guess_states[0])
+jac = standing_problem.model.run['jacobian'](standing_problem.initial_guess_states.add(100)[0].states, standing_problem.initial_guess_states[0].constants)
+init_guess = StatesDict(
+    states=standing_problem.initial_guess_states.states,
+    constants=standing_problem.initial_guess_states.constants
+)
+#derivativetest(standing_problem, states_dict_to_x(init_guess))
+print(standing_problem.model.gc_model)
 # Testing the constraints and objective function
 import time 
 import timeit
+i = 0
 
-for function, name in zip([standing_problem.constraints.evaluate_constraints, 
-                standing_problem.constraints.evaluate_jacobian, 
-                standing_problem.objective.evaluate_objectives, 
-                standing_problem.objective.evaluate_gradients],
+(x, globals), info = standing_problem.solve(visualize=True)
+print(x)
+for i, state in enumerate(standing_problem.model.state_vector):
+    print(standing_problem.model.state_vector[i], x.states.model[0,i])
+
+for function, name in zip([standing_problem.constraints.confun, 
+                standing_problem.constraints.jacobian, 
+                standing_problem.objective.objfun, 
+                standing_problem.objective.gradfun],
                 ['constraints', 'jacobian', 'objectives', 'gradients']):
-    print(f"Testing {name} function...")
 
+    continue
+    print(f"Testing {name} function...")
+    
+    
     start_time = time.time()
     function(standing_problem.initial_guess_states, None)
     print(f"{function.__name__} evaluated in {time.time() - start_time} seconds")
 
     # Test 1k compiled evaluations
-    a = timeit.timeit(lambda: function(standing_problem.initial_guess_states, None), number=1000)
-    print(f"1k evaluations of {name} took {a/1000} seconds")
+    n_evals = 10000
+    a = timeit.timeit(lambda: function(standing_problem.initial_guess_states, None), number=n_evals)
+    print(f"{n_evals} evaluations of {name} took {a/n_evals} seconds on average")
 
 
 # Show this at the end

@@ -1,5 +1,9 @@
 from biosym.objectives import *
 from biosym.ocp import utils
+from biosym.utils import states
+import jax.numpy as jnp
+import jax
+from functools import partial
 
 class ObjectiveFunction:
     """
@@ -20,6 +24,11 @@ class ObjectiveFunction:
         self.weights = settings.get('weights', [])
         for objective in settings.get('objectives', []):
             self.add_objective(objective.get('name'), objective.get('weight'), objective.get('args', None))
+
+        self.objfun = jax.jit(partial(evaluate_objectives, self.objective_functions, self.weights))
+        self.objfun.__name__ = 'evaluate_objectives'
+        self.gradfun = jax.jit(partial(evaluate_gradients, self.objective_gradients, self.weights))
+        self.gradfun.__name__ = 'evaluate_gradients'
 
     def add_objective(self, name, weight, kwargs=None):
         """
@@ -54,33 +63,32 @@ class ObjectiveFunction:
                     self.required_variables[var_type] = []
                 self.required_variables[var_type].extend(vars)
 
-    def evaluate_objectives(self, states_list, globals_dict=None):
-        """
-        Evaluate the objective functions.
-        
-        :param states_list: Dictionary containing the current states.
-        :param globals_dict: Dictionary containing global variables (optional).
-        :return: The evaluated values of the objective functions.
-        """
-        results = 0
-        for i, obj_fun in enumerate(self.objective_functions):
-            result = obj_fun(states_list, globals_dict)
-            results += result * self.weights[i]  # Apply the corresponding weight
-        return results
+def evaluate_objectives(objective_functions, weights, states_list, globals_dict=None):
+    """
+    Evaluate the objective functions.
     
-    def evaluate_gradients(self, states_list, globals_dict=None):
-        """
-        Evaluate the gradients of the objective functions.
-        
-        :param states_list: Dictionary containing the current states.
-        :param globals_dict: Dictionary containing global variables (optional).
-        :return: The evaluated gradients of the objective functions.
-        """
-        gradients = []
-        for i, grad_fun in enumerate(self.objective_gradients):
-            gradient = grad_fun(states_list, globals_dict)
-            gradients.append(gradient)
-        # Add all gradients together
-        utils.sum_states_dicts(gradients, self.weights)
-        return gradients
+    :param states_list: Dictionary containing the current states.
+    :param globals_dict: Dictionary containing global variables (optional).
+    :return: The evaluated values of the objective functions.
+    """
+    results = 0
+    for i, obj_fun in enumerate(objective_functions):
+        result = obj_fun(states_list, globals_dict)
+        results += result * weights[i]  # Apply the corresponding weight
+    return results
 
+def evaluate_gradients(objective_gradients, weights, states_list, globals_dict=None):
+    """
+    Evaluate the gradients of the objective functions.
+    
+    :param states_list: Dictionary containing the current states.
+    :param globals_dict: Dictionary containing global variables (optional).
+    :return: The evaluated gradients of the objective functions.
+    """
+    gradients = []
+    for i, grad_fun in enumerate(objective_gradients):
+        gradient = grad_fun(states_list, globals_dict)
+        gradients.append(gradient)
+    # Add all gradients together
+    gradients = states.reduce_dataclasses(gradients, jnp.sum, weights)
+    return gradients

@@ -100,12 +100,12 @@ def confun(model, states_list, globals_dict, settings, info):
     ncons = info['ncons']
     def body_fun(n, carry):
         data_out = carry
-        state_ = utils.get_single_state(states_list, n)
-        forces_gc, moments_gc = model.run['gc_model'](state_['states'], state_['constants'])  # Get ground contact forces and moments
+        state_ = states_list[n]
+        forces_gc, moments_gc = model.run['gc_model'](state_.states, state_.constants)  # Get ground contact forces and moments
         # Find forces and moments in the model
-        forces_model = state_['states']['model'][model.ext_forces['idx']:model.ext_forces['idx'] + model.ext_forces['n']]
-        moments_model = state_['states']['model'][model.ext_torques['idx']:model.ext_torques['idx'] + model.ext_torques['n']]
-        
+        forces_model = state_.states.model[model.ext_forces['idx']:model.ext_forces['idx'] + model.ext_forces['n']]
+        moments_model = state_.states.model[model.ext_torques['idx']:model.ext_torques['idx'] + model.ext_torques['n']]
+
         val = jnp.concatenate((forces_gc.flatten() - forces_model, moments_gc.flatten() - moments_model), axis=0)
         start = n * ncons
         data_out = jax.lax.dynamic_update_slice(data_out, val, (start,))
@@ -136,11 +136,12 @@ def jacobian(model, states_list, globals_dict, settings, info):
     block_size = ncons * nvpn
     def body_fun(n, carry):
         rows_out, cols_out, data_out = carry
-        state_ = utils.get_single_state(states_list, n)
-        jac = model.run['gc_model_jacobian'](state_['states'], state_['constants'])
-        jac_model = jnp.vstack((jac[0]['model'], jac[1]['model']))
-        jac_gc_model = jnp.vstack((jac[0]['gc_model'], jac[1]['gc_model']))
-        
+        state_ = states_list[n]
+        jac = model.run['gc_model_jacobian'](state_.states, state_.constants)
+
+        jac_model = jnp.vstack((jac[0].model, jac[1].model))
+        jac_gc_model = jnp.vstack((jac[0].gc_model, jac[1].gc_model))
+
         if jac_gc_model.shape[-1] != 0: raise NotImplementedError("Jacobian for ground contact model states not implemented yet.")
         
         # Jacobian block for the model
@@ -157,7 +158,7 @@ def jacobian(model, states_list, globals_dict, settings, info):
         depth = model.ext_forces['idx'] + jnp.arange(6) 
         jac_model = jac_model.at[rows, cols, depth].add(-1)  # Subtract 1 from the forces and moments in the model
         # Moments
-        rows = jnp.repeat(jnp.arange(info['n_ext_torques']//3), 3)     # [0, 0, 0, 1, 1, 1] for gait2d
+        rows = jnp.repeat(jnp.arange(info['n_ext_torques']//3), 3) + info['n_ext_forces']//3    # [0, 0, 0, 1, 1, 1] for gait2d
         cols = jnp.tile(jnp.arange(info['n_ext_torques']//2), 2) # [0, 1, 2, 0, 1, 2] for gait2d
         depth = model.ext_torques['idx'] + jnp.arange(6)
         jac_model = jac_model.at[rows, cols, depth].add(-1)

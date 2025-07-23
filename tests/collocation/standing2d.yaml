@@ -3,12 +3,14 @@ collocation:
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
     model: tests/models/gait2d_torque/gait2d_torque.yaml
+    #model: tests/models/pendulum.xml
     nnodes: 1
     discretization:
       type: euler
       mode: backward
     output:
       file: "~/.biosym/standing2d.pkl"
+    tol: 3e-5
 
   objectives:
     - name: minimize_torques
@@ -18,9 +20,9 @@ collocation:
 
   constraints:
     - name: dynamics
-      weight: 1
+      weight: "1/BW"
     - name: ground_contact
-      weight: 1
+      weight: "1/BW"
 
   initial_guess:
     type: random

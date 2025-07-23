@@ -153,7 +153,7 @@ class ContactPoints(BaseContact):
         outputs:
             - contact_forces: The contact forces for all contact points in the global frame
         """
-        cp_forces = self.force_vector(*states["model"], *constants["model"])
+        cp_forces = self.force_vector(*states.model, *constants.model)
         return cp_forces
 
     def get_cp_moment_arms(self, states, constants, model, return_positions=False):
@@ -163,10 +163,10 @@ class ContactPoints(BaseContact):
         body_idx = np.array(
             [list(model.rigid_bodies.keys()).index(p) for p in self.bodies]
         )
-        pos_bodies = model.run["FK_uncompiled"](*states["model"], *constants["model"])[
+        pos_bodies = model.run["FK"](states, constants)[
             body_idx
         ]
-        pos_cps = self.pos_vector(*states["model"], *constants["model"])
+        pos_cps = self.pos_vector(*states.model, *constants.model)
         if return_positions:
             return pos_cps, pos_bodies, body_idx
         return pos_cps - pos_bodies
@@ -196,7 +196,7 @@ class ContactPoints(BaseContact):
         foot_moments = jax.vmap(_bincount)(self.body_mapping, moment_cps.T).T
         return foot_forces, foot_moments
 
-    def reset():
+    def reset(self):
         # No hidden states to reset
         pass
 
@@ -237,8 +237,8 @@ class ContactPoints(BaseContact):
             if isinstance(states, list):
                 for i in range(len(states)):
                     pcp, pbody, body_idx = self.get_cp_moment_arms(
-                        states[i]["states"],
-                        states[i]["constants"],
+                        states[i].states,
+                        states[i].constants,
                         model,
                         return_positions=True,
                     )
@@ -246,25 +246,25 @@ class ContactPoints(BaseContact):
                     pos_bodies.append(pbody)
                     cp_forces.append(
                         self.get_cp_forces(
-                            states[i]["states"], states[i]["constants"], model
+                            states[i].states, states[i].constants, model
                         )
                     )
                     # f = self.forward(states[i]['states'], states[i]['constants'], model)
                     # print("Forces: ", f[0], "moments:" ,f[1])
-            elif len(states["states"]["model"].shape) == 1:
+            elif len(states.states.model.shape) == 1:
                 pcp, pbody, body_idx = self.get_cp_moment_arms(
-                    states["states"], states["constants"], model, return_positions=True
+                    states.states, states.constants, model, return_positions=True
                 )
                 pos_cps.append(pcp)
                 pos_bodies.append(pbody)
                 cp_forces.append(
-                    self.get_cp_forces(states["states"], states["constants"], model)
+                    self.get_cp_forces(states[i].states, states[i].constants, model)
                 )
             else:
-                for i in range(len(states["states"])):
+                for i in range(len(states)):
                     pcp, pbody, body_idx = self.get_cp_moment_arms(
-                        states["states"][i],
-                        states["constants"][i],
+                        states[i].states,
+                        states[i].constants,
                         model,
                         return_positions=True,
                     )
@@ -272,7 +272,7 @@ class ContactPoints(BaseContact):
                     pos_bodies.append(pbody)
                     cp_forces.append(
                         self.get_cp_forces(
-                            states["states"][i], states["constants"][i], model
+                            states[i].states, states[i].constants, model
                         )
                     )
             self.pos_cps = np.array(pos_cps)

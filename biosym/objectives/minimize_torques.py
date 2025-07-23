@@ -55,8 +55,7 @@ def objfun(model, states_list, globals_dict, settings, info):
     :param info: Information about the objective function.
     :return: The evaluated value of the objective function.
     """
-    forces = states_list['states']['model'][info['idx_int_forces']:info['idx_int_forces'] + info['n_int_forces']]
-
+    forces = states_list.states.model[:,info['idx_int_forces']:info['idx_int_forces'] + info['n_int_forces']]
     # Compute the objective value (e.g., L2 norm of the forces)
-    return jnp.sum(jnp.power(forces, info['exponent']))
+    return jnp.sum(jnp.abs(jnp.power(forces, info['exponent'])))
 

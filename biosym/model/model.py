@@ -26,10 +26,12 @@ from sympy.physics.mechanics import (
     RigidBody,
     dynamicsymbols,
 )
+from functools import partial
 
 from biosym.model.actuators import *
 from biosym.model.contact import *
 from biosym.model.parsers import *
+from biosym.utils import states
 
 
 class BiosymModel:
@@ -191,7 +193,7 @@ class BiosymModel:
         n_ext_forces = parser.get_n_external_forces()
         self.ext_forces = {
             "names": [
-                f"m_{force}_{dim}"
+                f"f_{force}_{dim}"
                 for force in parser.get_external_forces_bodies()
                 for dim in ["x", "y", "z"]
             ],
@@ -202,7 +204,7 @@ class BiosymModel:
         # And torques
         self.ext_torques = {
             "names": [
-                f"t_{force}_{dim}"
+                f"m_{force}_{dim}"
                 for force in parser.get_external_forces_bodies()
                 for dim in ["x", "y", "z"]
             ],
@@ -280,7 +282,7 @@ class BiosymModel:
         self.n_constants = len(self.constants)
 
         self.gravity = parser.get_gravity()
-        self.default_inputs = {
+        self.default_inputs = states.dict_to_dataclass({
             "states": {
                 "model": np.zeros(self.n_states),
                 "gc_model": np.zeros(0),
@@ -291,8 +293,7 @@ class BiosymModel:
                 "gc_model": np.zeros(0),
                 "actuator_model": np.zeros(0),
             },
-            "input_names": ["model"],
-        }
+        })
 
     def _set_default_values(self):
         """
@@ -322,7 +323,8 @@ class BiosymModel:
         ):
             self.default_values[_slice(value_dict)] = concat_defaults(value)
 
-        self.default_inputs["constants"]["model"] = self.default_values[self.n_states :]
+        self.default_inputs = self.default_inputs.replace_vector("constants", "model", self.default_values[self.n_states :])
+
 
     def _create_sympy_model(self):
         """
@@ -535,15 +537,18 @@ class BiosymModel:
             joint_idx = [j["name"] for j in self.dicts["joints"]].index(joint_name)
             axis = self.dicts["joints"][joint_idx]["axis"]
             parent_body = self.dicts["joints"][joint_idx]["parent"]
+            child_body = self.dicts["joints"][joint_idx]["child"]
+            parent_frame = self.reference_frames[parent_body]
+            child_frame = self.reference_frames[child_body]
             if self.dicts["joints"][joint_idx]["type"] != "hinge":
                 raise NotImplementedError(
                     "Internal forces are only implemented for hinge joints. (Are you a hydraulic excavator or why do you need a slide joint?)"
                 )
             force_idx = self.forces["idx"] + i
             force_vector = _to_sympy_vector(
-                [self._v[force_idx] * axis[j] for j in range(3)], self.ground_frame
+                [self._v[force_idx] * axis[j] for j in range(3)], parent_frame if parent_frame is not None else self.ground_frame
             )
-            force_body = (self.body_origins[parent_body], force_vector)
+            force_body = (child_frame, force_vector)
             self.loads.append(force_body)
 
         # Add external forces - double check if this is correct
@@ -759,7 +764,7 @@ class BiosymModel:
             )
             vel_vector = self._precompile_fn(vel_vector, self.default_inputs, "FK_dot")
 
-    def _precompile_fn(self, function, inputs, name, jacobian=False, skip_export=False):
+    def _precompile_fn(self, function, inputs, name, jacobian=False, skip_export=True):
         """
         Precompile a function using JAX's jit for faster execution.
         This is useful for functions that will be called multiple times with the same input shape.
@@ -767,37 +772,38 @@ class BiosymModel:
         This actually doesn't even seem to be slower than the normal jax.jit
         """
 
-        def _jit_function_template(function, states, constants, input_names=["model"]):
+        def _jit_function_template(function_, states, constants, input_names=["model"]):
             """
             The to-be registered function should take states and constants dicts as inputs.
             We use this wrapper to unpack the vectors for each function.
             """
             l_inputs = []
             for key in input_names:
-                if key not in states:
-                    continue
-                l_inputs += [*states[key]]
-                l_inputs += [*constants[key]]
-            return function(*l_inputs)
+                l_inputs += [*getattr(states, key)]
+                l_inputs += [*getattr(constants, key)]
+            return function_(*l_inputs)
 
-        states0, constants0, input_names0 = (
-            inputs["states"],
-            inputs["constants"],
-            inputs["input_names"],
+        states0, constants0 = (
+            inputs.states,
+            inputs.constants,
         )
-        jit_function = lambda states_, constants_: _jit_function_template(
-            function, states_, constants_, input_names0
-        )
-
+        jit_function = partial(_jit_function_template, function, input_names=['model'])
+        
         if skip_export:
+            if jacobian:
+                jit_function = jax.jit(jax.jacobian(jit_function))
+            else:
+                jit_function = jax.jit(jit_function)
             self.run[name] = jit_function
             return
+        
         states_input_dummy = {
-            k: jax.ShapeDtypeStruct((len(v),), np.float32) for k, v in states0.items()
+            states.States(model=jax.ShapeDtypeStruct((len(states0.model),), np.float32)),
         }
         constants_input_dummy = {
-            k: jax.ShapeDtypeStruct((len(v),), np.float32)
-            for k, v in constants0.items()
+            states.States(
+                model=jax.ShapeDtypeStruct((len(constants0.model),), np.float32)
+            ),
         }
         # Export+Import of the same function reconfigures the "lambda" function somehow -> faster re-compilation from cache
         if not jacobian:
@@ -830,31 +836,26 @@ class BiosymModel:
         out_ = [self._v[i] for i in range(self.coordinates["n"] + self.speeds["n"])]
         return function.xreplace(dict(zip(in_, out_)))
 
-    def _register_contact_model(self, contact_model):
+    def _register_contact_model(self, contact_model, skip_export=True):
         """
         Register the forward function of the contact model as a function in the run dictionary and precompile it.
         """
-        input_dummy = self.default_inputs.copy()
-        input_dummy["states"]["gc_model"] = np.zeros(contact_model.get_n_states())
-        input_dummy["constants"]["gc_model"] = np.zeros(contact_model.get_n_constants())
-        input_dummy["input_names"] = ["model", "gc_model"]
-        self.default_inputs["states"]["gc_model"] = np.zeros(
-            contact_model.get_n_states()
+        input_dummy = self.default_inputs
+        input_dummy.states.replace(gc_model=np.zeros(contact_model.get_n_states()))
+        input_dummy.constants.replace(gc_model=np.zeros(contact_model.get_n_constants()))
+
+        self.default_inputs.states.replace(gc_model=np.zeros(
+            contact_model.get_n_states())
         )
-        self.default_inputs["constants"]["gc_model"] = np.zeros(
-            contact_model.get_n_constants()
+        self.default_inputs.constants.replace(gc_model=np.zeros(
+            contact_model.get_n_constants())
         )
-        lambda_func = lambda states, constants: contact_model.forward(
-            states, constants, self
-        )
-        states_input_dummy = {
-            k: jax.ShapeDtypeStruct((len(v),), np.float32)
-            for k, v in input_dummy["states"].items()
-        }
-        constants_input_dummy = {
-            k: jax.ShapeDtypeStruct((len(v),), np.float32)
-            for k, v in input_dummy["constants"].items()
-        }
+        lambda_func = partial(contact_model.forward, model=self)
+        if skip_export:
+            self.run["gc_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
+            self.run["gc_model"] = jax.jit(lambda_func)
+            return
+
         for fun in ["forward", "jacobian"]:
             if fun == "jacobian":
                 self.run["gc_model_jacobian_uncompiled"] = (
@@ -900,9 +901,8 @@ class BiosymModel:
         self.default_inputs["constants"]["actuator_model"] = np.zeros(
             actuator_model.get_n_constants()
         )
-        lambda_func = lambda states, constants: actuator_model.forward(
-            states, constants, self
-        )
+        lambda_func = partial(actuator_model.forward, model=self)
+        # We need to precompile the function to avoid recompilation every
         states_input_dummy = {
             k: jax.ShapeDtypeStruct((len(v),), np.float32)
             for k, v in input_dummy["states"].items()
