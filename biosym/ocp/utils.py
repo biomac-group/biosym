@@ -6,7 +6,7 @@ from dataclasses import fields, is_dataclass
 from jax.flatten_util import ravel_pytree
 from jax.tree_util import tree_map, tree_leaves
 from jax import vmap
-from biosym.utils.states import StatesDict
+from biosym.utils.states import StatesDict, Globals
 
 @jax.jit
 def x_to_states_dict(x, states_dict, globals_dict=None):
@@ -34,8 +34,7 @@ def x_to_states_dict(x, states_dict, globals_dict=None):
     rest       = x[N * d :]
 
     if globals_dict is not None:
-        flat_glob, unravel_glob = ravel_pytree(globals_dict)
-        new_globals = unravel_glob(rest)
+        new_globals = Globals(dur=x[-2], speed=x[-1]) if len(rest) == 2 else 1
     else:
         new_globals = None
 

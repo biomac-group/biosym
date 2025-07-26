@@ -3,30 +3,37 @@ collocation:
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
     model: tests/models/gait2d_torque/gait2d_torque.yaml
-    nnodes: 40
+    nnodes: 50
     discretization:
       type: euler
-      mode: backward
+      args:
+        mode: backward # default: backward
+        vars: q # FK or q, default: q
+        weight: 10 # Standard weight for the discretization
+        adaptive_h: true
     output:
       file: "~/.biosym/walking2d.pkl"
+    tol: 1e-4
+    max_iter: 2000
+    dtype: float32 # float64 still makes problems
 
   objectives:
-    - name: regularization
-      weight: 1e-5
     - name: minimize_torques
       weight: 1
+      args:
+        exponent: 3
 
   constraints:
     - name: dynamics
-      weight: 1
+      weight: "1/BW"
     - name: ground_contact
-      weight: 1
-    - name: discretization
-      weight: 1
-    - name: perodicity
+      weight: "1/BW"
+    - name: periodicity
       weight: 1
       args:
-        symmetry: false
+        symmetry: true
+        exclude: [0] # Exclude the first dimension --> pelvis_tx # Todo - that should be cross-check with the speed idx
+
 
   initial_guess:
     type: from_file
@@ -35,9 +42,9 @@ collocation:
   bounds:
     from_model: true
     start_at_origin: true
-    dur: [0.1, 4]
+    dur: [1, 2]
     speed: 1.3
-    
+
 
   
     

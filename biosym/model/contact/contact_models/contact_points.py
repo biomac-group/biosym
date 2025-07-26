@@ -95,7 +95,7 @@ class ContactPoints(BaseContact):
                 (pos_vector[-1][1] ** 2 + self.p_cy_0[i] ** 2) ** 0.5
                 - pos_vector[-1][1]
             )
-            F_cy = self.k[i] * d * (1 - self.b[i] * vel_vector[-1][1])
+            F_cy = self.k[i] * d * (1 - self.b[i] * vel_vector[-1][1]) - 1e-4*pos_vector[-1][1] # small value to "point towards ground"
             F_cx = (
                 -self.mu[i]
                 * F_cy

@@ -22,6 +22,8 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
     """
     # Check inputs and frame selection
     states, globals = states
+    if globals is not None:
+        dt = globals.dur/len(states)
     n_frames = len(states)
 
     # Check if the model has a contact model
@@ -251,17 +253,16 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
                     segments[i].set_3d_properties([pos_a[2], pos_b[2]])
             ax.set_title(f"T = {frame*dt:.2f} s")
             if hascontact:
-                if isinstance(states, list):
-                    model.gc_model.plot(
-                        False,
-                        model,
-                        mode="update",
-                        ax=ax,
-                        case=case_,
-                        non_zero_axes=non_zero_axes,
-                        frame=frame,
-                        plot_objects=plot_objects,
-                    )
+                model.gc_model.plot(
+                    False,
+                    model,
+                    mode="update",
+                    ax=ax,
+                    case=case_,
+                    non_zero_axes=non_zero_axes,
+                    frame=frame,
+                    plot_objects=plot_objects,
+                )
 
                 return ax.collections
 

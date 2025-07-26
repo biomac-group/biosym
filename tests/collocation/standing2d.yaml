@@ -8,6 +8,7 @@ collocation:
     discretization:
       type: euler
       mode: backward
+      weight: 400
     output:
       file: "~/.biosym/standing2d.pkl"
     tol: 3e-5
@@ -24,9 +25,9 @@ collocation:
     - name: ground_contact
       weight: "1/BW"
 
-  initial_guess:
-    type: random
-    seed: 42
+  #initial_guess:
+  #  type: random
+  #  seed: 42
   bounds:
     from_model: true
     start_at_origin: true

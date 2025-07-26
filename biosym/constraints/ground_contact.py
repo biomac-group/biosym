@@ -3,6 +3,7 @@ from biosym.ocp import utils
 import jax.numpy as jnp
 import jax
 import os
+from functools import partial
 
 # any constraint needs to be named Constraint, otherwise it will not be found by the OCP class
 class Constraint(BaseConstraint):
@@ -13,7 +14,7 @@ class Constraint(BaseConstraint):
     It includes methods for evaluating the constraint function, computing the Jacobian,
     and retrieving information about the constraint.
     """
-    def __init__(self, model, settings):    
+    def __init__(self, model, settings, args):    
         """
         Initialize the Ground Contact Constraint class with a model and settings.
         
@@ -39,6 +40,7 @@ class Constraint(BaseConstraint):
             'required_variables': {'states': ["model", "gc_model"], "constants": ["model", "gc_model"]},
             'nnz': self.get_nnz(),
             'ncons': self.get_n_constraints(),
+            'ncons_pernode': self.nf,
             'idx_ext_forces': self.model.ext_forces['idx'],
             'idx_ext_torques': self.model.ext_torques['idx'],
             'n_ext_forces': self.model.ext_forces['n'],
@@ -52,7 +54,7 @@ class Constraint(BaseConstraint):
         :param states_list: Dictionary containing the current states.
         :return: The dynamics constraint function.
         """
-        return jax.jit(lambda states_list, globals_dict: confun(self.model, states_list, globals_dict, self.settings, self._get_info()))
+        return jax.jit(partial(confun, self.model, settings=self.settings, info=self._get_info()))
 
 
     def get_jacobian(self):
@@ -62,7 +64,7 @@ class Constraint(BaseConstraint):
         :param states_list: Dictionary containing the current states.
         :return: The Jacobian of the dynamics constraint function.
         """
-        return jax.jit(lambda states_list, globals_dict: jacobian(self.model, states_list, globals_dict, self.settings, self._get_info()))
+        return jax.jit(partial(jacobian, self.model, settings=self.settings, info=self._get_info()))
 
     def get_n_constraints(self):
         """
@@ -97,7 +99,7 @@ def confun(model, states_list, globals_dict, settings, info):
 
     data_out = jnp.empty((info['ncons'],), dtype=jnp.float32)
     nnodes = settings.get('nnodes')
-    ncons = info['ncons']
+    ncons = info['ncons_pernode']
     def body_fun(n, carry):
         data_out = carry
         state_ = states_list[n]
@@ -128,10 +130,10 @@ def jacobian(model, states_list, globals_dict, settings, info):
     nnz = info['nnz']
     nvpn = settings.get('nvpn')
     nnodes = settings.get('nnodes')
-    ncons = info['ncons']
-    rows_out = jnp.empty((nnz,), dtype=jnp.int32)
-    cols_out = jnp.empty((nnz,), dtype=jnp.int32)
-    data_out = jnp.empty((nnz,), dtype=jnp.float32)
+    ncons = info['ncons_pernode']
+    rows_out = jnp.empty((nnz,), dtype=settings['int_dtype'])
+    cols_out = jnp.empty((nnz,), dtype=settings['int_dtype'])
+    data_out = jnp.empty((nnz,), dtype=settings['dtype'])
 
     block_size = ncons * nvpn
     def body_fun(n, carry):
@@ -146,7 +148,7 @@ def jacobian(model, states_list, globals_dict, settings, info):
         
         # Jacobian block for the model
         row_block = n * ncons + jnp.arange(ncons)
-        col_block = nvpn * n + jnp.arange(nvpn)
+        col_block = state_.states.size() * n + jnp.arange(nvpn)
 
         rows_block = jnp.repeat(row_block, nvpn)   # Shape: (ncons * nvpn,)
         cols_block = jnp.tile(col_block, ncons)  # Shape: (ncons * nvpn,)

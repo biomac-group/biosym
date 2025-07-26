@@ -5,7 +5,7 @@ class BaseConstraint(abc.ABC):
     Abstract base class for constraints in the biosym package.
     All constraints should inherit from this class and implement the required methods.
     """
-    def __init__(self, model, settings):
+    def __init__(self, model, settings, args):
         """
         Initialize the BaseConstraint class with a model and settings.
         :param model: biosym model object representing the system to be controlled.

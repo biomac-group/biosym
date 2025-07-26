@@ -764,6 +764,27 @@ class BiosymModel:
             )
             vel_vector = self._precompile_fn(vel_vector, self.default_inputs, "FK_dot")
 
+            acc_vector = []
+            for _, point in self.body_origins.items():
+                acc_vector.append(
+                    [
+                        point.acc(self.ground_frame).dot(frame_dim)
+                        for frame_dim in [
+                            self.ground_frame.x,
+                            self.ground_frame.y,
+                            self.ground_frame.z,
+                        ]
+                    ]
+                )
+            acc_vector = Matrix(acc_vector)
+            acc_vector = self._replace_dyn(acc_vector)
+            acc_vector = lambdify(
+                self._v, acc_vector, modules="jax", cse=True, docstring_limit=2
+            )
+            acc_vector = self._precompile_fn(
+                acc_vector, self.default_inputs, "FK_ddot", skip_export=True
+            )
+
     def _precompile_fn(self, function, inputs, name, jacobian=False, skip_export=True):
         """
         Precompile a function using JAX's jit for faster execution.

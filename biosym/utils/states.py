@@ -11,10 +11,25 @@ class States:
     gc_model: jnp.ndarray = jnp.zeros((0,))  # Default to empty array if not provided
     # Assuming actuator_model and
     actuator_model: jnp.ndarray = jnp.zeros((0,))  # Default to empty array if not provided
-    h: jnp.ndarray = jnp.zeros((1,))  # Default to empty array if not provided
+    h: jnp.ndarray = jnp.zeros((0,))  # Default to empty array if not provided
 
     def __str__(self):
         return f"States(model={self.model.shape}, gc_model={self.gc_model.shape}, actuator_model={self.actuator_model.shape}, h={self.h.shape if self.h is not None else 'None'})"
+
+    def size(self):
+        """
+        Get the number of elements in the StatesDict.
+        :return: Total number of elements across all fields.    
+        """
+        return sum(x.size for x in jax.tree_util.tree_leaves(self))
+    
+    def flatten(self):
+        """
+        Flatten the States dataclass into a single array.
+        :return: A flattened array of all fields.
+        """
+        flat_states = jax.tree_util.tree_leaves(self)
+        return jnp.concatenate([x.flatten() if isinstance(x, jnp.ndarray) else x for x in flat_states], axis=0)
 
 @dataclass
 class Constants:
@@ -24,6 +39,12 @@ class Constants:
 
     def __str__(self):
         return f"Constants(model={self.model.shape}, gc_model={self.gc_model.shape}, actuator_model={self.actuator_model.shape})"
+
+    def multiply(self, other):
+        if isinstance(other, (int, float)):
+            return jax.tree_util.tree_map(lambda x: x * other, self)
+        else:
+            raise NotImplementedError('biosym.utils.states.Constants.multiply.notfloat')
 
 @dataclass
 class Globals:
@@ -37,6 +58,11 @@ class Globals:
         """
         return sum(x.size for x in jax.tree_util.tree_leaves(self))
 
+    def multiply(self, other):
+        if isinstance(other, (int, float)):
+            return jax.tree_util.tree_map(lambda x: x * other, self)
+        else:
+            raise NotImplementedError('biosym.utils.states.Constants.multiply.notfloat')
 
 @dataclass
 class StatesDict:
@@ -123,14 +149,18 @@ class StatesDict:
 
 
 def stack_dataclasses(instances):
-    """Stack a list of flax.struct.dataclass instances into a single instance."""
+    """Stack a list of flax.struct.dataclass instances into a single instance.
+    Only the first occurence of constants will be used
+    """
     if not instances:
         raise ValueError("Cannot stack an empty list")
     if not type(instances) in [list, tuple]:
         raise TypeError("Input must be a list of dataclass instances")
 
     # jax.tree_util.tree_map applies a function over the corresponding fields
-    return jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *instances)
+    dict_0 = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *instances)
+    constants = instances[0].constants
+    return StatesDict(dict_0.states, constants)
 
 def reduce_dataclasses(instances, fn=None, weights=None):
     """Apply a reduction function (e.g., mean, sum, max) across a list of dataclass instances."""

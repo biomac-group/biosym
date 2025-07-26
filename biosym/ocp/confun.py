@@ -3,6 +3,7 @@ from biosym.constraints import *
 import jax.numpy as jnp
 import jax
 from functools import partial
+import numpy as np
 
 class Constraints():
     """
@@ -30,9 +31,11 @@ class Constraints():
         self.c_start, self.nnz_start = [0], [0] # First constraint starts at 0
         for constraint in settings.get('constraints', []):
             self.add_constraint(constraint.get('name'), constraint.get('weight'), constraint.get('args'))
+        self.nnz_start, self.c_start = np.cumsum(self.nnz_start, dtype=np.int32).tolist(), np.cumsum(self.c_start, dtype=np.int32).tolist()
         self.ncon = self.c_start[-1] # last entry is only total ncon
         self.nnz = self.nnz_start[-1]
         self._compile_callables()
+
 
     def _compile_callables(self):
         """
@@ -53,19 +56,19 @@ class Constraints():
         if isinstance(name, str):
             constraint_class = globals().get(name)
             if constraint_class:
-                constraint = constraint_class.Constraint(self.model, self.settings)
+                constraint = constraint_class.Constraint(self.model, self.settings, args)
             else:
                 raise ValueError(f"Constraint class '{name}' not found.")
         elif hasattr(name, '__init__'):
-            name.__init__(self.model, self.settings)
+            name.__init__(self.model, self.settings, args)
             constraint = name
         else:
             raise ValueError("Invalid constraint object provided.")
 
         info = constraint._get_info()
         print(f"Adding constraint: {info.get('name')} with weight {weight}")
-        self.c_start.append(info['ncons'] + sum(self.c_start))
-        self.nnz_start.append(info['nnz'] + sum(self.nnz_start))
+        self.c_start.append(info['ncons'])
+        self.nnz_start.append(info['nnz'])
         self.constraint_functions.append(constraint.get_confun())
         self.jacobian_functions.append(constraint.get_jacobian())
         if isinstance(weight, (int, float)):

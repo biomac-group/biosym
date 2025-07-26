@@ -86,9 +86,18 @@ def evaluate_gradients(objective_gradients, weights, states_list, globals_dict=N
     :return: The evaluated gradients of the objective functions.
     """
     gradients = []
+    globals_gradients = []
     for i, grad_fun in enumerate(objective_gradients):
-        gradient = grad_fun(states_list, globals_dict)
+        gradient, globals_gradient = grad_fun(states_list, globals_dict)
         gradients.append(gradient)
+        globals_gradients.append(globals_gradient)
     # Add all gradients together
     gradients = states.reduce_dataclasses(gradients, jnp.sum, weights)
-    return gradients
+    # Remove all None entries from globals_gradients
+    globals_gradients = [g for g in globals_gradients if g is not None]
+    if globals_gradients:
+        # Sum the global gradients if they exist
+        globals_gradients = states.reduce_dataclasses(globals_gradients, jnp.sum, weights)
+    else:
+        globals_gradients = None
+    return gradients, globals_gradients

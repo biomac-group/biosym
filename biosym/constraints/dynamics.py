@@ -14,7 +14,7 @@ class Constraint(BaseConstraint):
     It includes methods for evaluating the constraint function, computing the Jacobian,
     and retrieving information about the constraint.
     """
-    def __init__(self, model, settings):    
+    def __init__(self, model, settings, args):    
         """
         Initialize the DynamicsConstraint class with a model and settings.
         
@@ -39,6 +39,7 @@ class Constraint(BaseConstraint):
             'required_variables': {'states': ["model"], "constants": ["model"]},
             'nnz': self.get_nnz(),
             'ncons': self.get_n_constraints(),
+            'ncons_pernode': self.ncons_model,
         }
     
     def get_confun(self):
@@ -91,7 +92,7 @@ def confun(modelfn, states_list, globals_dict, settings, info):
 
     data_out = jnp.empty((info['ncons'],), dtype=jnp.float32)
     nnodes = settings.get('nnodes')
-    ncons_sympy = info['ncons']
+    ncons_sympy = info['ncons_pernode']
     def body_fun(n, carry):
         data_out = carry
         state_ = states_list[n]
@@ -116,10 +117,10 @@ def jacobian(modelfn, states_list, globals_dict, settings, info):
     nnz = info['nnz']
     nvpn = settings.get('nvpn')
     nnodes = settings.get('nnodes')
-    ncons_sympy = info['ncons']
-    rows_out = jnp.empty((nnz,), dtype=jnp.int32)
-    cols_out = jnp.empty((nnz,), dtype=jnp.int32)
-    data_out = jnp.empty((nnz,), dtype=jnp.float32)
+    ncons_sympy = info['ncons_pernode']
+    rows_out = jnp.empty((nnz,), dtype=settings['int_dtype'])
+    cols_out = jnp.empty((nnz,), dtype=settings['int_dtype'])
+    data_out = jnp.empty((nnz,), dtype=settings['dtype'])
 
     block_size = ncons_sympy * nvpn
     def body_fun(n, carry):
@@ -128,7 +129,7 @@ def jacobian(modelfn, states_list, globals_dict, settings, info):
         jac = modelfn(state_.states, state_.constants)  
 
         row_block = n * ncons_sympy + jnp.arange(ncons_sympy)
-        col_block = nvpn * n + jnp.arange(nvpn)
+        col_block = state_.states.size() * n + jnp.arange(nvpn)
 
         rows_block = jnp.repeat(row_block, nvpn)   # Shape: (ncons_sympy * nvpn,)
         cols_block = jnp.tile(col_block, ncons_sympy)  # Shape: (ncons_sympy * nvpn,)
