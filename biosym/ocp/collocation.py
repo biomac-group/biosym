@@ -100,6 +100,8 @@ class Collocation:
                 if ig_settings['nnodes'] == 1:
                     x = x[0].replace_vector("states", "h", jnp.ones((1,)))
                     self.initial_guess_states = states.stack_dataclasses([x] * self.settings['nnodes_dur'])
+
+                    SA = asd
                 else:
                     raise NotImplementedError("Initial guess from file with resampling is not implemented yet.")
             else:
@@ -166,6 +168,7 @@ class Collocation:
         )
         self.nlp.add_option('mu_strategy', 'adaptive')
         self.nlp.add_option('tol', float(self.settings["settings"].get('tol', 1e-5)))
+        self.nlp.add_option('constr_viol_tol', float(self.settings["settings"].get('constr_viol_tol', 1e-3)))
         self.nlp.add_option('print_level', 5)
         self.nlp.add_option('max_iter', self.settings["settings"].get('max_iter', 1000))
         self.nlp.add_option('hessian_approximation', 'limited-memory')
