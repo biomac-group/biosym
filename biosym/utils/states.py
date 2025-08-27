@@ -102,7 +102,7 @@ class StatesDict:
     def __len__(self):
         """ Get the number of states in the StatesDict. 
         Here, we assume that the number of states is determined by the first field (model). """
-        return self.states.model.shape[0] if self.states.model.ndim > 0 else 1
+        return self.states.model.shape[0] if self.states.model.ndim > 1 else 1
     
     def flat_at(self, idx):
         """

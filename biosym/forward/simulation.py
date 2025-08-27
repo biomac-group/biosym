@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.experimental.ode import odeint
+import biosym.utils.states as stat
 
 # Caching functions in this module is unwanted.
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 200)
@@ -73,27 +74,26 @@ class SimulationEnvironment:
         """
         Create the simulation ODE function.
         This function is used to compute the state derivatives for the simulation.
-        """
-
+        """ 
         def simulation_ode(model_state_vector, t, others, n_extforce, runs):
             controls, constants_, actuator_states_, gc_states_, remaining_states_ = (
                 others
             )
             a = model_state_vector
-            states = {
-                "model": jnp.concatenate((a, remaining_states_)),
-                "gc_model": gc_states_,
-                "actuator_model": actuator_states_,
-            }
+            states_ = stat.States(
+                model=jnp.concatenate((a, remaining_states_)),
+                gc_model=gc_states_,
+                actuator_model=actuator_states_,
+            )
             # Run actuator model
             if "actuator_model" in runs:
-                actuator_signals = runs["actuator_model"](states, constants_)
+                actuator_signals = runs["actuator_model"](states_, constants_)
             else:
                 actuator_signals = controls
 
             # Run ground contact model
             if "gc_model" in runs:
-                contact_signals = runs["gc_model"](states, constants_)
+                contact_signals = runs["gc_model"](states_, constants_)
             else:
                 contact_signals = jnp.zeros(n_extforce["n"]), jnp.zeros(n_extforce["n"])
 
@@ -106,11 +106,11 @@ class SimulationEnvironment:
                     contact_signals[1].flatten(),
                 )
             )
-            states_ = {
-                "model": model_state_vector_,
-                "gc_model": gc_states_,
-                "actuator_model": actuator_states_,
-            }
+            states_ = stat.States(
+                model=model_state_vector_,
+                gc_model=gc_states_,
+                actuator_model=actuator_states_,
+            )
 
             M = runs["mass_matrix"](states_, constants_)
             F = runs["forcing"](states_, constants_)
@@ -130,10 +130,10 @@ class SimulationEnvironment:
             0.0,
             (
                 jnp.zeros(self.model.forces["n"]),
-                self.model.default_inputs["constants"],
-                self.model.default_inputs["states"]["actuator_model"],
-                self.model.default_inputs["states"]["gc_model"],
-                self.model.default_inputs["states"]["model"][
+                self.model.default_inputs.constants,
+                self.model.default_inputs.states.actuator_model,
+                self.model.default_inputs.states.gc_model,
+                self.model.default_inputs.states.model[
                     2 * self.model.coordinates["n"] :
                 ],
             ),
@@ -174,11 +174,10 @@ class SimulationEnvironment:
             t = jnp.array([0.0, dt])
 
             # Purify inputs
-            states_ = state["states"]["model"]
-            constants_ = state["constants"]
-            actuator_states_ = state["states"]["actuator_model"]
-            gc_states_ = state["states"]["gc_model"]
-
+            states_ = state.states.model
+            constants_ = state.constants
+            actuator_states_ = state.states.actuator_model
+            gc_states_ = state.states.gc_model
             new_state_ = odeint(
                 simulation_ode,
                 states_[: 2 * n_coordinates],
@@ -203,11 +202,10 @@ class SimulationEnvironment:
             self._step = jax.jit(self._step)
 
         # self.state['states']['model'] = self._step(controls, self.state, self.dt, self.simulation_ode)
-        self.state["states"]["model"] = (
-            self.state["states"]["model"]
-            .at[: 2 * self.model.coordinates["n"]]
-            .set(self._step(controls, self.state, self.dt))
-        )
+
+        self.state.replace_vector("states", "model", 
+                                  self.state.states.model.at[: 2 * self.model.coordinates["n"]]
+                                  .set(self._step(controls, self.state, self.dt)))
 
         # Check for callbacks for rewards and stopping criteria
         reward = (
@@ -260,11 +258,11 @@ class SimulationEnvironment:
                 self.state = copy.deepcopy(self.model.default_inputs)
             elif self.initial_state == "random":
                 self.state = copy.deepcopy(self.model.default_inputs)
+                states_ = []
                 for i, row in self.model.variables.iterrows():
                     if row.type == "state":
-                        self.state["states"]["model"][i] = np.random.uniform(
-                            row["xmin"], row["xmax"]
-                        )
+                        states_.append(np.random.uniform(row["xmin"], row["xmax"]))
+                self.state = self.state.replace_vector("states","model",jnp.array(states_))
             else:
                 raise ValueError(
                     f"Simulation: initial state '{self.initial_state}' is not supported."
@@ -292,24 +290,6 @@ class SimulationEnvironment:
             self.state = copy.deepcopy(mode)
         else:
             raise ValueError(f"Simulation: initial state '{mode}' is not supported.")
-
-        # Convert state to JAX arrays
-        for key in ["states", "constants"]:
-            for subkey in self.state[key].keys():
-                if isinstance(self.state[key][subkey], jnp.ndarray) or isinstance(
-                    self.state[key][subkey], np.ndarray
-                ):
-                    self.state[key][subkey] = jnp.asarray(self.state[key][subkey])
-                else:
-                    raise ValueError(
-                        f"Simulation: state '{self.state[key][subkey]}' is not a valid type."
-                    )
-
-        # States can only contain "states" and "constants"
-        self.state = {
-            "states": self.state["states"],
-            "constants": self.state["constants"],
-        }
 
         return copy.deepcopy(self.state)
 
