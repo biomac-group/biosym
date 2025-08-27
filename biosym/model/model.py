@@ -1,5 +1,7 @@
 import os
 
+import sympy
+
 _cachedir = os.path.expanduser("~/.biosym/jax_cache")
 _model_cache = os.path.expanduser("~/.biosym/")
 os.environ["JAX_COMPILATION_CACHE_DIR"] = (
@@ -13,6 +15,7 @@ import hashlib
 
 import cloudpickle
 import jax
+import jax.numpy as jnp
 import jax.export
 import numpy as np
 import pandas as pd
@@ -32,6 +35,7 @@ from biosym.model.actuators import *
 from biosym.model.contact import *
 from biosym.model.parsers import *
 from biosym.utils import states
+from biosym.model.actuators.actuator_models.passive_torques import PassiveTorques
 
 
 class BiosymModel:
@@ -160,7 +164,7 @@ class BiosymModel:
             "joints": parser.get_joints(),
             "sites": parser.get_sites(),
         }
-
+    
         # Create overviews of all states
         n_dof = parser.get_n_joints()
         self.coordinates = {
@@ -179,14 +183,23 @@ class BiosymModel:
             "n": n_dof,
         }
 
-        n_forces = parser.get_n_internal_forces()
-        int_forces_dict = parser.get_internal_forces()
+        # Passive actuators need to be defined here
+        self.passive_actuators = PassiveTorques(self.dicts['joints'])
+        passive_actuated_joints = self.passive_actuators.get_actuated_joints()
+
+        active_forces_dict = parser.get_internal_forces()
+        active_actuated_joints = [active_forces_dict[name]['joint'] for name in active_forces_dict.keys()]
+        actuated_joints = list(dict.fromkeys(active_actuated_joints + passive_actuated_joints))
+        all_joints = [joint['name'] for joint in self.dicts['joints']]
         self.forces = {
             "names": [
-                f"M_{int_forces_dict[name]['joint']}" for name in int_forces_dict.keys()
+                f"M_{joint}" for joint in all_joints if joint in actuated_joints
             ],
             "idx": 3 * n_dof,
-            "n": n_forces,
+            "n": len(actuated_joints),
+            "passive_idx": jnp.array([i for i, j in enumerate(all_joints) if j in passive_actuated_joints]),
+            "active_idx": jnp.array([i for i, j in enumerate(all_joints) if j in active_actuated_joints]),
+            "combined_idx": jnp.array([i for i, j in enumerate(all_joints) if j in actuated_joints])
         }
 
         # The first representation of external forces is a list of bodies, where the forces can be applied
@@ -197,7 +210,7 @@ class BiosymModel:
                 for force in parser.get_external_forces_bodies()
                 for dim in ["x", "y", "z"]
             ],
-            "idx": 3 * n_dof + n_forces,
+            "idx": 3 * n_dof + len(actuated_joints),
             "n": n_ext_forces,
         }
 
@@ -208,7 +221,7 @@ class BiosymModel:
                 for force in parser.get_external_forces_bodies()
                 for dim in ["x", "y", "z"]
             ],
-            "idx": 3 * n_dof + n_forces + n_ext_forces,
+            "idx": 3 * n_dof + len(actuated_joints) + n_ext_forces,
             "n": n_ext_forces,
         }
 
@@ -538,7 +551,8 @@ class BiosymModel:
             axis = self.dicts["joints"][joint_idx]["axis"]
             parent_body = self.dicts["joints"][joint_idx]["parent"]
             child_body = self.dicts["joints"][joint_idx]["child"]
-            parent_frame = self.reference_frames[parent_body]
+
+            parent_frame = self.reference_frames[parent_body] if parent_body != "ground_frame" else self.ground_frame
             child_frame = self.reference_frames[child_body]
             if self.dicts["joints"][joint_idx]["type"] != "hinge":
                 raise NotImplementedError(
@@ -607,11 +621,11 @@ class BiosymModel:
 
         # Build topology starting from the root nodes
         root_bodies = [
-            body["name"] for body in self.dicts["bodies"] if body["parent"] is None
+            body["name"] for body in self.dicts["bodies"] if body["parent"] == "ground_frame"
         ]
         topology_tree = [
-            build_tree(root) for root in root_bodies if root != "ground"
-        ]  # Exclude ground
+            build_tree(root) for root in root_bodies if root != "ground_frame"
+        ]  # Exclude ground_frame
         return topology_tree
 
     def _create_eom(self):
@@ -650,6 +664,7 @@ class BiosymModel:
         self.confun = lambdify(
             self._v, self.eom, modules="jax", cse=True, docstring_limit=2
         )
+        
         print(f"Lambdifying the EOM took {time.time()-a} seconds")
         a = time.time()
         self._precompile_fn(self.confun, self.default_inputs, "jacobian", jacobian=True)
@@ -861,96 +876,31 @@ class BiosymModel:
         """
         Register the forward function of the contact model as a function in the run dictionary and precompile it.
         """
-        input_dummy = self.default_inputs
-        input_dummy.states.replace(gc_model=np.zeros(contact_model.get_n_states()))
-        input_dummy.constants.replace(gc_model=np.zeros(contact_model.get_n_constants()))
-
-        self.default_inputs.states.replace(gc_model=np.zeros(
+        self.default_inputs = self.default_inputs.replace_vector("states", "gc_model", np.zeros(
             contact_model.get_n_states())
         )
-        self.default_inputs.constants.replace(gc_model=np.zeros(
+        self.default_inputs = self.default_inputs.replace_vector("constants", "gc_model", np.zeros(
             contact_model.get_n_constants())
         )
         lambda_func = partial(contact_model.forward, model=self)
-        if skip_export:
-            self.run["gc_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
-            self.run["gc_model"] = jax.jit(lambda_func)
-            return
+        self.run["gc_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
+        self.run["gc_model"] = jax.jit(lambda_func)
 
-        for fun in ["forward", "jacobian"]:
-            if fun == "jacobian":
-                self.run["gc_model_jacobian_uncompiled"] = (
-                    lambda_func  # We might need this for the constraints at some point
-                )
-                # Uncompiled functions are not exported, so we need to use the compiled version
-                exported = jax.export.export(jax.jit(jax.jacobian(lambda_func)))(
-                    states_input_dummy, constants_input_dummy
-                )
-            else:
-                self.run["gc_model_uncompiled"] = (
-                    lambda_func  # We might need this for the constraints at some point
-                )
-                exported = jax.export.export(jax.jit(lambda_func))(
-                    states_input_dummy, constants_input_dummy
-                )
-            re_ = jax.export.deserialize(exported.serialize(vjp_order=1))
-            # Trigger the jit compilation
-            re_.call(input_dummy["states"], input_dummy["constants"])
-            # Add the function to the run dictionary
-            if fun == "jacobian":
-                self.run["gc_model_jacobian"] = re_.call
-            else:
-                self.run["gc_model"] = re_.call
 
     def _register_actuator_model(self, actuator_model):
         """
         TODO: Refactor the _register functions, they are almost identical
         """
-        if actuator_model.is_torque_actuator():
-            return
-        input_dummy = self.default_inputs.copy()
-        input_dummy["states"]["actuator_model"] = np.zeros(
-            actuator_model.get_n_states()
-        )
-        input_dummy["constants"]["actuator_model"] = np.zeros(
-            actuator_model.get_n_constants()
-        )
-        input_dummy["input_names"] = ["model", "actuator_model"]
-        self.default_inputs["states"]["actuator_model"] = np.zeros(
-            actuator_model.get_n_states()
-        )
-        self.default_inputs["constants"]["actuator_model"] = np.zeros(
-            actuator_model.get_n_constants()
-        )
-        lambda_func = partial(actuator_model.forward, model=self)
-        # We need to precompile the function to avoid recompilation every
-        states_input_dummy = {
-            k: jax.ShapeDtypeStruct((len(v),), np.float32)
-            for k, v in input_dummy["states"].items()
-        }
-        constants_input_dummy = {
-            k: jax.ShapeDtypeStruct((len(v),), np.float32)
-            for k, v in input_dummy["constants"].items()
-        }
-        for fun in ["forward", "jacobian"]:
-            if fun == "jacobian":
-                self.run["actuator_model_jacobian_uncompiled"] = lambda_func
-                exported = jax.export.export(jax.jit(jax.jacobian(lambda_func)))(
-                    states_input_dummy, constants_input_dummy
-                )
-            else:
-                self.run["actuator_model_uncompiled"] = lambda_func
-                exported = jax.export.export(jax.jit(lambda_func))(
-                    states_input_dummy, constants_input_dummy
-                )
-            re_ = jax.export.deserialize(exported.serialize(vjp_order=1))
-            # Trigger the jit compilation
-            re_.call(input_dummy["states"], input_dummy["constants"])
-            # Add the function to the run dictionary
-            if fun == "jacobian":
-                self.run["actuator_model_jacobian"] = re_.call
-            else:
-                self.run["actuator_model"] = re_.call
+
+        self.default_inputs = self.default_inputs.replace_vector("states", "actuator_model", np.zeros(actuator_model.get_n_states()))
+        self.default_inputs = self.default_inputs.replace_vector("constants", "actuator_model", np.zeros(actuator_model.get_n_constants()))
+
+        actuator_function = actuator_model.forward
+        
+        lambda_func = lambda states, constants, model: (actuator_function(states, constants, model) + self.passive_actuators.forward(states, constants, model))[self.forces["combined_idx"]]
+        lambda_func = partial(lambda_func, model=self)
+        self.run["actuator_model"] = jax.jit(lambda_func)
+        self.run["actuator_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
 
     def _create_variable_dataframe(self):
         """
@@ -1061,9 +1011,11 @@ if __name__ == "__main__":
     import time
 
     start = time.time()
-    model_file = "tests/models/pendulum.xml"
-    # model_file = "tests/test_models/gait2d_torque/gait2d_torque.yaml"
+    #model_file = "tests/models/pendulum.xml"
+    model_file = "tests/models/gait2d_torque/gait2d_torque.yaml"
     model = load_model(model_file, True)
+    print(model.dicts['joints'])
+    ads = ads
     print(f"Reloading model in {time.time()-start} seconds")
     start = time.time()
     states = {
