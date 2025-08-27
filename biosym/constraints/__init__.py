@@ -5,4 +5,5 @@ __all__ = [
     "adaptive_h",
     "discretization",
     "speed",
+    "actuators",
 ]
