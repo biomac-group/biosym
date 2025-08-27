@@ -31,6 +31,17 @@ class States:
         flat_states = jax.tree_util.tree_leaves(self)
         return jnp.concatenate([x.flatten() if isinstance(x, jnp.ndarray) else x for x in flat_states], axis=0)
 
+    def __getitem__(self, index):
+        """
+        Get the state at a specific index.
+        :param index: Index to access the state.
+        :return: A new StatesDict with the state at the specified index.
+        """
+        def slice_fn(x):
+            return x[index] if isinstance(x, jnp.ndarray) else x
+        return jax.tree_util.tree_map(slice_fn, self)
+
+
 @dataclass
 class Constants:
     model: jnp.ndarray

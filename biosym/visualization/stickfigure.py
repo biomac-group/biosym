@@ -1,5 +1,3 @@
-import matplotlib
-matplotlib.use("macosx")  # Use TkAgg backend for visualization
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import animation
@@ -198,24 +196,57 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
         plt.show()
     else:  # Video display, all following frames are animated
         ispaused = False
+        speed_multiplier = 1.0
+        
+        # Add speed text display at the top of the figure
+        speed_text = fig.text(0.5, 0.95, f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed", 
+                             ha='center', va='top', fontsize=10, 
+                             bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
 
-        def toggle_pause(event):
-            nonlocal ispaused
+        def on_key_press(event):
+            nonlocal ispaused, speed_multiplier
             if event.key == " ":  # Spacebar toggles pause
                 ispaused = not ispaused
+            elif event.key == "up":  # Up arrow increases speed
+                speed_multiplier = min(speed_multiplier * 1.2, 10.0)  # Max 10x speed
+                speed_text.set_text(f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed")
+                fig.canvas.draw_idle()
+            elif event.key == "down":  # Down arrow decreases speed
+                speed_multiplier = max(speed_multiplier / 1.2, 0.1)  # Min 0.1x speed
+                speed_text.set_text(f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed")
+                fig.canvas.draw_idle()
 
-        fig.canvas.mpl_connect("key_press_event", toggle_pause)
+        fig.canvas.mpl_connect("key_press_event", on_key_press)
 
         global pauseframes_total
         pauseframes_total = 0
+        current_frame = 0
+        last_update_time = 0
 
-        def update(frame):
+        def update(frame_input):
+            nonlocal current_frame, last_update_time
             global pauseframes_total
+            
+            import time
+            current_time = time.time()
+            
             if ispaused:
-                pauseframes_total += 1
+                last_update_time = current_time
                 return []  # No update if paused
 
-            frame = (frame - pauseframes_total) % n_frames
+            # Calculate frame based on speed multiplier
+            if last_update_time == 0:
+                last_update_time = current_time
+                
+            time_elapsed = current_time - last_update_time
+            frames_to_advance = int(time_elapsed * speed_multiplier / dt)
+            
+            if frames_to_advance >= 1:
+                current_frame = (current_frame + frames_to_advance) % n_frames
+                last_update_time = current_time
+
+            frame = current_frame
+            
             for i, joint in enumerate(model.positions):
                 if case_ == "2D":
                     joints[i].set_data(
@@ -269,6 +300,7 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
                 return ax.collections
 
         ani = animation.FuncAnimation(
-            fig, update, frames=np.arange(n_frames), interval=dt, blit=False
+            fig, update, frames=np.arange(n_frames), 
+            interval=50, blit=False  # 50ms = 20 FPS for smooth animation
         )
         plt.show()

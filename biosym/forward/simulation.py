@@ -203,10 +203,9 @@ class SimulationEnvironment:
 
         # self.state['states']['model'] = self._step(controls, self.state, self.dt, self.simulation_ode)
 
-        self.state.replace_vector("states", "model", 
+        self.state = self.state.replace_vector("states", "model", 
                                   self.state.states.model.at[: 2 * self.model.coordinates["n"]]
                                   .set(self._step(controls, self.state, self.dt)))
-
         # Check for callbacks for rewards and stopping criteria
         reward = (
             self.reward_callback(self.state, controls, self.model)

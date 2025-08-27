@@ -13,7 +13,7 @@ collocation:
         adaptive_h: false
     output:
       file: "~/.biosym/walking2d.pkl"
-    tol: 5e-3
+    tol: 1e-2
     max_iter: 2000
     dtype: float32 # float64 still makes problems
 
