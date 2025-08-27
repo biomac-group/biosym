@@ -47,7 +47,7 @@ class PassiveTorques(BaseActuator):
         upper_limit_term = f_plus(states.model[model.coordinates['idx']:model.coordinates['idx']+model.coordinates['n']] - self.upper_limits)
         lower_limit_term = f_plus(self.lower_limits - states.model[model.coordinates['idx']:model.coordinates['idx']+model.coordinates['n']])
 
-        passive_torque = damp_term - self.stiffness * (upper_limit_term + lower_limit_term)
+        passive_torque = damp_term - self.stiffness * (upper_limit_term - lower_limit_term)
 
         return passive_torque # Always return full array, even if some joints are not actuated
 
