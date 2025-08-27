@@ -38,6 +38,7 @@ class ObjectiveFunction:
         :param weight: Weight for the objective function.
         :param args: Additional arguments for the objective function.
         """
+        weight = float(weight)
         if isinstance(name, str):
             objective_class = globals().get(name)
             if objective_class:

@@ -72,13 +72,14 @@ class Constraints():
         self.constraint_functions.append(constraint.get_confun())
         self.jacobian_functions.append(constraint.get_jacobian())
         if isinstance(weight, (int, float)):
-            self.weights.append(weight)
+            self.weights.append(float(weight))
         elif isinstance(weight, str):
             if weight == "1/BW":
                 self.weights.append(1 / jnp.sum(jnp.array(
             [body["mass"] for body in self.model.dicts["bodies"]])))
             else:
                 raise ValueError(f"Weight '{weight}' is not a valid number or setting. Valid settings are: '1/BW'.")
+            print(weight)
         else:
             raise ValueError("Weight must be a number or a string referring to a setting.")
 

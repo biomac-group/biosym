@@ -128,8 +128,10 @@ class Collocation:
                     speed_ = np.array([speed_, speed_])
                 speed_mean = jnp.mean(speed_)
             if self.settings['discretization']['args']['adaptive_h'] and len(self.initial_guess_states.states.h) == 0:
-                self.initial_guess_states = self.initial_guess_states.replace_vector("globals", "h", jnp.ones((self.settings['nnodes_dur'], 1)) * dur_mean/(self.settings['nnodes_dur']-1))
-            
+                self.initial_guess_states = self.initial_guess_states.replace_vector("states", "h", jnp.ones((self.settings['nnodes_dur'], 1)) * dur_mean/(self.settings['nnodes_dur']-1))
+            if not self.settings['discretization']['args']['adaptive_h']:
+                self.initial_guess_states = self.initial_guess_states.replace_vector("states", "h", jnp.zeros((self.settings['nnodes_dur'], 0)))
+
             self.initial_guess_globals = states.Globals(
                 dur=dur_mean,
                 speed=speed_mean,
@@ -145,12 +147,13 @@ class Collocation:
         self.x0 = utils.states_dict_to_x(self.initial_guess_states, ig_globals)
         n = len(self.x0)
         m = int(self.constraints.ncon)
+
         lb = utils.states_dict_to_x(self.settings['bounds']['min'], self.settings['bounds']['global_min'] if self.settings['nnodes'] > 1 else None)
         ub = utils.states_dict_to_x(self.settings['bounds']['max'], self.settings['bounds']['global_max'] if self.settings['nnodes'] > 1 else None)
-        print(self.x0.shape, n, m, lb.shape, ub.shape)
         self.problem = CyIpoptProblem(self.model, self.objective, self.constraints, self.initial_guess_states, lb, ub, globals=ig_globals)
         cl = np.zeros(m)
         cu = np.zeros(m)
+
 
         self.nlp = cyipopt.problem(
             n=n,
@@ -348,8 +351,18 @@ def process_collocation_settings(model, settings):
     else:
         settings['nnodes_dur'] = settings['nnodes']
 
-    settings['bounds']['max'] = states.stack_dataclasses([model.default_inputs] * settings['nnodes_dur']).add(1e3)
-    settings['bounds']['min'] = states.stack_dataclasses([model.default_inputs] * settings['nnodes_dur']).add(-1e3)
+    states_variables = model.variables[model.variables.type == "state"]
+    min_generic = model.default_inputs.replace_vector("states", "model", jnp.array(states_variables.xmin))
+    max_generic = model.default_inputs.replace_vector("states", "model", jnp.array(states_variables.xmax))
+
+    # Placeholders for gc and actuator model
+    min_generic = min_generic.replace_vector("states", "actuator_model", min_generic.states.actuator_model - 1e3)
+    max_generic = max_generic.replace_vector("states", "actuator_model", max_generic.states.actuator_model + 1e3)
+    min_generic = min_generic.replace_vector("states", "gc_model", min_generic.states.gc_model - 1e3)
+    max_generic = max_generic.replace_vector("states", "gc_model", max_generic.states.gc_model + 1e3)
+
+    settings['bounds']['min'] = states.stack_dataclasses([min_generic] * settings['nnodes_dur'])
+    settings['bounds']['max'] = states.stack_dataclasses([max_generic] * settings['nnodes_dur'])
     
     if settings['settings']['nnodes'] == 1: # Bounds on ddot and dot values set to zero
         #return settings
@@ -358,10 +371,9 @@ def process_collocation_settings(model, settings):
             settings['bounds'][section] = settings['bounds'][section].replace_vector("states", "model", settings['bounds'][section].states.model.at[0,model.accs['idx']:model.accs['idx'] + model.accs['n']].set(jnp.zeros(model.accs['n'], dtype=settings['dtype'])))
     else:
         if not settings['discretization']['args']['adaptive_h']:
-            settings['bounds']['min'] = settings['bounds']['min'].replace_vector("states", "h", jnp.ones((0,)))
-            settings['bounds']['max'] = settings['bounds']['max'].replace_vector("states", "h", jnp.ones((0,)))
+            settings['bounds']['min'] = settings['bounds']['min'].replace_vector("states", "h", jnp.ones((settings['nnodes_dur'],0)))
+            settings['bounds']['max'] = settings['bounds']['max'].replace_vector("states", "h", jnp.ones((settings['nnodes_dur'],0)))
         else:
             settings['bounds']['min'] = settings['bounds']['min'].replace_vector("states", "h", jnp.zeros(settings['nnodes_dur']))
-    # set some bounds by default
-
+    # set some bounds by default 
     return settings
