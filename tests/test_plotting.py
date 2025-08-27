@@ -9,11 +9,11 @@ from biosym.model import model
 from biosym.visualization import stickfigure
 
 test_modellist = [
-    "tests/test_models/pendulum.xml",
-    "tests/test_models/pendulum_3d.xml",
-    "tests/test_models/gait2d_torque/gait2d_torque.yaml",
+    "tests/models/pendulum.xml",
+    "tests/models/pendulum_3d.xml",
+    "tests/models/gait2d_torque/gait2d_torque.yaml",
 ]
-test_modellist = ["tests/test_models/gait2d_torque/gait2d_torque.yaml"]
+test_modellist = ["tests/models/gait2d_torque/gait2d_torque.yaml"]
 
 
 class TestPlotting(unittest.TestCase):
@@ -34,7 +34,7 @@ class TestPlotting(unittest.TestCase):
             print("Testing single state stick figure plotting.")
             m = model.load_model(modelfile, force_rebuild=False)
             print("Please close the stick figure window to continue.")
-            stickfigure.plot_stick_figure(m, m.default_inputs, 0.01)
+            stickfigure.plot_stick_figure(m, (m.default_inputs, None), 0.01)
             x = input("Was this the correct stick figure? [y]")
             assert x in [
                 "y",
@@ -58,7 +58,7 @@ class TestPlotting(unittest.TestCase):
             b = time.time()
             print(f"Simulation took {b-a:.2f} seconds.")
             print("Please close the stick figure window to continue.")
-            stickfigure.plot_stick_figure(m, states, 0.01)
+            stickfigure.plot_stick_figure(m, (states,None), 0.01)
             x = input("Was this the correct stick figure animation? [y]")
             assert x in [
                 "y",

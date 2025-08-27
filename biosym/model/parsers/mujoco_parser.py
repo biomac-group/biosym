@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 
 from biosym.model.parsers.base_parser import BaseParser
+import numpy as np
 
 
 class MujocoParser(BaseParser):
@@ -58,6 +59,9 @@ class MujocoParser(BaseParser):
                 joint_range_values = [
                     float(x) for x in joint.get("range", "0 0").split()
                 ]
+                joint_damping = float(joint.get("damping", self.defaults.find(".//joint").get("damping", "0.0")))
+                joint_stiffness = float(joint.get("stiffness", self.defaults.find(".//joint").get("stiffness", "0.0")))
+                joint_armature = float(joint.get("armature", self.defaults.find(".//joint").get("armature", "0.0")))
 
                 body_joints.append(
                     {
@@ -67,6 +71,9 @@ class MujocoParser(BaseParser):
                         "range": joint_range_values,
                         "parent": parent_name,
                         "child": body_name,
+                        "damping": joint_damping,
+                        "stiffness": joint_stiffness,
+                        "armature": joint_armature,
                     }
                 )
 
@@ -103,8 +110,9 @@ class MujocoParser(BaseParser):
                 parse_body(child_body, parent_name=body_name)
 
         # Start parsing from the root worldbody
+        self.defaults = self.root.find(".//default")
         for body in self.root.findall(".//worldbody/body"):
-            parse_body(body)
+            parse_body(body, parent_name='ground_frame')
 
         # Mujoco often does not have an explicit ground contact model stated, so we set all joints to possibly be in contact
         # The contact model should come from a yaml file.
@@ -122,6 +130,8 @@ class MujocoParser(BaseParser):
         # Get the default gravity vector - if <option gravity> is not set, it defaults to [0, -9.81, 0]
         gravity = self.root.find(".//option").get("gravity", "0 -9.81 0")
         self.gravity = [float(x) for x in gravity.split()]
+
+        
 
         # We currently only allow externally specified actuators
         # to be in the mujoco model file, so we set the actuator list to None

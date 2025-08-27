@@ -49,13 +49,10 @@ class TestForwardSim(unittest.TestCase):
             print("Testing step function with dt=0.0001 and dt=0.01")
 
             assert np.allclose(
-                env_0001.state["states"]["model"],
-                env_1.state["states"]["model"],
+                env_0001.state.states.model,
+                env_1.state.states.model,
                 atol=5e-3,
-            ), f"The state vectors are not close enough! {env_1.state['states']['model'][np.argmax(
-                np.abs(env_0001.state['states']['model'] - env_1.state['states']['model']))]} vs. {
-                    env_0001.state['states']['model'][np.argmax(np.abs(
-                        env_0001.state['states']['model'] - env_1.state['states']['model']))]}"
+            )
         print("========= Test Forward Simulation Done =========")
 
         del env_0001, env_1

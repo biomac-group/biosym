@@ -258,7 +258,7 @@ class ContactPoints(BaseContact):
                 pos_cps.append(pcp)
                 pos_bodies.append(pbody)
                 cp_forces.append(
-                    self.get_cp_forces(states[i].states, states[i].constants, model)
+                    self.get_cp_forces(states[0].states, states[0].constants, model)
                 )
             else:
                 for i in range(len(states)):
