@@ -14,7 +14,7 @@ collocation:
     tol: 3e-5
 
   objectives:
-    - name: minimize_torques
+    - name: torque_term
       weight: 1
       args:
         exponent: 3
@@ -24,6 +24,8 @@ collocation:
       weight: "1/BW"
     - name: ground_contact
       weight: "1/BW"
+    - name: actuators
+      weight: 1
 
   #initial_guess:
   #  type: random

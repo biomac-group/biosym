@@ -112,13 +112,13 @@ def derivativetest(problem, x, eps = 1e-3):
     plt.show()
 
 
-standing_problem = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
-#(x, globals), info = standing_problem.solve(visualize=False)
+standing_problem = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
+(x, globals), info = standing_problem.solve(visualize=False)
 
 walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
 
 x = states_dict_to_x(walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
-#x = np.random.rand(len(x)).astype(np.float64)  # Randomize the initial guess
+x = np.random.rand(len(x)).astype(np.float64)  # Randomize the initial guess
 #derivativetest(walking_problem, x)
 x, globals = x_to_states_dict(x, walking_problem.initial_guess_states, walking_problem.initial_guess_globals
                             )

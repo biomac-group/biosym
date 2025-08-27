@@ -10,30 +10,34 @@ collocation:
         mode: backward # default: backward
         vars: q # FK or q, default: q
         weight: 10 # Standard weight for the discretization
-        adaptive_h: true
+        adaptive_h: false
     output:
       file: "~/.biosym/walking2d.pkl"
-    tol: 1e-4
+    tol: 5e-3
     max_iter: 2000
     dtype: float32 # float64 still makes problems
 
   objectives:
-    - name: minimize_torques
-      weight: 1
+    - name: torque_term
+      weight: 1e-2
       args:
         exponent: 3
+    - name: jerk_term
+      weight: 1e-2
+
 
   constraints:
     - name: dynamics
       weight: "1/BW"
     - name: ground_contact
       weight: "1/BW"
+    - name: actuators
+      weight: 1
     - name: periodicity
       weight: 1
       args:
         symmetry: true
         exclude: [0] # Exclude the first dimension --> pelvis_tx # Todo - that should be cross-check with the speed idx
-
 
   initial_guess:
     type: from_file

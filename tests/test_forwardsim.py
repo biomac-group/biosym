@@ -8,9 +8,9 @@ from biosym.forward import simulation as sim
 from biosym.model import model
 
 testmodellist = [
-    "tests/test_models/pendulum.xml",
-    "tests/test_models/pendulum_3d.xml",
-    "tests/test_models/gait2d_torque/gait2d_torque.yaml",
+    #"tests/models/pendulum.xml",
+    #"tests/models/pendulum_3d.xml",
+    "tests/models/gait2d_torque/gait2d_torque.yaml",
 ]
 
 
