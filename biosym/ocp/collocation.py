@@ -100,8 +100,6 @@ class Collocation:
                 if ig_settings['nnodes'] == 1:
                     x = x[0].replace_vector("states", "h", jnp.ones((1,)))
                     self.initial_guess_states = states.stack_dataclasses([x] * self.settings['nnodes_dur'])
-
-                    SA = asd
                 else:
                     raise NotImplementedError("Initial guess from file with resampling is not implemented yet.")
             else:
