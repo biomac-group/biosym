@@ -238,7 +238,7 @@ class MujocoParser(BaseParser):
 
     def get_actuators(self):
         """
-        Returns the xml entries for the actuators in the model.
+        Returns the xml entries for the actuators in the model
         """
         return self.actuator_elements
 

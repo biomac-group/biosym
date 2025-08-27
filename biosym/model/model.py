@@ -912,6 +912,31 @@ class BiosymModel:
             x0 = self.default_values[i]
             xmin = -3.14  # -np.inf
             xmax = 3.14  # np.inf
+            if name.startswith("q_"):
+                # Read the min / max values from the joint limits
+                j_names = [j['name'] for j in self.dicts["joints"]]
+                curr_joint = self.dicts["joints"][j_names.index(name[2:])]
+                xmin = curr_joint["range"][0] - np.rad2deg(15) # Allow for some margin
+                xmax = curr_joint["range"][1] + np.rad2deg(15)
+            elif name.startswith("qd_"):
+                xmin = -30 # From Bio-Sim-Toolbox
+                xmax = 30
+            elif name.startswith("qdd_"):
+                xmin = -300
+                xmax = 300
+            elif name.startswith("f_"):
+                # External forces, up to 100 kN seems reasonable
+                xmin = -100000
+                xmax = 100000
+            elif name.startswith("m_"):
+                xmin = -10000
+                xmax = 10000
+            elif name.startswith("M_"):
+                # Joint moments, up to 1000 Nm seems reasonable
+                # Might need adjustment later, hardcoding isn't great
+                xmin = -1000
+                xmax = 1000
+
             # @todo: parse limits and find reasonable limits
             df.loc[len(df)] = [type, name, x0, xmin, xmax]
         for i, name in enumerate(self.constants):
