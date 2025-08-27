@@ -1,4 +1,4 @@
 __all__ = [
-    'regularization',
-    'minimize_torques',
+    'jerk_term',
+    'torque_term',
 ]

@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 from biosym.objectives.base_objective import BaseObjective
 import os
+from functools import partial
 
 class Objective(BaseObjective):
     """
@@ -16,6 +17,7 @@ class Objective(BaseObjective):
         """
         self.model = model
         self.settings = settings
+        self.settings['idx_acc'] = jnp.arange(model.accs['idx'], model.accs['idx'] + model.accs['n'])
 
     def _get_info(self):
         """
@@ -25,22 +27,21 @@ class Objective(BaseObjective):
      
         return {
             'name': os.path.splitext(os.path.basename(__file__))[0],
-            'description': 'Base objective class for biosym objectives.',
+            'description': 'Regularization objective.',
             'required_variables': None,
         }
 
     def get_objfun(self):
         """ :return: The objective function. """
-        fun = lambda states_list, globals_dict: objfun(self.model, states_list, globals_dict, self.settings, self.get_info())
+        fun = partial(objfun, settings = self.settings, info=self._get_info())
         return jax.jit(fun)
 
     def get_gradient(self):
         """ :return: The gradient of the objective function. """
-        fun = lambda states_list, globals_dict: objfun(self.model, states_list, globals_dict, self.settings, self.get_info())
-        return jax.jit(jax.grad(fun))
-    
+        fun = partial(objfun, settings = self.settings, info=self._get_info())
+        return jax.jit(jax.grad(fun, argnums = [0,1]))
 
-def objfun(model, states_list, globals_dict, settings, info):
+def objfun(states_list, globals_dict, settings, info):
     """
     Evaluate the objective function.
     
@@ -50,9 +51,8 @@ def objfun(model, states_list, globals_dict, settings, info):
     :param info: Information about the objective function.
     :return: The evaluated value of the objective function.
     """
+    # Goal: reduce jerk, e.g. diff(qd)
+    qd = states_list.states.model[:, settings['idx_acc']]
+    jerk = jnp.diff(qd, axis=0)
+    return jnp.mean(jnp.square(jerk))
 
-    for i in settings['nnodes']:
-        for key, value in states_list['states'].items():
-            pass
-    return 0
-        
