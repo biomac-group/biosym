@@ -199,7 +199,7 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
         speed_multiplier = 1.0
         
         # Add speed text display at the top of the figure
-        speed_text = fig.text(0.5, 0.95, f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed", 
+        speed_text = fig.text(0.5, 0.98, f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed", 
                              ha='center', va='top', fontsize=10, 
                              bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
 
