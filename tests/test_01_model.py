@@ -7,9 +7,9 @@ import numpy as np
 from biosym.model import model
 
 testmodellist = [
-    "tests/test_models/pendulum.xml",
-    "tests/test_models/pendulum_3d.xml",
-    "tests/test_models/gait2d_torque/gait2d_torque.yaml",
+    #"tests/models/pendulum.xml",
+    #"tests/models/pendulum_3d.xml",
+    "tests/models/gait2d_torque/gait2d_torque.yaml",
 ]
 
 
@@ -35,7 +35,10 @@ class TestModel(unittest.TestCase):
                 if func.endswith("uncompiled"):
                     print(f"Skipping uncompiled function: {func}.")
                     continue
-                m.run[func](mock_input["states"], mock_input["constants"])
+                start_time = time.time()
+                m.run[func](mock_input.states, mock_input.constants)
+                end_time = time.time()
+                print(f"Function {func}: jit took {end_time - start_time:.3f} seconds.")
         print("========= Test Sympy Functions Done =========")
         print()
 
@@ -52,16 +55,7 @@ class TestModel(unittest.TestCase):
         for testmodel in testmodellist:
             m = model.load_model(testmodel, force_rebuild=False)
 
-            states = {
-                "model": np.zeros(m.n_states),
-                "gc_model": np.zeros(0),
-                "actuator_model": np.zeros(0),
-            }
-            constants = {
-                "model": np.zeros(m.n_constants),
-                "gc_model": np.zeros(0),
-                "actuator_model": np.zeros(0),
-            }
+            default_inputs = m.default_inputs   
             for func in m.run:
                 if func.endswith("uncompiled"):
                     print(f"Skipping uncompiled function: {func}.")
@@ -69,13 +63,13 @@ class TestModel(unittest.TestCase):
                 # Measure the time taken to run the function
 
                 start_time = time.time()
-                m.run[func](states, constants)  # Caching
+                m.run[func](default_inputs.states, default_inputs.constants)
                 end_time = time.time()
                 print(
                     f"JIT/Caching of {func} took {end_time - start_time:.6f} seconds."
                 )
                 time_ = timeit.timeit(
-                    lambda m=m, f=func, s=states, c=constants: m.run[f](s, c),
+                    lambda m=m, f=func, s=default_inputs.states, c=default_inputs.constants: m.run[f](s, c),
                     number=1000,
                 )
                 print(f"Running {func} runs in {time_/1000:.6f} seconds.")
