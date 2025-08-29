@@ -155,7 +155,7 @@ class Collocation:
         cu = np.zeros(m)
 
 
-        self.nlp = cyipopt.problem(
+        self.nlp = cyipopt.Problem(
             n=n,
             m=m,
             problem_obj=self.problem,
