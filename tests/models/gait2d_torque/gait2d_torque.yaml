@@ -7,6 +7,9 @@ model:
     ground_contact:
       replace_existing: true # overwrite any existing mujoco ground contact parameters
       file: "gait2d_contact.xml" # Load from definition file
+    actuators:
+      replace_existing: true # overwrite any existing mujoco muscle parameters --> in this case, there aren't any muscles defined
+      file: "gait2d_actuators.xml" # Load from definition file
 
 
 # Conf setup (using omegaconf probably):

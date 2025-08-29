@@ -1,30 +1,21 @@
-[tool.poetry]
+[project]
 name = "biosym"
 version = "0.1.0"
-description = ""
-authors = ["goudi <markus.gambietz@fau.de>"]
-license = "MIT"
+description = "Add your description here"
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "3.9.15"
-
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poe.tasks]
-_format = "ruff format ."
-_auto_fix = "ruff check . --fix-only --show-fixes --exit-zero"
-_auto_fix_unsafe = "ruff check . --fix-only --show-fixes --exit-zero --unsafe-fixes"
-format = ["_auto_fix", "_format"]
-format_unsafe = ["_auto_fix_unsafe", "_format"]
-lint = { cmd = "ruff check biosym --fix", help = "Lint all files with ruff." }
-_lint_ci = "ruff check biosym --output-format=github"
-_check_format = "ruff format . --check"
-ci_check = { sequence = ["_check_format", "_lint_ci"], help = "Check all potential format and linting issues." }
-test = { cmd = "pytest --cov=biosym --cov-report=term-missing --cov-report=xml", help = "Run Pytest with coverage." }
-docs = { "script" = "_tasks:task_docs()",  help = "Build the html docs using Sphinx." }
-docs_clean = { "script" = "_tasks:task_docs(clean=True)",  help = "Remove all old build files and build a clean version of the docs." }
-docs_preview = { cmd = "python -m http.server --directory docs/_build/html", help = "Preview the built html docs." }
-version = { script = "_tasks:task_update_version()" }
+requires-python = ">=3.9"
+dependencies = [
+    "absl-py>=2.3.0",
+    "black[jupyter]>=25.1.0",
+    "cloudpickle>=3.1.1",
+    "cyipopt>=1.5.0",
+    "flatbuffers>=25.2.10",
+    "flax>=0.8.5",
+    "jax>=0.4.30",
+    "matplotlib>=3.9.4",
+    "numpy>=2.0.2",
+    "pandas>=2.3.0",
+    "pyyaml>=6.0.2",
+    "ruff>=0.12.1",
+    "sympy>=1.14.0",
+]
