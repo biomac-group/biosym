@@ -2,16 +2,15 @@ import jax
 import jax.numpy as jnp
 import os
 from flax.struct import dataclass
-from dataclasses import replace
+from dataclasses import replace, field
 from typing import Literal
 
 @dataclass
 class States:
-    model: jnp.ndarray
-    gc_model: jnp.ndarray = jnp.zeros((0,))  # Default to empty array if not provided
-    # Assuming actuator_model and
-    actuator_model: jnp.ndarray = jnp.zeros((0,))  # Default to empty array if not provided
-    h: jnp.ndarray = jnp.zeros((0,))  # Default to empty array if not provided
+    model: field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
+    gc_model: field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
+    actuator_model: field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
+    h: field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
 
     def __str__(self):
         return f"States(model={self.model.shape}, gc_model={self.gc_model.shape}, actuator_model={self.actuator_model.shape}, h={self.h.shape if self.h is not None else 'None'})"
@@ -44,9 +43,9 @@ class States:
 
 @dataclass
 class Constants:
-    model: jnp.ndarray
-    gc_model: jnp.ndarray = jnp.zeros((0,))  # Default to empty array if not provided
-    actuator_model: jnp.ndarray = jnp.zeros((0,))  # Default to empty array if not provided
+    model: field(default_factory=lambda: jnp.zeros((0,))) 
+    gc_model: field(default_factory=lambda: jnp.zeros((0,)))
+    actuator_model: field(default_factory=lambda: jnp.zeros((0,)))
 
     def __str__(self):
         return f"Constants(model={self.model.shape}, gc_model={self.gc_model.shape}, actuator_model={self.actuator_model.shape})"
@@ -59,8 +58,8 @@ class Constants:
 
 @dataclass
 class Globals:
-    dur: jnp.ndarray = jnp.zeros((1,))  # Default to empty array if not provided
-    speed: jnp.ndarray = jnp.zeros((1,))  # Default to empty array if not provided
+    dur: jnp.ndarray = field(default_factory=lambda: jnp.zeros((1,)))
+    speed: jnp.ndarray = field(default_factory=lambda: jnp.zeros((1,)))
 
     def size(self):
         """

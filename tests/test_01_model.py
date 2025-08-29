@@ -7,11 +7,10 @@ import numpy as np
 from biosym.model import model
 
 testmodellist = [
-    #"tests/models/pendulum.xml",
-    #"tests/models/pendulum_3d.xml",
+    "tests/models/pendulum.xml",
+    "tests/models/pendulum_3d.xml",
     "tests/models/gait2d_torque/gait2d_torque.yaml",
 ]
-
 
 class TestModel(unittest.TestCase):
     """Test building and executing model functions."""

@@ -7,8 +7,7 @@ _model_cache = os.path.expanduser("~/.biosym/")
 os.environ["JAX_COMPILATION_CACHE_DIR"] = (
     _cachedir  # This needs to happen before importing jax
 )
-# os.environ["jax_persistent_cache_min_compile_time_secs".upper()] = "10"
-
+os.environ["jax_persistent_cache_min_compile_time_secs".upper()] = "0.01"
 os.makedirs((_cachedir), exist_ok=True)
 
 import hashlib
