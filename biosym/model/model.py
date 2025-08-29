@@ -17,6 +17,7 @@ import cloudpickle
 import jax
 import jax.numpy as jnp
 import jax.export
+from jax import tree_util
 import numpy as np
 import pandas as pd
 import yaml
@@ -465,7 +466,7 @@ class BiosymModel:
                             )
                         else:
                             new_frame = ReferenceFrame(
-                                f"{body_name}_{joint['name']}frame_{idx}"
+                                f"{body_name}_{joint['name']}_frame_{idx}"
                             )
                             new_frame.orient(
                                 intermediate_frames[-1], "Axis", (symbol, joint_angle)
@@ -792,7 +793,7 @@ class BiosymModel:
                     ]
                 )
             acc_vector = Matrix(acc_vector)
-            acc_vector = self._replace_dyn(acc_vector)
+            acc_vector = self._replace_dyn(acc_vector, replace_d_q=True) # acc causes dq/dt
             acc_vector = lambdify(
                 self._v, acc_vector, modules="jax", cse=True, docstring_limit=2
             )
@@ -807,24 +808,19 @@ class BiosymModel:
         We use a hacky way: by serializing the function and then deserializing it again, the caching mechanism of jax doesn't miss parts of the function.
         This actually doesn't even seem to be slower than the normal jax.jit
         """
-
-        def _jit_function_template(function_, states, constants, input_names=["model"]):
-            """
-            The to-be registered function should take states and constants dicts as inputs.
-            We use this wrapper to unpack the vectors for each function.
-            """
-            l_inputs = []
-            for key in input_names:
-                l_inputs += [*getattr(states, key)]
-                l_inputs += [*getattr(constants, key)]
-            return function_(*l_inputs)
-
-        states0, constants0 = (
-            inputs.states,
-            inputs.constants,
-        )
-        jit_function = partial(_jit_function_template, function, input_names=['model'])
         
+        def _jit_function_template(function_, input_names=("model",)):
+            def wrapped(states, constants):
+                selected = tuple(getattr(states, key) for key in input_names) + \
+                   tuple(getattr(constants, key) for key in input_names)
+                flat_inputs = jnp.concatenate(tree_util.tree_leaves(selected))
+                return function_(*flat_inputs)
+            return jax.jit(wrapped)
+        
+        jit_function = _jit_function_template(function)
+        # Cause jit compilation
+        jit_function(self.default_inputs.states, self.default_inputs.constants)
+
         if skip_export:
             if jacobian:
                 jit_function = jax.jit(jax.jacobian(jit_function))
@@ -833,34 +829,17 @@ class BiosymModel:
             self.run[name] = jit_function
             return
         
-        states_input_dummy = {
-            states.States(model=jax.ShapeDtypeStruct((len(states0.model),), np.float32)),
-        }
-        constants_input_dummy = {
-            states.States(
-                model=jax.ShapeDtypeStruct((len(constants0.model),), np.float32)
-            ),
-        }
-        # Export+Import of the same function reconfigures the "lambda" function somehow -> faster re-compilation from cache
-        if not jacobian:
-            exported = jax.export.export(jax.jit(jit_function))(
-                states_input_dummy, constants_input_dummy
-            )
-        else:
-            exported = jax.export.export(jax.jit(jax.jacobian(jit_function)))(
-                states_input_dummy, constants_input_dummy
-            )
-        re_ = jax.export.deserialize(exported.serialize(vjp_order=1))
-        # Trigger the jit compilation
-        re_.call(states0, constants0)
-        # Add the function to the run dictionary
-        self.run[name] = re_.call
-
-    def _replace_dyn(self, function):
+    def _replace_dyn(self, function, replace_d_q=False):
         """
         Replace the dynamicsymbols in the function with the corresponding v_ states.
         This is needed to get the correct output from the function.
         """
+        # Get rid of speeds first if needed
+        if replace_d_q:
+            in_ = [self._dynamic[i].diff() for i in _slice(self.coordinates)]
+            out_ = [self._v[i] for i in _slice(self.speeds)]
+            function = function.xreplace(dict(zip(in_, out_)))
+
         # First get rid of the accelerations
         in_ = [self._dynamic[i].diff() for i in _slice(self.speeds)]
         out_ = [self._v[i] for i in _slice(self.accs)]
@@ -870,7 +849,11 @@ class BiosymModel:
             self._dynamic[i] for i in range(self.coordinates["n"] + self.speeds["n"])
         ]
         out_ = [self._v[i] for i in range(self.coordinates["n"] + self.speeds["n"])]
-        return function.xreplace(dict(zip(in_, out_)))
+        function = function.xreplace(dict(zip(in_, out_)))
+        
+        return function
+
+
 
     def _register_contact_model(self, contact_model, skip_export=True):
         """
