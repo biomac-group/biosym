@@ -199,7 +199,7 @@ def test_objective_function_addition(standing_problem):
     assert True  # Placeholder assertion
 
 
-@pytest.mark.skip(reason="For debugging purposes")
+@pytest.mark.skip(reason="For debugging purposes only")
 def test_derivative_accuracy(walking_problem):
     """Test derivative accuracy using finite differences (marked as slow)."""
     x = states_dict_to_x(walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
