@@ -90,7 +90,7 @@ def confun(modelfn, states_list, globals_dict, settings, info):
     :return: The evaluated value of the constraint function.
     """
 
-    data_out = jnp.empty((info['ncons'],), dtype=jnp.float32)
+    data_out = jnp.empty((info['ncons'],), dtype=float)
     nnodes = settings.get('nnodes')
     ncons_sympy = info['ncons_pernode']
     def body_fun(n, carry):
@@ -118,9 +118,9 @@ def jacobian(modelfn, states_list, globals_dict, settings, info):
     nvpn = settings.get('nvpn')
     nnodes = settings.get('nnodes')
     ncons_sympy = info['ncons_pernode']
-    rows_out = jnp.empty((nnz,), dtype=settings['int_dtype'])
-    cols_out = jnp.empty((nnz,), dtype=settings['int_dtype'])
-    data_out = jnp.empty((nnz,), dtype=settings['dtype'])
+    rows_out = jnp.empty((nnz,), dtype=int)
+    cols_out = jnp.empty((nnz,), dtype=int)
+    data_out = jnp.empty((nnz,), dtype=float)
 
     block_size = ncons_sympy * nvpn    
     def body_fun(n, carry):
