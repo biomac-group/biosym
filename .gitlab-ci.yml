@@ -9,12 +9,12 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
 
 .python_base: &python_base
-  tags:
-    - docker
+  # tags:
+  #   - docker
   image: python:3.13
   before_script:
     - git config --global credential.helper store
-    - echo "https://gitlab-ci-token:${CI_JOB_TOKEN}@mad-srv.informatik.uni-erlangen.de" > ~/.git-credentials
+    - echo "https://gitlab-ci-token:${CI_JOB_TOKEN}@gitos.rrze.fau.de" > ~/.git-credentials
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - export PATH="$HOME/.cargo/bin:$PATH"
     - uv sync
@@ -50,8 +50,8 @@ pages:
   stage: pages
   dependencies:
     - docs
-  tags:
-    - docker
+  # tags:
+  #   - docker
   script:
   - mkdir .public
   - cp -r html_docs/* .public
