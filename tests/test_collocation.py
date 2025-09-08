@@ -1,5 +1,11 @@
 import matplotlib
-VIS = True
+import argparse
+
+parser = argparse.ArgumentParser(description="Test Collocation")
+parser.add_argument("--vis", action="store_true", help="Enable visualization", default=False)
+args = parser.parse_args()
+VIS = args.vis
+
 if not VIS:
     matplotlib.use('Agg')  # Set non-interactive backend before importing pyplot
 
@@ -215,6 +221,10 @@ def test_derivative_accuracy(walking_problem):
 
 
 if __name__ == "__main__":
-    standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
-    test_standing_problem_solve(standing_prob)
-    #pytest.main([__file__, "-v"])
+    if VIS:
+        standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
+        test_standing_problem_solve(standing_prob)
+        walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
+        test_walking_problem_solve(walking_problem)
+    else:
+        pytest.main([__file__, "-v"])
