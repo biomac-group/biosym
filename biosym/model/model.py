@@ -898,8 +898,8 @@ class BiosymModel:
                 # Read the min / max values from the joint limits
                 j_names = [j['name'] for j in self.dicts["joints"]]
                 curr_joint = self.dicts["joints"][j_names.index(name[2:])]
-                xmin = curr_joint["range"][0] - np.rad2deg(15) # Allow for some margin
-                xmax = curr_joint["range"][1] + np.rad2deg(15)
+                xmin = curr_joint["range"][0] - np.deg2rad(15) # Allow for some margin
+                xmax = curr_joint["range"][1] + np.deg2rad(15)
             elif name.startswith("qd_"):
                 xmin = -30 # From Bio-Sim-Toolbox
                 xmax = 30
