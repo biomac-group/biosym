@@ -9,8 +9,8 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
 
 .python_base: &python_base
-  # tags:
-  #   - docker
+  tags:
+    - biosym_runner
   image: python:3.13
   before_script:
     - git config --global credential.helper store
@@ -50,8 +50,8 @@ pages:
   stage: pages
   dependencies:
     - docs
-  # tags:
-  #   - docker
+  tags:
+    - biosym_runner
   script:
   - mkdir .public
   - cp -r html_docs/* .public
