@@ -3,7 +3,6 @@ import unittest
 
 import matplotlib
 # Set the backend before importing any other matplotlib modules
-matplotlib.use("webagg")  # Use TkAgg backend for testing purposes
 import numpy as np
 
 from biosym.forward import simulation as sim
