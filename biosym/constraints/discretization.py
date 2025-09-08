@@ -120,16 +120,16 @@ def jacobian_at_node(states_list, next_states_list, globals_dict, settings, info
     d3 = -jnp.ones(info['nvar']*2)       # df/dqd_states
     d4 = -(q_i_next - q_i) / (h**2) # df/dh
 
-    r = jnp.arange(info['nvar']*2, dtype=settings['int_dtype'])
+    r = jnp.arange(info['nvar']*2, dtype=int)
   
 
-    c1 = jnp.arange(info['nvar']*2, dtype=settings['int_dtype'])
-    c2 = jnp.arange(info['nvar']*2, dtype=settings['int_dtype']) + states_list.states.size()
-    c3 = jnp.arange(info['nvar']*2, dtype=settings['int_dtype']) + info['nvar'] + (states_list.states.size() if info['mode'] == 'backward' else 0)
+    c1 = jnp.arange(info['nvar']*2, dtype=int)
+    c2 = jnp.arange(info['nvar']*2, dtype=int) + states_list.states.size()
+    c3 = jnp.arange(info['nvar']*2, dtype=int) + info['nvar'] + (states_list.states.size() if info['mode'] == 'backward' else 0)
     if info['adaptive_h']:
-        c4 = jnp.ones(info['nvar']*2, dtype=settings['int_dtype']) * states_list.states.size() - 1 # adaptive step size, h is always the last variable
+        c4 = jnp.ones(info['nvar']*2, dtype=int) * states_list.states.size() - 1 # adaptive step size, h is always the last variable
     else:
-        c4 = jnp.ones(info['nvar']*2, dtype=settings['int_dtype'])
+        c4 = jnp.ones(info['nvar']*2, dtype=int)
 
     return jnp.concatenate((r, r, r, r)), jnp.concatenate((c1, c2, c3, c4)), jnp.concatenate((d1, d2, d3, d4))
 
@@ -148,7 +148,7 @@ def confun_q(states_list, globals_dict, settings, info):
     :return: The evaluated value of the constraint function.
     """
 
-    data_out = jnp.empty((info['ncons'],), dtype=jnp.float32)
+    data_out = jnp.empty((info['ncons'],), dtype=float)
     nnodes = settings.get('nnodes_dur')
     if info['adaptive_h']:
         h = states_list.states.h[:nnodes-1]  # Adaptive step size for each node, h is always the step to the next node
@@ -181,7 +181,7 @@ def jacobian_q(states_list, globals_dict, settings, info):
         h = jnp.ones(nnodes-1) * globals_dict.dur / (nnodes - 1)  # Constant step size
     nvar = info['nvar']
 
-    rows_out, cols_out, data_out = jnp.empty((info['nnz'],), dtype=settings['int_dtype']), jnp.empty((info['nnz'],), dtype=settings['int_dtype']), jnp.empty((info['nnz'],), dtype=settings['dtype'])
+    rows_out, cols_out, data_out = jnp.empty((info['nnz'],), dtype=int), jnp.empty((info['nnz'],), dtype=int), jnp.empty((info['nnz'],), dtype=float)
     def body_fun(n, carry):
         rows_out, cols_out, data_out = carry
         state_ = states_list[n]

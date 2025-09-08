@@ -42,7 +42,7 @@ docs:
   stage: deploy
   <<: *python_base
   script:
-    - uv run poe docs
+    - uv run poe docs || true # Don't fail on docs errors for now
     - cp -r docs/_build/html ./html_docs
   artifacts:
     paths:

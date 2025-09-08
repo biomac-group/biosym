@@ -96,7 +96,7 @@ def confun(model, states_list, globals_dict, settings, info):
     Todo: there is some non-jax logic in here, which could be replaced with a static function
     """
 
-    data_out = jnp.empty((info['ncons'],), dtype=jnp.float32)
+    data_out = jnp.empty((info['ncons'],), dtype=float)
     nnodes = settings.get('nnodes')
     ncons = info['ncons_pernode']
     def body_fun(n, carry):
@@ -132,9 +132,9 @@ def jacobian(model, states_list, globals_dict, settings, info):
     nact = settings.get('nact')
     nnodes = settings.get('nnodes')
     ncons = info['ncons_pernode']
-    rows_out = jnp.empty((nnz,), dtype=settings['int_dtype'])
-    cols_out = jnp.empty((nnz,), dtype=settings['int_dtype'])
-    data_out = jnp.empty((nnz,), dtype=settings['dtype'])
+    rows_out = jnp.empty((nnz,), dtype=int)
+    cols_out = jnp.empty((nnz,), dtype=int)
+    data_out = jnp.empty((nnz,), dtype=float)
 
     block_size = ncons * nvpn
     def body_fun(n, carry):
