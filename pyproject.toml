@@ -19,3 +19,26 @@ dependencies = [
     "ruff>=0.12.1",
     "sympy>=1.14.0",
 ]
+
+[tool.poe.tasks]
+test = "python -m pytest tests/ -v"
+lint = "ruff check ."
+format_check = "ruff format --check ."
+docs = "python _tasks.py docs"
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+# Set matplotlib backend for testing
+addopts = "--tb=short"
+# You can also set env vars here if needed
+env = [
+    "MPLBACKEND=Agg",
+]
+
+[dependency-groups]
+dev = [
+    "poethepoet>=0.37.0",
+    "pytest>=8.4.2",
+]
