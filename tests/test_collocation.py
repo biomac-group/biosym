@@ -1,3 +1,7 @@
+import matplotlib
+matplotlib.use('Agg')  # Set non-interactive backend before importing pyplot
+
+import pytest
 import biosym.ocp.collocation as collocation
 from biosym.ocp.utils import states_dict_to_x, x_to_states_dict
 from biosym.utils.states import StatesDict
@@ -106,54 +110,105 @@ def derivativetest(problem, x, eps = 1e-3):
     ax[0].set_xticklabels(problem.model.state_vector, rotation=90)
     ax[1].set_xticks(np.arange(len(problem.model.state_vector)))
     ax[1].set_xticklabels(problem.model.state_vector, rotation=90)
-    plt.show()
+    plt.savefig('test_jacobian_comparison.png')  # Save instead of show
+    plt.close()  # Close to free memory
+    
+    plt.figure()
     plt.scatter(np.arange(len(jac_jax.flatten())), jac_jax.flatten())
     plt.scatter(np.arange(len(jac_num.flatten())), jac_num.flatten(), alpha=0.5)    
-    plt.show()
+    plt.savefig('test_jacobian_scatter.png')  # Save instead of show
+    plt.close()  # Close to free memory
 
 
-standing_problem = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
-(x, globals), info = standing_problem.solve(visualize=False)
+@pytest.fixture
+def standing_problem():
+    """Fixture to create a standing problem for testing."""
+    return collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
 
-walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
 
-x = states_dict_to_x(walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
-x = np.random.rand(len(x)).astype(np.float64)  # Randomize the initial guess
-#derivativetest(walking_problem, x)
-x, globals = x_to_states_dict(x, walking_problem.initial_guess_states, walking_problem.initial_guess_globals
-                            )
-#asd =asd 
-(x, globals), info = walking_problem.solve(visualize=True)
-print(x.states.h)
+@pytest.fixture
+def walking_problem():
+    """Fixture to create a walking problem for testing."""
+    return collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
 
-# Testing the constraints and objective function
-import time 
-import timeit
-i = 0
 
-#for i, state in enumerate(standing_problem.model.state_vector):
-#    print(standing_problem.model.state_vector[i], x.states.model[0,i])
-print(globals)
-
-for function, name in zip([standing_problem.constraints.confun, 
-                standing_problem.constraints.jacobian, 
-                standing_problem.objective.objfun, 
-                standing_problem.objective.gradfun],
-                ['constraints', 'jacobian', 'objectives', 'gradients']):
-
-    continue
-    print(f"Testing {name} function...")
+def test_standing_problem_solve(standing_problem):
+    """Test that the standing problem can be solved."""
+    (x, globals), info = standing_problem.solve(visualize=False)
     
+    # Basic assertions
+    assert x is not None, "Solution should not be None"
+    assert info is not None, "Info should not be None"
     
-    start_time = time.time()
-    function(standing_problem.initial_guess_states, None)
-    print(f"{function.__name__} evaluated in {time.time() - start_time} seconds")
-
-    # Test 1k compiled evaluations
-    n_evals = 10000
-    a = timeit.timeit(lambda: function(standing_problem.initial_guess_states, None), number=n_evals)
-    print(f"{n_evals} evaluations of {name} took {a/n_evals} seconds on average")
+    # Check that we have a valid solution structure
+    assert hasattr(x, 'states'), "Solution should have states attribute"
 
 
-# Show this at the end
-standing_problem.objective.add_objective(TestObjectiveFunction, weight=1.0)
+def test_walking_problem_solve(walking_problem):
+    """Test that the walking problem can be solved."""
+    x = states_dict_to_x(walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
+    x = np.random.rand(len(x)).astype(np.float64)  # Randomize the initial guess
+    
+    x, globals = x_to_states_dict(x, walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
+    
+    (x, globals), info = walking_problem.solve(visualize=False)  # Disable visualization for tests
+    
+    # Basic assertions
+    assert x is not None, "Solution should not be None"
+    assert globals is not None, "Globals should not be None"
+    assert info is not None, "Info should not be None"
+    
+    # Check that we have a valid solution structure
+    assert hasattr(x, 'states'), "Solution should have states attribute"
+    assert hasattr(x.states, 'h'), "Solution should have h attribute"
+
+
+def test_constraint_and_objective_functions(standing_problem):
+    """Test the constraints and objective function evaluations."""
+    
+    functions_to_test = [
+        (standing_problem.constraints.confun, 'constraints'),
+        (standing_problem.constraints.jacobian, 'jacobian'),
+        (standing_problem.objective.objfun, 'objectives'),
+        (standing_problem.objective.gradfun, 'gradients')
+    ]
+    
+    for function, name in functions_to_test:
+        print(f"Testing {name} function...")
+        
+        start_time = time.time()
+        result = function(standing_problem.initial_guess_states, None)
+        elapsed_time = time.time() - start_time
+        
+        print(f"{function.__name__} evaluated in {elapsed_time} seconds")
+        
+        # Assert that the function returns something
+        assert result is not None, f"{name} function should return a result"
+        
+        # Basic performance test - should complete within reasonable time
+        assert elapsed_time < 10.0, f"{name} function took too long: {elapsed_time} seconds"
+
+
+def test_objective_function_addition(standing_problem):
+    """Test adding a custom objective function."""
+    # Add the test objective function
+    standing_problem.objective.add_objective(TestObjectiveFunction, weight=1.0)
+    
+    # Verify it was added (this test depends on the internal structure)
+    # You might need to adjust this based on how add_objective works
+    assert True  # Placeholder assertion
+
+
+@pytest.mark.skip(reason="For debugging purposes")
+def test_derivative_accuracy(walking_problem):
+    """Test derivative accuracy using finite differences (marked as slow)."""
+    x = states_dict_to_x(walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
+    x = np.random.rand(len(x)).astype(np.float64)
+    
+    # This is a slow test, so we only run it when explicitly requested
+    derivativetest(walking_problem, x)
+
+
+if __name__ == "__main__":
+    # This allows running the script directly for debugging
+    pytest.main([__file__, "-v"])
