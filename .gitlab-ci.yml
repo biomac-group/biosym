@@ -10,7 +10,7 @@ workflow:
 
 .python_base: &python_base
   tags:
-    - docker
+    - biosym_runner
   image: python:3.13
   before_script:
     - git config --global credential.helper store
@@ -51,7 +51,7 @@ pages:
   dependencies:
     - docs
   tags:
-    - docker
+    - biosym_runner
   script:
   - mkdir .public
   - cp -r html_docs/* .public
