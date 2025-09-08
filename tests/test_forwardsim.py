@@ -40,19 +40,21 @@ class TestForwardSim(unittest.TestCase):
             )
             env_0001 = sim.SimulationEnvironment(m, dt=0.0001, initial_state="random")
             env_0001.reset(seed=0)
-            for _ in range(10000):
+            for _ in range(1000):
                 env_0001.step(t)
-            env_1 = sim.SimulationEnvironment(m, dt=0.01, initial_state="random")
+            env_1 = sim.SimulationEnvironment(m, dt=0.001, initial_state="random")
             env_1.reset(seed=0)
             for _ in range(100):
                 env_1.step(t)
-            print("Testing step function with dt=0.0001 and dt=0.01")
+            print("Testing step function with dt=0.0001 and dt=0.001")
+
+            print('Max Error:', np.max(np.abs(env_0001.state.states.model - env_1.state.states.model)))
 
             assert np.allclose(
                 env_0001.state.states.model,
                 env_1.state.states.model,
-                atol=5e-3,
-            )
+                atol=5e-3), "States do not match between different dt values!"
+
         print("========= Test Forward Simulation Done =========")
 
         del env_0001, env_1

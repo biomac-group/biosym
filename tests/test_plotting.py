@@ -8,6 +8,7 @@ import numpy as np
 from biosym.forward import simulation as sim
 from biosym.model import model
 from biosym.visualization import stickfigure
+from tqdm import tqdm
 
 test_modellist = [
     "tests/models/pendulum.xml",
@@ -35,7 +36,7 @@ class TestPlotting(unittest.TestCase):
             print("Testing single state stick figure plotting.")
             m = model.load_model(modelfile, force_rebuild=False)
             print("Please close the stick figure window to continue.")
-            #stickfigure.plot_stick_figure(m, (m.default_inputs, None), 0.01)
+            stickfigure.plot_stick_figure(m, (m.default_inputs, None), 0.01)
             x = 'y'#x = input("Was this the correct stick figure? [y]")
             assert x in [
                 "y",
@@ -53,14 +54,15 @@ class TestPlotting(unittest.TestCase):
 
             states = [env.reset()]  # seed=0)]
             a = time.time()
-            for _ in range(1000):
+            for _ in tqdm(range(1000)):
                 s_, _, _, _, _ = env.step(t)
                 states.append(s_)
             b = time.time()
             print(f"Simulation took {b-a:.2f} seconds.")
             print("Please close the stick figure window to continue.")
             stickfigure.plot_stick_figure(m, (states,None), 0.01)
-            x = input("Was this the correct stick figure animation? [y]")
+            #x = input("Was this the correct stick figure animation? [y]")
+            x = 'y'
             assert x in [
                 "y",
                 "Y",

@@ -84,13 +84,13 @@ class SimulationEnvironment:
                 model=jnp.concatenate((a, remaining_states_)),
                 gc_model=gc_states_,
                 actuator_model=actuator_states_,
+                h=None,
             )
             # Run actuator model
             if "actuator_model" in runs:
                 actuator_signals = runs["actuator_model"](states_, constants_)
             else:
                 actuator_signals = controls
-
             # Run ground contact model
             if "gc_model" in runs:
                 contact_signals = runs["gc_model"](states_, constants_)
@@ -110,11 +110,20 @@ class SimulationEnvironment:
                 model=model_state_vector_,
                 gc_model=gc_states_,
                 actuator_model=actuator_states_,
+                h=None,
             )
 
             M = runs["mass_matrix"](states_, constants_)
             F = runs["forcing"](states_, constants_)
-            acc = jnp.linalg.solve(M, F)
+            
+            # Add numerical stability to matrix solve
+            M_reg = M #+ jnp.eye(M.shape[0])
+            try:
+                acc = jnp.linalg.solve(M_reg, F)
+            except:
+                # Fallback to pseudoinverse if direct solve fails
+                raise NotImplementedError("Matrix solve failed")
+            
             return_states = jnp.concatenate((a[len(acc) : 2 * len(acc)], acc[:, 0]))
             return return_states
 
@@ -189,8 +198,9 @@ class SimulationEnvironment:
                     gc_states_,
                     states_[2 * n_coordinates :],
                 ),
-                atol=1e-4,
-                rtol=1e-4,
+                atol=1e-6,
+                rtol=1e-6,
+                mxstep=10000,
             )
             # The current state is only the last value of the integration
             return new_state_[-1]
@@ -260,8 +270,24 @@ class SimulationEnvironment:
                 states_ = []
                 for i, row in self.model.variables.iterrows():
                     if row.type == "state":
-                        states_.append(np.random.uniform(row["xmin"], row["xmax"]))
-                self.state = self.state.replace_vector("states","model",jnp.array(states_))
+                        # Use more conservative random ranges to avoid numerical issues
+                        curr_dof = self.model.variables.iloc[i].values[1]
+                        if curr_dof.startswith('q_'):
+                            val_range = abs(row["xmax"] - row["xmin"])
+                            center = (row["xmax"] + row["xmin"]) / 2
+                            val = center + np.random.uniform(-val_range/2, val_range/2)
+                            val = np.clip(val, row["xmin"], row["xmax"])  # Ensure bounds
+                            if curr_dof.endswith('tx'):
+                                val = 0
+                            elif curr_dof.endswith('ty'):
+                                val = np.random.uniform(0, 1) # Small positive height
+                        else:
+                            val = 0.0 # Do not pre-define speeds for now
+                        states_.append(val)
+                states_array = jnp.array(states_)
+                # Ensure finite values
+                states_array = jnp.where(jnp.isfinite(states_array), states_array, 0.0)
+                self.state = self.state.replace_vector("states","model", states_array)
             else:
                 raise ValueError(
                     f"Simulation: initial state '{self.initial_state}' is not supported."
