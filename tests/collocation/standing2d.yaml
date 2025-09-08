@@ -11,13 +11,13 @@ collocation:
       weight: 400
     output:
       file: "~/.biosym/standing2d.pkl"
-    tol: 3e-5
+    tol: 5e-4
 
   objectives:
     - name: torque_term
       weight: 1
       args:
-        exponent: 3
+        exponent: 11 # Somehow this works best
 
   constraints:
     - name: dynamics
