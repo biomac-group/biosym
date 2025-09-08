@@ -1,5 +1,9 @@
 # biosym
 
+## Installation:
+1. https://cyipopt.readthedocs.io/en/stable/install.html
+2. uv sync
+
 ## Roadmap towards simulation toolbox
 This is my personal opinion, everything can be discussed or changed. Please use a good template before starting. 
 
