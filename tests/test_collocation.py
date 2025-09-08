@@ -1,5 +1,7 @@
 import matplotlib
-matplotlib.use('Agg')  # Set non-interactive backend before importing pyplot
+VIS = True
+if not VIS:
+    matplotlib.use('Agg')  # Set non-interactive backend before importing pyplot
 
 import pytest
 import biosym.ocp.collocation as collocation
@@ -134,7 +136,7 @@ def walking_problem():
 
 def test_standing_problem_solve(standing_problem):
     """Test that the standing problem can be solved."""
-    (x, globals), info = standing_problem.solve(visualize=False)
+    (x, globals), info = standing_problem.solve(visualize=VIS)
     
     # Basic assertions
     assert x is not None, "Solution should not be None"
@@ -142,7 +144,8 @@ def test_standing_problem_solve(standing_problem):
     
     # Check that we have a valid solution structure
     assert hasattr(x, 'states'), "Solution should have states attribute"
-
+    print(info['status'])
+    assert info['status'] in [0,1], "Solver did not converge"
 
 def test_walking_problem_solve(walking_problem):
     """Test that the walking problem can be solved."""
@@ -151,7 +154,7 @@ def test_walking_problem_solve(walking_problem):
     
     x, globals = x_to_states_dict(x, walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
     
-    (x, globals), info = walking_problem.solve(visualize=False)  # Disable visualization for tests
+    (x, globals), info = walking_problem.solve(visualize=VIS)  # Disable visualization for tests
     
     # Basic assertions
     assert x is not None, "Solution should not be None"
@@ -161,6 +164,8 @@ def test_walking_problem_solve(walking_problem):
     # Check that we have a valid solution structure
     assert hasattr(x, 'states'), "Solution should have states attribute"
     assert hasattr(x.states, 'h'), "Solution should have h attribute"
+    assert info['status'] in [0,1], "Solver did not converge"
+
 
 
 def test_constraint_and_objective_functions(standing_problem):
@@ -210,5 +215,6 @@ def test_derivative_accuracy(walking_problem):
 
 
 if __name__ == "__main__":
-    # This allows running the script directly for debugging
-    pytest.main([__file__, "-v"])
+    standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
+    test_standing_problem_solve(standing_prob)
+    #pytest.main([__file__, "-v"])

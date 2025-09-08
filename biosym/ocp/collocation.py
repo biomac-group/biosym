@@ -183,6 +183,7 @@ class Collocation:
             stickfigure.plot_stick_figure(self.model, self.x, **kwargs)
         if "output" in self.settings["settings"]:
             output = (self.x, info, self.settings)
+            os.makedirs(os.path.dirname(self.settings["settings"]['output']['file']), exist_ok=True)
             with open(self.settings["settings"]['output']['file'], 'wb') as f:
                 cloudpickle.dump(output, f)
         # Todo: Cleanup the result a bit nicer
@@ -376,5 +377,8 @@ def process_collocation_settings(model, settings):
             settings['bounds']['max'] = settings['bounds']['max'].replace_vector("states", "h", jnp.ones((settings['nnodes_dur'],0)))
         else:
             settings['bounds']['min'] = settings['bounds']['min'].replace_vector("states", "h", jnp.zeros(settings['nnodes_dur']))
-    # set some bounds by default 
+
+    if settings['bounds']['start_at_origin']:
+        settings['bounds']['min'] = settings['bounds']['min'].replace_vector("states", "model", settings['bounds']['min'].states.model.at[0,0].set(0))
+        settings['bounds']['max'] = settings['bounds']['max'].replace_vector("states", "model", settings['bounds']['max'].states.model.at[0,0].set(0))
     return settings
