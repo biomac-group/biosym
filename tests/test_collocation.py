@@ -1,10 +1,18 @@
 import matplotlib
 import argparse
+import sys
 
+# Parse arguments first, before pytest can interfere
 parser = argparse.ArgumentParser(description="Test Collocation")
 parser.add_argument("--vis", action="store_true", help="Enable visualization", default=False)
-args = parser.parse_args()
-VIS = args.vis
+
+# Only parse args if we're running standalone (not through pytest)
+if __name__ == "__main__":
+    args = parser.parse_args()
+    VIS = args.vis
+else:
+    # Default values when running through pytest
+    VIS = False
 
 if not VIS:
     matplotlib.use('Agg')  # Set non-interactive backend before importing pyplot
@@ -221,10 +229,41 @@ def test_derivative_accuracy(walking_problem):
 
 
 if __name__ == "__main__":
-    if VIS:
-        standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
-        test_standing_problem_solve(standing_prob)
-        walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
-        test_walking_problem_solve(walking_problem)
-    else:
-        pytest.main([__file__, "-v"])
+    print("=== Collocation Test Script ===")
+    print(f"Visualization mode: {'ON' if VIS else 'OFF'}")
+    
+    try:
+        if VIS:
+            print("Running with visualization enabled...")
+            standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
+            test_standing_problem_solve(standing_prob)
+            
+            walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
+            test_walking_problem_solve(walking_problem)
+            
+        else:
+            print("Running in test mode (no visualization)...")
+            # Create problems for testing
+            standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
+            walking_prob = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
+            
+            # Run individual tests
+            print("Testing standing problem...")
+            test_standing_problem_solve(standing_prob)
+            
+            print("Testing walking problem...")
+            test_walking_problem_solve(walking_prob)
+            
+            print("Testing constraint and objective functions...")
+            test_constraint_and_objective_functions(standing_prob)
+            
+            print("Testing objective function addition...")
+            test_objective_function_addition(standing_prob)
+            
+        print("=== All tests completed successfully! ===")
+        
+    except Exception as e:
+        print(f"Error during testing: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
