@@ -1,4 +1,3 @@
-import platform
 import re
 import shutil
 import subprocess
@@ -6,6 +5,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
+
 
 def task_docs(clean=False):
     """Build the html docs using Sphinx."""
@@ -15,7 +15,11 @@ def task_docs(clean=False):
         shutil.rmtree(str(HERE / "docs/_build"), ignore_errors=True)
         shutil.rmtree(str(HERE / "docs/auto_examples"), ignore_errors=True)
 
-    subprocess.run("sphinx-build -j auto -d docs/_build docs docs/_build/html", shell=True, check=True)
+    subprocess.run(
+        "sphinx-build -j auto -d docs/_build docs docs/_build/html",
+        shell=True,
+        check=True,
+    )
 
 
 def update_version_strings(file_path, new_version):
@@ -25,14 +29,22 @@ def update_version_strings(file_path, new_version):
     with open(file_path, "r+") as f:
         content = f.read()
         f.seek(0)
-        f.write(re.sub(version_regex, lambda match: '{}{}"'.format(match.group(1), new_version), content,))
+        f.write(
+            re.sub(
+                version_regex,
+                lambda match: f'{match.group(1)}{new_version}"',
+                content,
+            )
+        )
         f.truncate()
 
 
 def update_version(version):
     subprocess.run(["poetry", "version", version], shell=False, check=True)
     new_version = (
-        subprocess.run(["poetry", "version"], shell=False, check=True, capture_output=True)
+        subprocess.run(
+            ["poetry", "version"], shell=False, check=True, capture_output=True
+        )
         .stdout.decode()
         .strip()
         .split(" ", 1)[1]
@@ -42,4 +54,3 @@ def update_version(version):
 
 def task_update_version():
     update_version(sys.argv[1])
-

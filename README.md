@@ -22,16 +22,17 @@ This is my personal opinion, everything can be discussed or changed. Please use 
       |- collocation.yaml
     |- models
     |- .yaml files
-  |- collocation
+  |- ocp
     |- collocation.py
-    |- solve_ipopt.py # old "solver" folder
+    |- confun.py
+    |- objfun.py # Base class for objectives
     |- utils # I guess we need that folder at some point
-    |- objectives
-      |- base_objective.py # Base class
-      |- ... # jax translations
-    |- constraints
-      |- base_constraint.py # Base class
-      |- ... # jax translations
+  |- objectives
+    |- base_objective.py # Base class
+    |- ... # jax translations
+  |- constraints
+    |- base_constraint.py # Base class
+    |- ... # jax translations
   |- forward sim / DL / other stuff
   |- utils # whatever is needed
   |- tests 
@@ -77,7 +78,7 @@ readthedocs.io; sphinx? I really don't think doxygen is very useful
 
 ### First steps
 This project is really ambitious, and I think we should start with a small subset of the toolbox. I would suggest to start with the following:
-1. From Yipeng Zhang's project (branch ), refine the parser and optimal control functions to the above structure.
+1. From Yipeng Zhang's project [branch](https://mad-srv.informatik.uni-erlangen.de/MadLab/Biomech-Simu/student-code/p_zhang_yipeng/-/tree/optimal_control?ref_type=heads), refine the parser and optimal control functions to the above structure.
 2. Objectives: translate from matlab to jax, where applicable.
 3. Start with small subset, make it a minimum viable product (a bit cleaner than the previous implementation), then refine and add further features.
 
@@ -92,8 +93,3 @@ result = problem.solve()
 ```
 
 [Check out the BT "OCP Radar Tracking" implementation for a current use of config files](https://mad-srv.informatik.uni-erlangen.de/MadLab/Biomech-Simu/radar-tracking/-/blob/main/data/benchmarks/T02/T02_periodic.yaml?ref_type=heads)
-
-
-
-
-
