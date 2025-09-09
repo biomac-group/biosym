@@ -29,11 +29,11 @@ URL = "https://github.com/mad-lab-fau/biosym"
 
 # -- Project information -----------------------------------------------------
 
-# Info from poetry config:
-info = toml.load("../pyproject.toml")["tool"]["poetry"]
+# Info from pyproject.toml config:
+info = toml.load("../pyproject.toml")["project"]
 
 project = info["name"]
-author = ", ".join(info["authors"])
+author = "biosym contributors"  # No authors field in project config
 release = info["version"]
 
 copyright = f"2021 - {datetime.now().year}, MaD Lab, FAU"
@@ -80,7 +80,7 @@ if os.environ.get("NO_MATHJAX"):
     mathjax_path = ""
 else:
     extensions.append("sphinx.ext.mathjax")
-    mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/" "tex-chtml.js"
+    mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"
 
 autodoc_default_options = {
     "members": True,

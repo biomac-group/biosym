@@ -21,6 +21,17 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
+[project.optional-dependencies]
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme",
+    "myst-parser",
+    "sphinx-copybutton",
+    "sphinx-automodapi",
+    "numpydoc",
+    "sphinx-gallery",
+]
+
 [tool.poe.tasks]
 test = "python -m pytest tests/ -v"
 test-cov = "python -m pytest tests/ -v --cov=biosym --cov-report=term-missing --cov-report=html --cov-report=xml"
@@ -67,3 +78,51 @@ dev = [
     "pytest>=8.4.2",
     "pytest-cov>=6.0.0",
 ]
+docs = [
+    "myst-parser>=4.0.1",
+    "numpydoc>=1.9.0",
+    "pydata-sphinx-theme>=0.16.1",
+    "recommonmark>=0.7.1",
+    "sphinx>=8.2.3",
+    "sphinx-autodoc-typehints>=3.2.0",
+    "sphinx-gallery>=0.19.0",
+    "sphinx-rtd-theme>=3.0.2",
+    "toml>=0.10.2",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings  
+    "F",   # Pyflakes
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",   # isort
+]
+ignore = [
+    "D",     # pydocstyle (documentation style)
+    "ANN",   # flake8-annotations (type annotations)
+    "ARG",   # flake8-unused-arguments
+    "BLE001", # blind-except
+    "TRY300", # try-consider-else
+    "PLR0915", # too-many-statements
+    "RUF046",  # unnecessary-int-cast
+    "A001",    # builtin-variable-shadowing
+    "PLC0206", # dict-iter-missing-items
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["F841", "NPY002", "SIM102", "E402", "E501"]  # Allow test-specific patterns
+"notebooks/**/*.py" = ["F841", "E501", "NPY002"]  # Relax rules for notebooks  
+"scripts/**/*.py" = ["E501"]  # Allow longer lines in scripts
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

@@ -1,0 +1,8 @@
+# Documentation build requirements
+sphinx>=4.0
+sphinx-rtd-theme
+myst-parser
+sphinx-copybutton
+sphinx-automodapi
+numpydoc
+sphinx-gallery
