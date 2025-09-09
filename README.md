@@ -4,6 +4,10 @@
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)
 
+## Installation:
+1. https://cyipopt.readthedocs.io/en/stable/install.html
+2. uv sync
+
 ## Roadmap towards simulation toolbox
 This is my personal opinion, everything can be discussed or changed. Please use a good template before starting. 
 
