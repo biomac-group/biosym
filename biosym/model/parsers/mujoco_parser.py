@@ -1,7 +1,6 @@
 import xml.etree.ElementTree as ET
 
 from biosym.model.parsers.base_parser import BaseParser
-import numpy as np
 
 
 class MujocoParser(BaseParser):
@@ -29,18 +28,13 @@ class MujocoParser(BaseParser):
                 print(f"Parsing body: {body_name}, Parent: {parent_name}")
 
             # Extract body_offset from XML's "pos" attribute
-            pos = body_element.get(
-                "pos", "0 0 0"
-            )  # Default to [0, 0, 0] if not provided
+            pos = body_element.get("pos", "0 0 0")  # Default to [0, 0, 0] if not provided
             body_offset = [float(x) for x in pos.split()]  # Convert to list of floats
 
             # Extract mass, inertia, and com the same way
             inertia_element = body_element.find("inertial")
             body_mass = [float(inertia_element.get("mass", "0"))]
-            body_inertia = [
-                float(x)
-                for x in inertia_element.get("fullinertia", "0 0 0 0 0 0").split()
-            ]
+            body_inertia = [float(x) for x in inertia_element.get("fullinertia", "0 0 0 0 0 0").split()]
             body_com = [float(x) for x in inertia_element.get("pos", "0 0 0").split()]
 
             # Parsing joint information in the current body
@@ -51,14 +45,10 @@ class MujocoParser(BaseParser):
                     continue
                 # print(f"Joint found in {body_name}: {joint_name}")
                 joint_type = joint.get("type", None)
-                joint_axis_values = [
-                    float(x) for x in joint.get("axis", "1 0 0").split()
-                ]
+                joint_axis_values = [float(x) for x in joint.get("axis", "1 0 0").split()]
                 if verbose:
                     print(f"Joint axis values: {joint_axis_values}")
-                joint_range_values = [
-                    float(x) for x in joint.get("range", "0 0").split()
-                ]
+                joint_range_values = [float(x) for x in joint.get("range", "0 0").split()]
                 joint_damping = float(joint.get("damping", self.defaults.find(".//joint").get("damping", "0.0")))
                 joint_stiffness = float(joint.get("stiffness", self.defaults.find(".//joint").get("stiffness", "0.0")))
                 joint_armature = float(joint.get("armature", self.defaults.find(".//joint").get("armature", "0.0")))
@@ -112,7 +102,7 @@ class MujocoParser(BaseParser):
         # Start parsing from the root worldbody
         self.defaults = self.root.find(".//default")
         for body in self.root.findall(".//worldbody/body"):
-            parse_body(body, parent_name='ground_frame')
+            parse_body(body, parent_name="ground_frame")
 
         # Mujoco often does not have an explicit ground contact model stated, so we set all joints to possibly be in contact
         # The contact model should come from a yaml file.
@@ -120,9 +110,7 @@ class MujocoParser(BaseParser):
         self.external_forces_bodies = []
         self.contact_elements = self.root.findall(".//contact")
         if self.contact_elements != []:
-            assert (
-                len(self.contact_elements) == 1
-            ), "Only one contact element is allowed in the mujoco model file"
+            assert len(self.contact_elements) == 1, "Only one contact element is allowed in the mujoco model file"
             self.contact_elements = self.contact_elements[0]
         else:
             self.contact_elements = None
@@ -131,15 +119,11 @@ class MujocoParser(BaseParser):
         gravity = self.root.find(".//option").get("gravity", "0 -9.81 0")
         self.gravity = [float(x) for x in gravity.split()]
 
-        
-
         # We currently only allow externally specified actuators
         # to be in the mujoco model file, so we set the actuator list to None
         self.actuator_elements = self.root.findall(".//actuator")
         if self.actuator_elements != []:
-            assert (
-                len(self.actuator_elements) == 1
-            ), "Only one actuator element is allowed in the mujoco model file"
+            assert len(self.actuator_elements) == 1, "Only one actuator element is allowed in the mujoco model file"
             self.actuator_elements = self.actuator_elements[0]
         else:
             self.actuator_elements = None

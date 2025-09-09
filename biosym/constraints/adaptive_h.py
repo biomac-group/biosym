@@ -1,15 +1,18 @@
-from biosym.constraints.base_constraint import BaseConstraint
-from biosym.ocp import utils
-import jax.numpy as jnp
-import jax
 import os
 from functools import partial
+
+import jax
+import jax.numpy as jnp
+
+from biosym.constraints.base_constraint import BaseConstraint
+
 
 # any constraint needs to be named Constraint, otherwise it will not be found by the OCP class
 class Constraint(BaseConstraint):
     """
     Base class for adaptive step size constraints in the biosym package.
     """
+
     def __init__(self, model, settings, args):
         """
         Initialize the AdaptiveStepSizeConstraint class with a model and settings.
@@ -17,25 +20,25 @@ class Constraint(BaseConstraint):
         self.model = model
         self.settings = settings.copy()
         self.args = args
-        self.settings['nvpn'] = len(model.state_vector)
-        self.nvar = settings.get('nvar')
+        self.settings["nvpn"] = len(model.state_vector)
+        self.nvar = settings.get("nvar")
 
-        self.adaptive_h = settings.get('adaptive_h', False)
+        self.adaptive_h = settings.get("adaptive_h", False)
 
     def _get_info(self):
         """
         Get information about the dynamics constraint.
-        
+
         This method can be overridden in subclasses to provide specific information.
         """
         return {
-            'name': os.path.splitext(os.path.basename(__file__))[0],
-            'description': 'Adaptive step size constraint class for biosym constraints.',
-            'required_variables': {'states': ["model"], "constants": ["model"]},
-            'nnz': self.get_nnz(),
-            'ncons': self.get_n_constraints(),
+            "name": os.path.splitext(os.path.basename(__file__))[0],
+            "description": "Adaptive step size constraint class for biosym constraints.",
+            "required_variables": {"states": ["model"], "constants": ["model"]},
+            "nnz": self.get_nnz(),
+            "ncons": self.get_n_constraints(),
         }
-    
+
     def get_confun(self):
         """
         Evaluate the dynamics constraint function.
@@ -57,19 +60,19 @@ class Constraint(BaseConstraint):
     def get_n_constraints(self):
         """
         Get the number of constraints defined by this dynamics constraint.
-        
+
         :return: The number of constraints.
         """
         return 1
-    
+
     def get_nnz(self):
         """
         Get the number of non-zero entries in the Jacobian of the dynamics constraint.
-        
+
         :return: The number of non-zero entries.
         """
-        return self.settings.get('nnodes_dur')
-    
+        return self.settings.get("nnodes_dur")
+
 
 def confun(states_list, globals_dict, settings, info):
     """
@@ -80,28 +83,29 @@ def confun(states_list, globals_dict, settings, info):
     :param info: Information about the constraint function.
     :return: The evaluated constraint function.
     """
-    return globals_dict.dur - jnp.sum(states_list.states.h[:settings.get('nnodes_dur')-1])  # Ensure the sum of step sizes equals the total duration
+    return globals_dict.dur - jnp.sum(
+        states_list.states.h[: settings.get("nnodes_dur") - 1]
+    )  # Ensure the sum of step sizes equals the total duration
+
 
 def jacobian(states_list, globals_dict, settings, info):
     """
     Placeholder for the Jacobian of the constraint function.
-    
+
     This function should be implemented in subclasses to compute the Jacobian of the dynamics constraints.
-    
+
     :param states_list: List containing the current states.
     :param settings: Dictionary containing settings for the dynamics constraint.
     :param info: Information about the constraint function.
     :return: The Jacobian of the constraint function.
     """
-    r = jnp.zeros((info['nnz'],), dtype=settings['int_dtype'])
-    c = jnp.arange(info['nnz'], dtype=settings['int_dtype']) * states_list[0].states.size() + states_list[0].states.size() - 1
-    c = c.at[-1].set(settings.get('nnodes_dur') * states_list[0].states.size())
-    d = -jnp.ones((info['nnz'],), dtype=settings['dtype'])
+    r = jnp.zeros((info["nnz"],), dtype=settings["int_dtype"])
+    c = (
+        jnp.arange(info["nnz"], dtype=settings["int_dtype"]) * states_list[0].states.size()
+        + states_list[0].states.size()
+        - 1
+    )
+    c = c.at[-1].set(settings.get("nnodes_dur") * states_list[0].states.size())
+    d = -jnp.ones((info["nnz"],), dtype=settings["dtype"])
     d = d.at[-1].set(1.0)  # The last entry corresponds to the total duration constraint
     return r, c, d
-
-    
-    
-    
-
-

@@ -1,3 +1,4 @@
+"""Test forward simulation functionality."""
 import time
 import timeit
 import unittest
@@ -8,8 +9,8 @@ from biosym.forward import simulation as sim
 from biosym.model import model
 
 testmodellist = [
-    #"tests/models/pendulum.xml",
-    #"tests/models/pendulum_3d.xml",
+    # "tests/models/pendulum.xml",
+    # "tests/models/pendulum_3d.xml",
     "tests/models/gait2d_torque/gait2d_torque.yaml",
 ]
 
@@ -32,12 +33,12 @@ class TestForwardSim(unittest.TestCase):
             start_time = time.time()
             func(t)
             end_time = time.time()
-            print(
-                f"JIT/Caching of step function took {end_time - start_time:.6f} seconds."
-            )
-            print(
-                f"Step function runs in {timeit.timeit(lambda func=func,t=t: func(t), number=1000)/1000:.6f} seconds."
-            )
+            print(f"JIT/Caching of step function took {end_time - start_time:.6f} seconds.")
+
+            # Measure step function performance
+            step_time = timeit.timeit(lambda func=func, t=t: func(t), number=1000) / 1000
+            print(f"Step function runs in {step_time:.6f} seconds.")
+
             env_0001 = sim.SimulationEnvironment(m, dt=0.0001, initial_state="random")
             env_0001.reset(seed=0)
             for _ in range(1000):
@@ -48,12 +49,11 @@ class TestForwardSim(unittest.TestCase):
                 env_1.step(t)
             print("Testing step function with dt=0.0001 and dt=0.001")
 
-            print('Max Error:', np.max(np.abs(env_0001.state.states.model - env_1.state.states.model)))
+            print("Max Error:", np.max(np.abs(env_0001.state.states.model - env_1.state.states.model)))
 
-            assert np.allclose(
-                env_0001.state.states.model,
-                env_1.state.states.model,
-                atol=5e-3), "States do not match between different dt values!"
+            assert np.allclose(env_0001.state.states.model, env_1.state.states.model, atol=5e-3), (
+                "States do not match between different dt values!"
+            )
 
         print("========= Test Forward Simulation Done =========")
 

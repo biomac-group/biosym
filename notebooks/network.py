@@ -5,28 +5,28 @@
 # - Includes training loop with BCE-with-logits + Dice loss, metrics, and a toy dataset
 
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Tuple
 
 import jax
 import jax.numpy as jnp
-from jax import random
-
+import optax
 from flax import linen as nn
 from flax.training import train_state
-import optax
+from jax import random
 from tqdm import tqdm
 
 # ---------------------------
 # Model: 1D U-Net building blocks
 # ---------------------------
 
+
 class ConvBlock1D(nn.Module):
     features: int
     groups: int = 8
 
     @nn.compact
-    def __call__(self, x, *, train: bool):
+    def __call__(self, x: jnp.ndarray, *, train: bool) -> jnp.ndarray:
         x = nn.Conv(self.features, kernel_size=(5,), padding="SAME")(x)
         x = nn.GroupNorm(num_groups=min(self.groups, self.features))(x)
         x = nn.gelu(x)
@@ -34,34 +34,37 @@ class ConvBlock1D(nn.Module):
         x = nn.GroupNorm(num_groups=min(self.groups, self.features))(x)
         x = nn.gelu(x)
         return x
+
 
 class Down1D(nn.Module):
     features: int
 
     @nn.compact
-    def __call__(self, x, *, train: bool):
+    def __call__(self, x: jnp.ndarray, *, train: bool) -> jnp.ndarray:
         x = nn.max_pool(x, window_shape=(2,), strides=(2,), padding="SAME")
         x = ConvBlock1D(self.features)(x, train=train)
         return x
+
 
 class Up1D(nn.Module):
     features: int
 
     @nn.compact
-    def __call__(self, x, skip, *, train: bool):
+    def __call__(self, x: jnp.ndarray, skip: jnp.ndarray, *, train: bool) -> jnp.ndarray:
         target_len = skip.shape[1]
         # Resize along the sequence length axis only, keep batch and channels intact
         x = jax.image.resize(x, (skip.shape[0], target_len, x.shape[2]), method="linear")
         x = jnp.concatenate([x, skip], axis=-1)
         x = ConvBlock1D(self.features)(x, train=train)
         return x
-    
+
+
 class UNet1D(nn.Module):
     base_features: int = 32
     num_classes: int = 1
 
     @nn.compact
-    def __call__(self, x, *, train: bool = True):
+    def __call__(self, x: jnp.ndarray, *, train: bool = True) -> jnp.ndarray:
         # Encoder
         c1 = ConvBlock1D(self.base_features)(x, train=train)
         d1 = Down1D(self.base_features * 2)(c1, train=train)
@@ -81,12 +84,15 @@ class UNet1D(nn.Module):
         logits = nn.Conv(45, (1,), padding="SAME")(u4)
         return logits
 
+
 # ---------------------------
 # Losses & Metrics
 # ---------------------------
 
+
 def bce_with_logits(logits: jnp.ndarray, targets: jnp.ndarray) -> jnp.ndarray:
     return optax.sigmoid_binary_cross_entropy(logits, targets).mean()
+
 
 def dice_loss(logits: jnp.ndarray, targets: jnp.ndarray, eps: float = 1e-6) -> jnp.ndarray:
     probs = jax.nn.sigmoid(logits)
@@ -94,6 +100,7 @@ def dice_loss(logits: jnp.ndarray, targets: jnp.ndarray, eps: float = 1e-6) -> j
     union = jnp.sum(probs) + jnp.sum(targets)
     dice = (2 * intersection + eps) / (union + eps)
     return 1.0 - dice
+
 
 def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray) -> dict:
     probs = jax.nn.sigmoid(logits)
@@ -106,6 +113,7 @@ def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray) -> dict:
     iou = inter / union
     return {"bce": bce, "dice": dl, "acc": acc, "iou": iou}
 
+
 # ---------------------------
 # Train state
 # ---------------------------
@@ -115,19 +123,23 @@ class TrainConfig:
     weight_decay: float = 1e-5
     seed: int = 0
 
-def create_train_state(rng, model: nn.Module, input_shape: Tuple[int, int, int], cfg: TrainConfig):
+
+def create_train_state(
+    rng: jax.Array, model: nn.Module, input_shape: tuple[int, int, int], cfg: TrainConfig
+) -> train_state.TrainState:
     params = model.init(rng, jnp.zeros(input_shape), train=True)["params"]
     tx = optax.adamw(learning_rate=cfg.learning_rate, weight_decay=cfg.weight_decay)
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
+
 
 # ---------------------------
 # Training & evaluation steps
 # ---------------------------
 @jax.jit
-def train_step(state: train_state.TrainState, batch: dict):
+def train_step(state: train_state.TrainState, batch: dict[str, jnp.ndarray]) -> tuple[train_state.TrainState, dict[str, float]]:
     seqs, masks = batch["seq"], batch["mask"]
 
-    def loss_fn(params):
+    def loss_fn(params: dict) -> tuple[jnp.ndarray, jnp.ndarray]:
         logits = state.apply_fn({"params": params}, seqs, train=True)
         loss = bce_with_logits(logits, masks) + dice_loss(logits, masks)
         return loss, logits
@@ -137,19 +149,21 @@ def train_step(state: train_state.TrainState, batch: dict):
     metrics = compute_metrics(logits, masks) | {"loss": loss}
     return state, metrics
 
+
 @jax.jit
-def eval_step(state: train_state.TrainState, batch: dict):
+def eval_step(state: train_state.TrainState, batch: dict[str, jnp.ndarray]) -> dict[str, float]:
     seqs, masks = batch["seq"], batch["mask"]
     logits = state.apply_fn({"params": state.params}, seqs, train=False)
     return compute_metrics(logits, masks)
 
+
 # ---------------------------
 # Toy dataset utilities
 # ---------------------------
-def make_toy_batch(rng, batch_size: int, length: int = 500, channels: int = 45) -> dict:
+def make_toy_batch(rng: jax.Array, batch_size: int, length: int = 500, channels: int = 45) -> dict[str, jnp.ndarray]:
     key_img, _ = random.split(rng)
 
-    def sample_one(key):
+    def sample_one(key: jax.Array) -> tuple[jnp.ndarray, jnp.ndarray]:
         # shape (length, channels) -> (500, 45)
         seq = random.normal(key, (length, channels))
         # mask depends only on length axis, keep channel dim = 1
@@ -165,10 +179,11 @@ def make_toy_batch(rng, batch_size: int, length: int = 500, channels: int = 45) 
     # stack into (batch, length, channels) and (batch, length, 1)
     return {"seq": jnp.stack(seqs), "mask": jnp.stack(masks)}
 
+
 # ---------------------------
 # Training loop demo
 # ---------------------------
-def train_demo(num_steps: int = 200, batch_size: int = 4):
+def train_demo(num_steps: int = 200, batch_size: int = 4) -> tuple[train_state.TrainState, dict[str, list[float]]]:
     cfg = TrainConfig()
     rng = random.PRNGKey(cfg.seed)
     model = UNet1D(base_features=32, num_classes=1)
@@ -185,9 +200,14 @@ def train_demo(num_steps: int = 200, batch_size: int = 4):
             metrics_history[k].append(float(metrics[k]))
         if step % 20 == 0:
             eval_metrics = eval_step(state, batch)
-            print(f"Step {step:04d} | loss={metrics['loss']:.4f} bce={metrics['bce']:.4f} dice={metrics['dice']:.4f} acc={metrics['acc']:.3f} iou={metrics['iou']:.3f}")
+            print(
+                f"Step {step:04d} | loss={metrics['loss']:.4f} bce={metrics['bce']:.4f} "
+                f"dice={metrics['dice']:.4f} acc={metrics['acc']:.3f} iou={metrics['iou']:.3f}"
+            )
+            # Could use eval_metrics here for additional logging if needed
 
     return state, metrics_history
+
 
 # Example usage (uncomment to run):
 if __name__ == "__main__":

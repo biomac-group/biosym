@@ -1,5 +1,7 @@
-from biosym.model.actuators.base_actuator import BaseActuator
 import jax.numpy as jnp
+
+from biosym.model.actuators.base_actuator import BaseActuator
+
 
 class General(BaseActuator):
     """
@@ -21,7 +23,7 @@ class General(BaseActuator):
                     actuators[actuator_name][key] = value
         self.actuators = actuators
         self.n_actuators = len(actuators)
-        self.states = [f'torque_{i}' for i in range(self.n_actuators)]
+        self.states = [f"torque_{i}" for i in range(self.n_actuators)]
 
     def get_n_actuators(self):
         """
@@ -34,13 +36,13 @@ class General(BaseActuator):
         Returns the list of actuators in the model.
         """
         return self.actuators
-    
+
     def get_n_states(self):
         """
         Returns the number of states required by the actuator model.
         """
         return self.get_n_actuators()
-    
+
     def get_n_constants(self):
         """
         Returns the number of constants required by the actuator model.
@@ -67,10 +69,9 @@ class General(BaseActuator):
         :param model: The biosym model.
         :return: The evaluated actuator model.
         """
-        all_joints = jnp.zeros(model.coordinates['n'])
-        all_joints = all_joints.at[jnp.array(model.forces['active_idx'])].set(states.actuator_model)
+        all_joints = jnp.zeros(model.coordinates["n"])
+        all_joints = all_joints.at[jnp.array(model.forces["active_idx"])].set(states.actuator_model)
         return all_joints
-
 
 
 class GeneralMujoco(General):
@@ -88,4 +89,4 @@ class GeneralMujoco(General):
             for key, value in actuator.attrib.items():
                 self.actuators[actuator_name][key] = value
         self.n_actuators = len(actuator_list)
-        self.states = [f'torque_{i}' for i in range(self.n_actuators)]
+        self.states = [f"torque_{i}" for i in range(self.n_actuators)]

@@ -1,8 +1,10 @@
-from biosym.model.actuators.base_actuator import BaseActuator
 import jax.numpy as jnp
 import numpy as np
 
+from biosym.model.actuators.base_actuator import BaseActuator
+
 JOINT_RANGE_TOL = np.deg2rad(2)  # 2 degrees transition zone for joint limits
+
 
 class Hill2d(BaseActuator):
     """
@@ -18,27 +20,23 @@ class Hill2d(BaseActuator):
         Returns the number of actuators in the model.
         """
         return self.n_actuators
-    
+
     def reset(self):
         """
         Resets the actuator behaviour.
         """
-        pass
 
     def get_actuated_joints(self):
         """
         Returns the list of actuated joints.
         """
         return self.actuated_joints
-         
 
     def process_eom(self, model):
         return super().process_eom(model)
 
     def forward(self, states, constants, model):
-        moments = jnp.zeros((model.coordinates['n'],))
+        moments = jnp.zeros((model.coordinates["n"],))
         # Todo: Hill's equations in here
         # What is the force at every joint?
         return moments
-
-
