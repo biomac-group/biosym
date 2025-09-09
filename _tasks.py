@@ -52,3 +52,20 @@ def update_version(version):
 
 def task_update_version():
     update_version(sys.argv[1])
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "docs":
+            clean = len(sys.argv) > 2 and sys.argv[2] == "clean"
+            task_docs(clean=clean)
+        elif sys.argv[1] == "update_version":
+            task_update_version()
+        else:
+            print(f"Unknown task: {sys.argv[1]}")
+            print("Available tasks: docs, update_version")
+            sys.exit(1)
+    else:
+        print("Usage: python _tasks.py <task>")
+        print("Available tasks: docs, update_version")
+        sys.exit(1)
