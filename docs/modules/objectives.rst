@@ -3,7 +3,10 @@ Objectives
 
 Objective function terms for optimization problems in biosym.
 
-.. automodule:: biosym.objectives
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. toctree::
+   :maxdepth: 2
+   :titlesonly:
+
+   objectives/overview
+   objectives/jerk_term
+   objectives/torque_term
