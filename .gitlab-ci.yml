@@ -10,13 +10,17 @@ workflow:
 
 .python_base: &python_base
   tags:
-    - docker
+    - old_workstation
   image: python:3.13
   before_script:
+    - apt-get update && apt-get install -y pkg-config build-essential gfortran libblas-dev liblapack-dev coinor-libipopt-dev
     - git config --global credential.helper store
-    - echo "https://gitlab-ci-token:${CI_JOB_TOKEN}@mad-srv.informatik.uni-erlangen.de" > ~/.git-credentials
+    - echo "https://gitlab-ci-token:${CI_JOB_TOKEN}@gitos.rrze.fau.de" > ~/.git-credentials
     - curl -LsSf https://astral.sh/uv/install.sh | sh
-    - export PATH="$HOME/.cargo/bin:$PATH"
+    # add uv to PATH
+    - export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    # make sure shell reloads environment properly (optional alternative)
+    # - source $HOME/.local/bin/env
     - uv sync
     - uv pip install poethepoet
 
@@ -38,7 +42,8 @@ docs:
   stage: deploy
   <<: *python_base
   script:
-    - uv run poe docs || true # Don't fail on docs errors for now
+    - uv sync --group docs  # Install documentation dependencies
+    - uv run poe docs  # Build documentation
     - cp -r docs/_build/html ./html_docs
   artifacts:
     paths:
@@ -48,16 +53,20 @@ docs:
  
 pages:
   stage: pages
+  image: alpine:latest  # Lightweight image for file operations
   dependencies:
+    - docs
+  needs:
     - docs
   tags:
     - docker
   script:
-  - mkdir .public
-  - cp -r html_docs/* .public
-  - mv .public public
+    - mkdir .public
+    - cp -r html_docs/* .public
+    - mv .public public
   artifacts:
     paths:
-    - public
+      - public
+    expire_in: 30 days
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
