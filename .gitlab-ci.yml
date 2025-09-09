@@ -43,7 +43,7 @@ docs:
   <<: *python_base
   script:
     - uv run poe docs || true # Don't fail on docs errors for now
-    - cp -r docs/_build/html ./html_docs
+  #  - cp -r docs/_build/html ./html_docs
   artifacts:
     paths:
       - html_docs
@@ -57,9 +57,9 @@ pages:
   tags:
     - old_workstation
   script:
-  - mkdir .public
-  - cp -r html_docs/* .public
-  - mv .public public
+  #- mkdir .public
+  #- cp -r html_docs/* .public
+  #- mv .public public
   artifacts:
     paths:
     - public
