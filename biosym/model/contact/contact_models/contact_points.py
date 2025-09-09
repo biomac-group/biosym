@@ -8,9 +8,105 @@ from biosym.model.contact.base_contact import BaseContact
 
 
 class ContactPoints(BaseContact):
+    """
+    Point-based contact model for ground reaction force calculation.
+    
+    This class implements a contact model based on discrete contact points
+    attached to specified bodies. Each contact point can generate normal
+    and friction forces when in contact with the ground, using a spring-damper
+    model with Coulomb friction.
+    
+    Parameters
+    ----------
+    xml_root : xml.etree.ElementTree.Element
+        Root element of the XML tree containing contact point definitions.
+        Should contain 'contact_point' elements with position and parameter specs.
+    body_weight : float, default=1
+        Body weight in arbitrary units for scaling contact parameters.
+        Contact stiffness and damping are scaled by body_weight * 9.81.
+        
+    Attributes
+    ----------
+    cps : dict
+        Dictionary mapping contact point names to their properties.
+    bodies : list of str
+        List of body names that have contact points.
+    body_mapping : numpy.ndarray
+        Array mapping contact points to their parent bodies.
+    k : list of float
+        Contact stiffness values for each contact point.
+    b : list of float  
+        Contact damping values for each contact point.
+    mu : list of float
+        Friction coefficients for each contact point.
+    p_cy_0 : list of float
+        Transition region sizes for position (penetration depth).
+    v_cx_0 : list of float
+        Transition region sizes for velocity (sliding).
+        
+    Notes
+    -----
+    The contact model uses:
+    - Hunt-Crossley contact mechanics for normal forces
+    - Coulomb friction with smooth transitions
+    - Penetration-based contact detection
+    - Body-weight scaling for force parameters
+    
+    Contact forces are calculated as:
+    - Normal force: F_n = k * penetration * (1 + b * penetration_velocity)
+    - Friction force: F_f = mu * F_n * tanh(velocity / v_cx_0)
+    
+    XML Format
+    ----------
+    Expected XML structure:
+    
+    .. code-block:: xml
+    
+        <contact type="contact_points">
+            <default>
+                <contact_point k="1000" b="10" mu="0.8"/>
+            </default>
+            <contact_point name="heel_r" body="foot_r" pos="0 0 -0.05"/>
+            <contact_point name="toe_r" body="foot_r" pos="0.15 0 -0.05"/>
+        </contact>
+        
+    Examples
+    --------
+    Create contact model from XML:
+    
+    >>> import xml.etree.ElementTree as ET
+    >>> root = ET.parse("contact.xml").getroot()
+    >>> contact = ContactPoints(root, body_weight=70.0)
+    
+    Get contact information:
+    
+    >>> bodies = contact.get_bodies()
+    >>> n_points = len(contact.cps)
+    >>> forces = contact.forward(states, constants, model)
+    
+    See Also
+    --------
+    biosym.model.contact.base_contact.BaseContact : Base contact interface
+    """
+    
     def __init__(self, xml_root, body_weight=1):
         """
-        Parses the contact model file and returns a list of contact points.
+        Initialize the ContactPoints model from XML definition.
+        
+        Parses XML contact point definitions and sets up contact parameters
+        including positions, stiffness, damping, and friction coefficients.
+        
+        Parameters
+        ----------
+        xml_root : xml.etree.ElementTree.Element
+            Root element containing contact point definitions.
+        body_weight : float, default=1
+            Body weight for scaling contact parameters.
+            
+        Raises
+        ------
+        ValueError
+            If any contact point is missing a required name attribute.
         """
         super().__init__(xml_root)
         # Get default values
