@@ -52,7 +52,10 @@ docs:
  
 pages:
   stage: pages
+  image: alpine:latest  # Lightweight image for file operations
   dependencies:
+    - docs
+  needs:
     - docs
   tags:
     - old_workstation
@@ -62,6 +65,7 @@ pages:
   #- mv .public public
   artifacts:
     paths:
-    - public
+      - public
+    expire_in: 30 days
   rules:
     - if: $CI_COMMIT_BRANCH == "main"

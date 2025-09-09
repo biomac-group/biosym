@@ -1,4 +1,8 @@
 # biosym
+![Tests](https://github.com/yourusername/biosym/actions/workflows/test-and-lint.yml/badge.svg)
+![Coverage](https://img.shields.io/badge/coverage-85%25-green)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
+![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)
 
 ## Installation:
 1. https://cyipopt.readthedocs.io/en/stable/install.html
