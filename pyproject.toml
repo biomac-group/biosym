@@ -23,6 +23,7 @@ dependencies = [
 
 [tool.poe.tasks]
 test = "python -m pytest tests/ -v"
+test-cov = "python -m pytest tests/ -v --cov=biosym --cov-report=term-missing --cov-report=html --cov-report=xml"
 lint = "ruff check ."
 format_check = "ruff format --check ."
 docs = "python _tasks.py docs"
@@ -38,8 +39,31 @@ env = [
     "MPLBACKEND=Agg",
 ]
 
+[tool.coverage.run]
+source = ["biosym"]
+omit = [
+    "tests/*",
+    "*/__pycache__/*",
+    "*/.*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
 [dependency-groups]
 dev = [
     "poethepoet>=0.37.0",
     "pytest>=8.4.2",
+    "pytest-cov>=6.0.0",
 ]
