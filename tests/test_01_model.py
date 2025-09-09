@@ -1,8 +1,7 @@
+"""Test model functionality."""
 import time
 import timeit
 import unittest
-
-import numpy as np
 
 from biosym.model import model
 
@@ -11,6 +10,7 @@ testmodellist = [
     "tests/models/pendulum_3d.xml",
     "tests/models/gait2d_torque/gait2d_torque.yaml",
 ]
+
 
 class TestModel(unittest.TestCase):
     """Test building and executing model functions."""
@@ -54,7 +54,7 @@ class TestModel(unittest.TestCase):
         for testmodel in testmodellist:
             m = model.load_model(testmodel, force_rebuild=False)
 
-            default_inputs = m.default_inputs   
+            default_inputs = m.default_inputs
             for func in m.run:
                 if func.endswith("uncompiled"):
                     print(f"Skipping uncompiled function: {func}.")
@@ -64,14 +64,12 @@ class TestModel(unittest.TestCase):
                 start_time = time.time()
                 m.run[func](default_inputs.states, default_inputs.constants)
                 end_time = time.time()
-                print(
-                    f"JIT/Caching of {func} took {end_time - start_time:.6f} seconds."
-                )
+                print(f"JIT/Caching of {func} took {end_time - start_time:.6f} seconds.")
                 time_ = timeit.timeit(
                     lambda m=m, f=func, s=default_inputs.states, c=default_inputs.constants: m.run[f](s, c),
                     number=1000,
                 )
-                print(f"Running {func} runs in {time_/1000:.6f} seconds.")
+                print(f"Running {func} runs in {time_ / 1000:.6f} seconds.")
         print("========= Test Speed of Simulation Done =========")
         print()
 

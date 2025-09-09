@@ -1,14 +1,16 @@
+"""Test plotting functionality."""
 import time
 import unittest
 
 import matplotlib
+
 # Set the backend before importing any other matplotlib modules
 import numpy as np
+from tqdm import tqdm
 
 from biosym.forward import simulation as sim
 from biosym.model import model
 from biosym.visualization import stickfigure
-from tqdm import tqdm
 
 test_modellist = [
     "tests/models/pendulum.xml",
@@ -37,7 +39,7 @@ class TestPlotting(unittest.TestCase):
             m = model.load_model(modelfile, force_rebuild=False)
             print("Please close the stick figure window to continue.")
             stickfigure.plot_stick_figure(m, (m.default_inputs, None), 0.01)
-            x = 'y'#x = input("Was this the correct stick figure? [y]")
+            x = "y"  # x = input("Was this the correct stick figure? [y]")
             assert x in [
                 "y",
                 "Y",
@@ -58,11 +60,11 @@ class TestPlotting(unittest.TestCase):
                 s_, _, _, _, _ = env.step(t)
                 states.append(s_)
             b = time.time()
-            print(f"Simulation took {b-a:.2f} seconds.")
+            print(f"Simulation took {b - a:.2f} seconds.")
             print("Please close the stick figure window to continue.")
-            stickfigure.plot_stick_figure(m, (states,None), 0.01)
-            #x = input("Was this the correct stick figure animation? [y]")
-            x = 'y'
+            stickfigure.plot_stick_figure(m, (states, None), 0.01)
+            # x = input("Was this the correct stick figure animation? [y]")
+            x = "y"
             assert x in [
                 "y",
                 "Y",

@@ -23,44 +23,32 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
     # Check inputs and frame selection
     states, globals = states
     if globals is not None:
-        dt = globals.dur/len(states)
+        dt = globals.dur / len(states)
     n_frames = len(states)
 
     # Check if the model has a contact model
     hascontact = hasattr(model, "gc_model") and model.gc_model is not None
 
     # First node joint positions
-    if isinstance(states, list):
-        joint_positions = model.run["FK_vis"](
-            states[0].states, states[0].constants
-        )
-    elif len(states.states.model.shape) == 1:
+    if isinstance(states, list) or len(states.states.model.shape) == 1:
         joint_positions = model.run["FK_vis"](states[0].states, states[0].constants)
     else:
-        joint_positions = model.run["FK_vis"](
-            states[0].states, states[0].constants
-        )
+        joint_positions = model.run["FK_vis"](states[0].states, states[0].constants)
     # Following frames joint positions
     anim_joint_positions = []
     if n_frames > 1:
         for i in range(n_frames):
             if isinstance(states, list):
-                joint_positions = model.run["FK_vis"](
-                    states[i].states, states[i].constants
-                )
+                joint_positions = model.run["FK_vis"](states[i].states, states[i].constants)
             else:
-                joint_positions = model.run["FK_vis"](
-                    states[i].states, states[i].constants
-                )
+                joint_positions = model.run["FK_vis"](states[i].states, states[i].constants)
             anim_joint_positions.append(joint_positions)
         anim_joint_positions = np.array(anim_joint_positions)
 
     # Check if the scene is 2D or 3D, it is 2D if all coordinates in 1 dimension are 0
     if np.any(np.all(joint_positions == 0, axis=0)):  # 2D case
         # Setup 2d figure
-        fig = (
-            plt.figure()
-        )  # Todo: allow passing an axis to plot to, so we can plot multiple figures in one window
+        fig = plt.figure()  # Todo: allow passing an axis to plot to, so we can plot multiple figures in one window
         ax = fig.add_subplot(111)
         ax.set_aspect("equal", adjustable="box")
         case_ = "2D"
@@ -95,11 +83,11 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
             ax.set_ylim(min_[1], max_[1])
             ax.set_zlim(min_[2], max_[2])
 
-    else: # Single frame, set limits to the joint positions
+    else:  # Single frame, set limits to the joint positions
         min_ = np.min(joint_positions)
         max_ = np.max(joint_positions)
         d = np.abs((max_ - min_) * 0.05)  # 5% padding
-        min_ -= d 
+        min_ -= d
         max_ += d
         # Set limits of the plot
         if case_ == "2D":
@@ -123,17 +111,13 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
             children = node["children"]
             for child in children:
                 child_name = child["name"]
-                child_idx = [body["name"] for body in model.dicts["bodies"]].index(
-                    child_name
-                )
+                child_idx = [body["name"] for body in model.dicts["bodies"]].index(child_name)
                 connections.append((body_idx, child_idx))
             _get_child_connections(children, model)
         for idx, site in enumerate(model.dicts["sites"]):
             parent_name = site["parent"]
             site_idx = len(model.dicts["bodies"]) + idx
-            parent_idx = [body["name"] for body in model.dicts["bodies"]].index(
-                parent_name
-            )
+            parent_idx = [body["name"] for body in model.dicts["bodies"]].index(parent_name)
             connections.append((parent_idx, site_idx))
 
     _get_child_connections(model.topology_tree, model)
@@ -177,10 +161,7 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
         segments.append(l)
 
     if hascontact:
-
-        plot_objects = model.gc_model.plot(
-            states, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
-        )
+        plot_objects = model.gc_model.plot(states, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes)
 
     # Set axis labels
     ax.set_xlabel("X-axis [m]")
@@ -197,11 +178,17 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
     else:  # Video display, all following frames are animated
         ispaused = False
         speed_multiplier = 1.0
-        
+
         # Add speed text display at the top of the figure
-        speed_text = fig.text(0.5, 0.98, f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed", 
-                             ha='center', va='top', fontsize=10, 
-                             bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
+        speed_text = fig.text(
+            0.5,
+            0.98,
+            f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed",
+            ha="center",
+            va="top",
+            fontsize=10,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"),
+        )
 
         def on_key_press(event):
             nonlocal ispaused, speed_multiplier
@@ -226,10 +213,11 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
         def update(frame_input):
             nonlocal current_frame, last_update_time
             global pauseframes_total
-            
+
             import time
+
             current_time = time.time()
-            
+
             if ispaused:
                 last_update_time = current_time
                 return []  # No update if paused
@@ -237,16 +225,16 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
             # Calculate frame based on speed multiplier
             if last_update_time == 0:
                 last_update_time = current_time
-                
+
             time_elapsed = current_time - last_update_time
             frames_to_advance = int(time_elapsed * speed_multiplier / dt)
-            
+
             if frames_to_advance >= 1:
                 current_frame = (current_frame + frames_to_advance) % n_frames
                 last_update_time = current_time
 
             frame = current_frame
-            
+
             for i, joint in enumerate(model.positions):
                 if case_ == "2D":
                     joints[i].set_data(
@@ -267,16 +255,8 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
                 if case_ == "2D":
                     segments[i].set_data(
                         [
-                            [
-                                anim_joint_positions[frame][connection][
-                                    :, non_zero_axes[0]
-                                ]
-                            ],
-                            [
-                                anim_joint_positions[frame][connection][
-                                    :, non_zero_axes[1]
-                                ]
-                            ],
+                            [anim_joint_positions[frame][connection][:, non_zero_axes[0]]],
+                            [anim_joint_positions[frame][connection][:, non_zero_axes[1]]],
                         ]
                     )
                 else:
@@ -284,7 +264,7 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
                     pos_b = anim_joint_positions[frame][connection][1]
                     segments[i].set_data([pos_a[0], pos_b[0]], [pos_a[1], pos_b[1]])
                     segments[i].set_3d_properties([pos_a[2], pos_b[2]])
-            ax.set_title(f"T = {frame*dt:.2f} s")
+            ax.set_title(f"T = {frame * dt:.2f} s")
             if hascontact:
                 model.gc_model.plot(
                     False,
@@ -300,7 +280,10 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
                 return ax.collections
 
         ani = animation.FuncAnimation(
-            fig, update, frames=np.arange(n_frames), 
-            interval=50, blit=False  # 50ms = 20 FPS for smooth animation
+            fig,
+            update,
+            frames=np.arange(n_frames),
+            interval=50,
+            blit=False,  # 50ms = 20 FPS for smooth animation
         )
         plt.show()

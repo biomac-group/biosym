@@ -42,8 +42,9 @@ docs:
   stage: deploy
   <<: *python_base
   script:
-    - uv run poe docs || true # Don't fail on docs errors for now
-  #  - cp -r docs/_build/html ./html_docs
+    - uv sync --group docs  # Install documentation dependencies
+    - uv run poe docs  # Build documentation
+    - cp -r docs/_build/html ./html_docs
   artifacts:
     paths:
       - html_docs
@@ -61,11 +62,9 @@ pages:
     - old_workstation
   script:
     - mkdir .public
-  #- cp -r html_docs/* .public
-  #- mv .public public
+    - cp -r html_docs/* .public
+    - mv .public public
   artifacts:
     paths:
       - public
     expire_in: 30 days
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"

@@ -8,16 +8,110 @@ from biosym.model.contact.base_contact import BaseContact
 
 
 class ContactPoints(BaseContact):
+    """
+    Point-based contact model for ground reaction force calculation.
+    
+    This class implements a contact model based on discrete contact points
+    attached to specified bodies. Each contact point can generate normal
+    and friction forces when in contact with the ground, using a spring-damper
+    model with Coulomb friction.
+    
+    Parameters
+    ----------
+    xml_root : xml.etree.ElementTree.Element
+        Root element of the XML tree containing contact point definitions.
+        Should contain 'contact_point' elements with position and parameter specs.
+    body_weight : float, default=1
+        Body weight in arbitrary units for scaling contact parameters.
+        Contact stiffness and damping are scaled by body_weight * 9.81.
+        
+    Attributes
+    ----------
+    cps : dict
+        Dictionary mapping contact point names to their properties.
+    bodies : list of str
+        List of body names that have contact points.
+    body_mapping : numpy.ndarray
+        Array mapping contact points to their parent bodies.
+    k : list of float
+        Contact stiffness values for each contact point.
+    b : list of float  
+        Contact damping values for each contact point.
+    mu : list of float
+        Friction coefficients for each contact point.
+    p_cy_0 : list of float
+        Transition region sizes for position (penetration depth).
+    v_cx_0 : list of float
+        Transition region sizes for velocity (sliding).
+        
+    Notes
+    -----
+    The contact model uses:
+    - Hunt-Crossley contact mechanics for normal forces
+    - Coulomb friction with smooth transitions
+    - Penetration-based contact detection
+    - Body-weight scaling for force parameters
+    
+    Contact forces are calculated as:
+    - Normal force: F_n = k * penetration * (1 + b * penetration_velocity)
+    - Friction force: F_f = mu * F_n * tanh(velocity / v_cx_0)
+    
+    XML Format
+    ----------
+    Expected XML structure:
+    
+    .. code-block:: xml
+    
+        <contact type="contact_points">
+            <default>
+                <contact_point k="1000" b="10" mu="0.8"/>
+            </default>
+            <contact_point name="heel_r" body="foot_r" pos="0 0 -0.05"/>
+            <contact_point name="toe_r" body="foot_r" pos="0.15 0 -0.05"/>
+        </contact>
+        
+    Examples
+    --------
+    Create contact model from XML:
+    
+    >>> import xml.etree.ElementTree as ET
+    >>> root = ET.parse("contact.xml").getroot()
+    >>> contact = ContactPoints(root, body_weight=70.0)
+    
+    Get contact information:
+    
+    >>> bodies = contact.get_bodies()
+    >>> n_points = len(contact.cps)
+    >>> forces = contact.forward(states, constants, model)
+    
+    See Also
+    --------
+    biosym.model.contact.base_contact.BaseContact : Base contact interface
+    """
+    
     def __init__(self, xml_root, body_weight=1):
         """
-        Parses the contact model file and returns a list of contact points.
+        Initialize the ContactPoints model from XML definition.
+        
+        Parses XML contact point definitions and sets up contact parameters
+        including positions, stiffness, damping, and friction coefficients.
+        
+        Parameters
+        ----------
+        xml_root : xml.etree.ElementTree.Element
+            Root element containing contact point definitions.
+        body_weight : float, default=1
+            Body weight for scaling contact parameters.
+            
+        Raises
+        ------
+        ValueError
+            If any contact point is missing a required name attribute.
         """
         super().__init__(xml_root)
         # Get default values
         self.cp_defaults = (
-            xml_root.find("default/contact_point").attrib
-            if xml_root.find("default/contact_point") is not None
-            else {}
+            xml_root.find("default/contact_point").attrib if xml_root.find("default/contact_point") is not None else {}
         )
         cps = {}
         for cp in xml_root.findall("contact_point"):
@@ -27,9 +121,7 @@ class ContactPoints(BaseContact):
             cps[cp_name] = {}
             for key, value in self.cp_defaults.items():
                 if key == "pos":
-                    cps[cp_name][key] = np.array(
-                        [float(x) for x in cp.get(key, value).split()]
-                    )
+                    cps[cp_name][key] = np.array([float(x) for x in cp.get(key, value).split()])
                 else:
                     cps[cp_name][key] = cp.get(key, value)
         self.bodies = [cps[cp]["body"] for cp in cps]
@@ -63,9 +155,7 @@ class ContactPoints(BaseContact):
             cp = Point(cp_["name"])
             cp.set_pos(
                 origin,
-                ref_frame.x * cp_["pos"][0]
-                + ref_frame.y * cp_["pos"][1]
-                + ref_frame.z * cp_["pos"][2],
+                ref_frame.x * cp_["pos"][0] + ref_frame.y * cp_["pos"][1] + ref_frame.z * cp_["pos"][2],
             )
 
             pos_vector.append(
@@ -91,33 +181,18 @@ class ContactPoints(BaseContact):
             pos_vector[-1] = model._replace_dyn(Matrix(pos_vector[-1])).T
             vel_vector[-1] = model._replace_dyn(Matrix(vel_vector[-1]))
 
-            d = 0.5 * (
-                (pos_vector[-1][1] ** 2 + self.p_cy_0[i] ** 2) ** 0.5
-                - pos_vector[-1][1]
-            )
-            F_cy = self.k[i] * d * (1 - self.b[i] * vel_vector[-1][1]) - 1e-4*pos_vector[-1][1] # small value to "point towards ground"
-            F_cx = (
-                -self.mu[i]
-                * F_cy
-                * vel_vector[-1][0]
-                / (vel_vector[-1][0] ** 2 + self.v_cx_0[i] ** 2) ** 0.5
-            )
-            F_cz = (
-                -self.mu[i]
-                * F_cy
-                * vel_vector[-1][2]
-                / (vel_vector[-1][2] ** 2 + self.v_cx_0[i] ** 2) ** 0.5
-            )
+            d = 0.5 * ((pos_vector[-1][1] ** 2 + self.p_cy_0[i] ** 2) ** 0.5 - pos_vector[-1][1])
+            F_cy = (
+                self.k[i] * d * (1 - self.b[i] * vel_vector[-1][1]) - 1e-4 * pos_vector[-1][1]
+            )  # small value to "point towards ground"
+            F_cx = -self.mu[i] * F_cy * vel_vector[-1][0] / (vel_vector[-1][0] ** 2 + self.v_cx_0[i] ** 2) ** 0.5
+            F_cz = -self.mu[i] * F_cy * vel_vector[-1][2] / (vel_vector[-1][2] ** 2 + self.v_cx_0[i] ** 2) ** 0.5
             # Get F and M in the global frame
             force_vector.append([F_cx, F_cy, F_cz])
         force_vector = Matrix(force_vector)
-        self.force_vector = lambdify(
-            model._v, force_vector, modules="jax", cse=True, docstring_limit=2
-        )
+        self.force_vector = lambdify(model._v, force_vector, modules="jax", cse=True, docstring_limit=2)
         pos_vector = Matrix(pos_vector)
-        self.pos_vector = lambdify(
-            model._v, pos_vector, modules="jax", cse=True, docstring_limit=2
-        )
+        self.pos_vector = lambdify(model._v, pos_vector, modules="jax", cse=True, docstring_limit=2)
 
     def get_n_states(self):
         return 0
@@ -160,12 +235,8 @@ class ContactPoints(BaseContact):
         """
         Returns the moment arms for every contact point wrt to the body origin.
         """
-        body_idx = np.array(
-            [list(model.rigid_bodies.keys()).index(p) for p in self.bodies]
-        )
-        pos_bodies = model.run["FK"](states, constants)[
-            body_idx
-        ]
+        body_idx = np.array([list(model.rigid_bodies.keys()).index(p) for p in self.bodies])
+        pos_bodies = model.run["FK"](states, constants)[body_idx]
         pos_cps = self.pos_vector(*states.model, *constants.model)
         if return_positions:
             return pos_cps, pos_bodies, body_idx
@@ -218,9 +289,7 @@ class ContactPoints(BaseContact):
                 if "non_zero_axes" in kwargs:
                     non_zero_axes = kwargs["non_zero_axes"]
                 else:
-                    raise ValueError(
-                        "2D case requires non_zero_axes as an input argument to the foot contact model."
-                    )
+                    raise ValueError("2D case requires non_zero_axes as an input argument to the foot contact model.")
         else:
             case = "3D"
 
@@ -244,11 +313,7 @@ class ContactPoints(BaseContact):
                     )
                     pos_cps.append(pcp)
                     pos_bodies.append(pbody)
-                    cp_forces.append(
-                        self.get_cp_forces(
-                            states[i].states, states[i].constants, model
-                        )
-                    )
+                    cp_forces.append(self.get_cp_forces(states[i].states, states[i].constants, model))
                     # f = self.forward(states[i]['states'], states[i]['constants'], model)
                     # print("Forces: ", f[0], "moments:" ,f[1])
             elif len(states.states.model.shape) == 1:
@@ -257,9 +322,7 @@ class ContactPoints(BaseContact):
                 )
                 pos_cps.append(pcp)
                 pos_bodies.append(pbody)
-                cp_forces.append(
-                    self.get_cp_forces(states[0].states, states[0].constants, model)
-                )
+                cp_forces.append(self.get_cp_forces(states[0].states, states[0].constants, model))
             else:
                 for i in range(len(states)):
                     pcp, pbody, body_idx = self.get_cp_moment_arms(
@@ -270,11 +333,7 @@ class ContactPoints(BaseContact):
                     )
                     pos_cps.append(pcp)
                     pos_bodies.append(pbody)
-                    cp_forces.append(
-                        self.get_cp_forces(
-                            states[i].states, states[i].constants, model
-                        )
-                    )
+                    cp_forces.append(self.get_cp_forces(states[i].states, states[i].constants, model))
             self.pos_cps = np.array(pos_cps)
             self.pos_bodies = np.array(pos_bodies)
             self.cp_forces = np.array(cp_forces)
@@ -348,13 +407,11 @@ class ContactPoints(BaseContact):
                     (l,) = ax.plot(
                         [
                             self.pos_cps[0][i, non_zero_axes[0]],
-                            self.pos_cps[0][i, non_zero_axes[0]]
-                            + factor * cp_forces[0][i, non_zero_axes[0]],
+                            self.pos_cps[0][i, non_zero_axes[0]] + factor * cp_forces[0][i, non_zero_axes[0]],
                         ],
                         [
                             self.pos_cps[0][i, non_zero_axes[1]],
-                            self.pos_cps[0][i, non_zero_axes[1]]
-                            + factor * cp_forces[0][i, non_zero_axes[1]],
+                            self.pos_cps[0][i, non_zero_axes[1]] + factor * cp_forces[0][i, non_zero_axes[1]],
                         ],
                         c="darkgreen",
                     )
@@ -400,9 +457,7 @@ class ContactPoints(BaseContact):
                         ]
                     )
                 else:
-                    joint.set_data(
-                        [[self.pos_cps[frame][i, 0]], [self.pos_cps[frame][i, 1]]]
-                    )
+                    joint.set_data([[self.pos_cps[frame][i, 0]], [self.pos_cps[frame][i, 1]]])
                     joint.set_3d_properties(self.pos_cps[frame][i, 2])
             for i, line in enumerate(body_lines):
                 if case == "2D":
@@ -441,9 +496,7 @@ class ContactPoints(BaseContact):
                         else:
                             pos_a = self.pos_cps[frame][i]
                             pos_b = self.pos_cps[frame][j]
-                            line.set_data(
-                                [[pos_a[0]], [pos_b[0]]], [[pos_a[1]], [pos_b[1]]]
-                            )
+                            line.set_data([[pos_a[0]], [pos_b[0]]], [[pos_a[1]], [pos_b[1]]])
                             line.set_3d_properties([[pos_a[2]], [pos_b[2]]])
 
             for i, line in enumerate(force_lines):
@@ -453,24 +506,20 @@ class ContactPoints(BaseContact):
                             [self.pos_cps[frame][i, non_zero_axes[0]]],
                             [
                                 self.pos_cps[frame][i, non_zero_axes[0]]
-                                + self.factor
-                                * self.cp_forces[frame][i, non_zero_axes[0]]
+                                + self.factor * self.cp_forces[frame][i, non_zero_axes[0]]
                             ],
                         ],
                         [
                             [self.pos_cps[frame][i, non_zero_axes[1]]],
                             [
                                 self.pos_cps[frame][i, non_zero_axes[1]]
-                                + self.factor
-                                * self.cp_forces[frame][i, non_zero_axes[1]]
+                                + self.factor * self.cp_forces[frame][i, non_zero_axes[1]]
                             ],
                         ],
                     )
                 else:
                     pos_a = self.pos_cps[frame][i]
-                    pos_b = (
-                        self.pos_cps[frame][i] + self.factor * self.cp_forces[frame][i]
-                    )
+                    pos_b = self.pos_cps[frame][i] + self.factor * self.cp_forces[frame][i]
                     line.set_data([[pos_a[0]], [pos_b[0]]], [[pos_a[1]], [pos_b[1]]])
                     line.set_3d_properties([[pos_a[2]], [pos_b[2]]])
 

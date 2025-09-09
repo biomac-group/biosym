@@ -1,10 +1,12 @@
 import abc
 
+
 class BaseObjective(abc.ABC):
     """
     Abstract base class for objectives in the biosym package.
     All objectives should inherit from this class and implement the required methods.
     """
+
     def __init__(self, model, settings):
         """
         Initialize the BaseObjective class with a model and settings.
@@ -20,9 +22,9 @@ class BaseObjective(abc.ABC):
         This method can be overridden in subclasses to provide specific information.
         """
         return {
-            'name': self.__class__.__name__,
-            'description': 'Base objective class for biosym objectives.',
-            'required_variables': None
+            "name": self.__class__.__name__,
+            "description": "Base objective class for biosym objectives.",
+            "required_variables": None,
         }
 
     @abc.abstractmethod
@@ -34,7 +36,6 @@ class BaseObjective(abc.ABC):
         :param kwargs: Keyword arguments for evaluation.
         :return: The evaluated value of the objective function.
         """
-        pass
 
     @abc.abstractmethod
     def get_gradient(self, *args, **kwargs):
@@ -45,4 +46,3 @@ class BaseObjective(abc.ABC):
         :param kwargs: Keyword arguments for gradient computation.
         :return: The gradient of the objective function.
         """
-        pass
