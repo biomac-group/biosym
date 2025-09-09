@@ -6,6 +6,7 @@ stages:
 workflow:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "documentation"  # Add documentation branch
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
 
 .python_base: &python_base
@@ -45,20 +46,25 @@ docs:
     paths:
       - html_docs
     expire_in: 2 month
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "documentation"  # Also build docs from documentation branch
 
  
 pages:
   stage: pages
+  image: alpine:latest  # Lightweight image for file operations
   dependencies:
     - docs
   tags:
     - docker
   script:
-  - mkdir .public
-  - cp -r html_docs/* .public
-  - mv .public public
+    - mkdir .public
+    - cp -r html_docs/* .public
+    - mv .public public
   artifacts:
     paths:
-    - public
+      - public
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "documentation"  # Also deploy from documentation branch
