@@ -1,15 +1,63 @@
-# The Docker image that will be used to build your app
-image: docker
-create-pages:
-  pages:
-    # The folder that contains the files to be exposed at the Page URL
-    publish: public
+stages:
+  - testing
+  - deploy
+  - pages
+
+workflow:
   rules:
-    # This ensures that only pushes to the default branch will trigger
-    # a pages deploy
-    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
-  # Functions that should be executed before the build script is run
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+
+.python_base: &python_base
+  tags:
+    - docker
+  image: python:3.13
   before_script:
-    - namp
+    - git config --global credential.helper store
+    - echo "https://gitlab-ci-token:${CI_JOB_TOKEN}@mad-srv.informatik.uni-erlangen.de" > ~/.git-credentials
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv sync
+    - uv pip install poethepoet
+
+test:
+  stage: testing
+  <<: *python_base
   script:
-    - asd
+    - uv run poe test
+
+lint:
+  stage: testing
+  <<: *python_base
+  script:
+    - uv run poe lint || true  # Don't fail on linting errors for now
+    - uv run poe format_check || true  # Don't fail on formatting errors for now
+
+
+docs:
+  stage: deploy
+  <<: *python_base
+  script:
+    - uv run poe docs || true # Don't fail on docs errors for now
+    - cp -r docs/_build/html ./html_docs
+  artifacts:
+    paths:
+      - html_docs
+    expire_in: 2 month
+
+ 
+pages:
+  stage: pages
+  dependencies:
+    - docs
+  tags:
+    - docker
+  script:
+  - mkdir .public
+  - cp -r html_docs/* .public
+  - mv .public public
+  artifacts:
+    paths:
+    - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
