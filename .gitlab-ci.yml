@@ -56,8 +56,10 @@ pages:
   image: alpine:latest  # Lightweight image for file operations
   dependencies:
     - docs
+  needs:
+    - docs
   tags:
-    - docker
+    - old_workstation
   script:
     - mkdir .public
     - cp -r html_docs/* .public
@@ -65,5 +67,4 @@ pages:
   artifacts:
     paths:
       - public
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+    expire_in: 30 days
