@@ -57,7 +57,7 @@ pages:
   tags:
     - old_workstation
   script:
-  #- mkdir .public
+    - mkdir .public
   #- cp -r html_docs/* .public
   #- mv .public public
   artifacts:
