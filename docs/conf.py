@@ -59,7 +59,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "numpydoc",
-    "sphinx.ext.linkcode",
+    # "sphinx.ext.linkcode",  # Temporarily disabled due to Constants.actuator_model issue
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     # "sphinx.ext.imgconverter",

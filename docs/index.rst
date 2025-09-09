@@ -1,7 +1,7 @@
 .. biosym documentation master file
 
-biosym Docu Overview
-==================
+biosym Documentation Overview
+=============================
 
 .. toctree::
    :maxdepth: 1
