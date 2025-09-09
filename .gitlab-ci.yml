@@ -6,12 +6,11 @@ stages:
 workflow:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "documentation"  # Add documentation branch
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
 
 .python_base: &python_base
   tags:
-    - docker
+    - old_workstation
   image: python:3.13
   before_script:
     - git config --global credential.helper store
@@ -46,9 +45,6 @@ docs:
     paths:
       - html_docs
     expire_in: 2 month
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "documentation"  # Also build docs from documentation branch
 
  
 pages:
@@ -67,4 +63,3 @@ pages:
       - public
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "documentation"  # Also deploy from documentation branch
