@@ -1,5 +1,7 @@
-Utilities and Data Structures
-==============================
+Utilities
+=========
+
+Utility functions and data structures for biosym simulations and analysis.
 
 Data Structures
 ---------------
@@ -9,8 +11,8 @@ Data Structures
    :undoc-members:
    :show-inheritance:
 
-Utilities
----------
+General Utilities
+-----------------
 
 .. automodule:: biosym.utils
    :members:

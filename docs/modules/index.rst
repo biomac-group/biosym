@@ -11,11 +11,9 @@ This is the API Reference for ``biosym``.
    :caption: API Documentation
 
    model
-   actuators
-   contact
    ocp
-   utils
+   objectives  
    constraints
-   objectives
+   utils
    visualization
 
