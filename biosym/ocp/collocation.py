@@ -6,11 +6,11 @@ using direct transcription methods. It includes interfaces to IPOPT and other
 nonlinear optimization solvers for biomechanical motion optimization.
 """
 import os
+from biosym.model.model import *
 
 _cachedir = os.path.expanduser("~/.biosym/jax_cache")
 _model_cache = os.path.expanduser("~/.biosym/")
 os.environ["JAX_COMPILATION_CACHE_DIR"] = _cachedir  # This needs to happen before importing jax
-# os.environ["jax_persistent_cache_min_compile_time_secs".upper()] = "10"
 os.makedirs((_cachedir), exist_ok=True)
 
 
@@ -21,7 +21,6 @@ import jax.numpy as jnp
 import yaml
 
 from biosym.constraints import *
-from biosym.model.model import *
 from biosym.ocp import confun, objfun, utils
 from biosym.utils import states
 from biosym.visualization import stickfigure

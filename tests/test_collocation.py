@@ -1,29 +1,37 @@
 """Test collocation functionality."""
-import argparse
+#import argparse
 import sys
 import time
+
+from biosym.ocp import collocation
+from biosym.ocp.utils import states_dict_to_x, x_to_states_dict
 
 import jax.numpy as jnp
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import pytest
 
-from biosym.ocp import collocation
-from biosym.ocp.utils import states_dict_to_x, x_to_states_dict
 
 # Parse arguments first, before pytest can interfere
-parser = argparse.ArgumentParser(description="Test Collocation")
-parser.add_argument("--vis", action="store_true", help="Enable visualization", default=False)
+#parser = argparse.ArgumentParser(description="Test Collocation")
+#parser.add_argument("--vis", action="store_true", help="Enable visualization", default=False)
 
 # Only parse args if we're running standalone (not through pytest)
 if __name__ == "__main__":
-    args = parser.parse_args()
-    VIS = args.vis
+    #args = parser.parse_args()
+    VIS = True #args.vis
+    if VIS:
+        print("Running with visualization enabled...")
+        standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
+        standing_prob.solve(visualize=VIS)
+
+        walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
+        walking_problem.solve(visualize=VIS)
 else:
     # Default values when running through pytest
     VIS = False
 
+import pytest
 if not VIS:
     matplotlib.use("Agg")  # Set non-interactive backend before importing pyplot
 
@@ -143,7 +151,7 @@ def derivativetest(problem, x, eps=1e-3):
 @pytest.fixture
 def standing_problem():
     """Fixture to create a standing problem for testing."""
-    return collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
+    return collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
 
 
 @pytest.fixture
@@ -239,13 +247,7 @@ if __name__ == "__main__":
 
     try:
         if VIS:
-            print("Running with visualization enabled...")
-            standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
-            test_standing_problem_solve(standing_prob)
-
-            walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
-            test_walking_problem_solve(walking_problem)
-
+            pass
         else:
             print("Running in test mode (no visualization)...")
             # Create problems for testing
