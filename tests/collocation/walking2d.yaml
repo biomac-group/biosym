@@ -3,7 +3,7 @@ collocation:
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
     model: tests/models/gait2d_torque/gait2d_torque.yaml
-    nnodes: 50
+    nnodes: 100
     discretization:
       type: euler
       args:
@@ -24,6 +24,10 @@ collocation:
         exponent: 3
     - name: jerk_term
       weight: 1e-2
+    - name: track_angles
+      weight: 1e-2
+      args:
+        file: "~/.biosym/Data/Subject_01/gait_avg_joint_angles.csv"
 
 
   constraints:

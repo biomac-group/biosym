@@ -110,6 +110,7 @@ ignore = [
     "A003",
     # Ignore because of formatting
     "ISC001",
+    ["W293"], # blank line contains whitespace
 ]
 
 
