@@ -13,8 +13,8 @@ collocation:
         adaptive_h: false
     output:
       file: "~/.biosym/walking2d.pkl"
-    tol: 1e-3
-    max_iter: 2000
+    tol: 1e-2
+    max_iter: 500
     dtype: float32 # float64 still makes problems
 
   objectives:
@@ -25,7 +25,7 @@ collocation:
     - name: jerk_term
       weight: 1e-2
     - name: track_angles
-      weight: 1e-2
+      weight: 10
       args:
         file: "~/.biosym/Data/Subject_01/gait_avg_joint_angles.csv"
 
@@ -40,7 +40,7 @@ collocation:
     - name: periodicity
       weight: 1
       args:
-        symmetry: true
+        symmetry: false
         exclude: [0] # Exclude the first dimension --> pelvis_tx # Todo - that should be cross-check with the speed idx
 
   initial_guess:
@@ -50,8 +50,8 @@ collocation:
   bounds:
     from_model: true
     start_at_origin: true
-    dur: [0.4, 2]
-    speed: 1.3
+    dur: [0.5, 1.5]
+    speed: 0.97
 
 
   

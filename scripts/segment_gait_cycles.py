@@ -92,18 +92,6 @@ print(len(right_gait_cycles), "right foot gait cycles detected.")
 cycle_durations = [len(cycle) for cycle in right_gait_cycles]
 avg_cycle_duration = np.mean(cycle_durations) / 100
 print(f"Average gait cycle duration: {avg_cycle_duration:.2f} (s)")
-
-# compute velocuty by dividing pelvis_tx change during a gait cycle by duration
-ik_trial1 = read_mot(ik_path / "Subject1_trial1_ik.mot")
-pelvis_ty = ik_trial1["pelvis_ty"]
-velocities = []
-for i in range(len(right_hs_idx) - 1):
-    dt = (right_hs_idx[i + 1] - right_hs_idx[i]) / 100  # time in seconds
-    dx = pelvis_ty[right_hs_idx[i + 1]] - pelvis_ty[right_hs_idx[i]]
-    velocities.append(dx / dt)
-avg_velocity = np.mean(velocities)
-print(f"Average walking velocity: {avg_velocity:.2f} (m/s)")
-
 # %% Interpolate and average gait cycles.
 # save averaged joint angles to from dataframes to csv
 
