@@ -14,7 +14,7 @@ collocation:
     output:
       file: "~/.biosym/walking2d.pkl"
     tol: 1e-2
-    max_iter: 500
+    max_iter: 1000
     dtype: float32 # float64 still makes problems
 
   objectives:
@@ -25,9 +25,13 @@ collocation:
     - name: jerk_term
       weight: 1e-2
     - name: track_angles
-      weight: 10
+      weight: 1
       args:
         file: "~/.biosym/Data/Subject_01/gait_avg_joint_angles.csv"
+    - name: track_grfs
+      weight: 1
+      args:
+        file: "~/.biosym/Data/Subject_01/gait_avg_grfs.csv"
 
 
   constraints:
@@ -51,7 +55,7 @@ collocation:
     from_model: true
     start_at_origin: true
     dur: [0.5, 1.5]
-    speed: 0.97
+    speed: 1.3
 
 
   

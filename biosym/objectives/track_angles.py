@@ -3,9 +3,9 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-import pandas as pd
 
 from biosym.objectives.base_objective import BaseObjective
+from biosym.utils import segment_gait_averages
 
 
 class Objective(BaseObjective):
@@ -23,31 +23,38 @@ class Objective(BaseObjective):
         """
         self.model = model
         self.settings = settings
+        self.n_nodes = self.settings["nnodes"]
+        self.n_joints = self.model.coordinates["n"]
+        self.joints = self.model.coordinates["names"]
+        self.norm_factor = self.n_nodes * self.n_joints
+
+        eps = 1e-8  # avoid division by zero
 
         if "file" not in kwargs:
             raise ValueError("TrackAnglesObjective requires 'file' in args from YAML.")
-        filepath = kwargs["file"]
-        joint_angles = pd.read_csv(filepath)
-        joint_angles_mean = joint_angles.filter(like="mean")
-        joint_angles_var = joint_angles.filter(like="var")
 
-        eps = 1e-8  # avoid division by zero
-        self.q_exp = jnp.array(joint_angles_mean.values)
-        self.q_var = jnp.array(joint_angles_var.values) + eps
+        # segment_gait_averages returns (gait_avg_joint_angles, gait_avg_qs)
+        gait_joint_angles, _ = segment_gait_averages(n_points=self.n_nodes)
+        # gait_joint_angles expected to have "<channel>_mean" and "<channel>_var" columns
+        q_mean_df = gait_joint_angles.filter(like="_mean")
+        q_var_df = gait_joint_angles.filter(like="_var")
+        if q_mean_df.shape[0] == 0:
+            raise ValueError("segment_gait_averages returned no q mean columns.")
+        self.q_exp = jnp.asarray(q_mean_df.values)
+        self.q_var = jnp.asarray(q_var_df.values) + eps
+
         # attach arrays into a settings dict passed to objfun so signature matches others
         self.obj_settings = {"q_exp": self.q_exp, "q_var": self.q_var}
 
-        self.n_nodes = self.settings["nnodes"]
-        self.n_joints = self.model.coordinates["n"]
-        self.norm_factor = self.n_nodes * self.n_joints
-
     def _get_info(self):
+        # strip trailing '_mean' from column names to give cleaner joint labels
         return {
             "name": os.path.splitext(os.path.basename(__file__))[0],
             "description": "Objective term for tracking joint angles against experimental data.",
             "required_variables": {"states": ["model"], "constants": ["model"]},
             "n_nodes": self.n_nodes,
             "n_joints": self.n_joints,
+            "joints": self.joints,
             "norm_factor": self.norm_factor,
         }
 
@@ -75,12 +82,15 @@ def objfun(states_list, globals_dict, settings, info):
     """
     Objective function: Track joint angles vs experimental mean.
     """
-    # Extract simulated joint angles from states
-    q_sim = states_list.states.model[: info["n_nodes"], 3 : info["n_joints"]]
 
     # read expected values from settings passed in
     q_exp = settings["q_exp"][:, 3:]
     q_var = settings["q_var"][:, 3:]
+
+    # Extract simulated joint angles from states
+    q_sim = states_list.states.model[: info["n_nodes"], 3 : info["n_joints"]]
+
     # Weighted squared error
-    error = (q_sim - q_exp) ** 2 / q_var
+    error = (q_sim - q_exp) ** 2  # / q_var
+
     return jnp.sum(error) / info["norm_factor"]
