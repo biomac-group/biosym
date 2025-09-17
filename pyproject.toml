@@ -115,6 +115,8 @@ ignore = [
     "A001",    # builtin-variable-shadowing
     "PLC0206", # dict-iter-missing-items
     "W293", # blank line contains whitespace
+    "E402",
+    "E403"
 ]
 
 [tool.ruff.lint.per-file-ignores]
