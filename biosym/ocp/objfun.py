@@ -17,12 +17,12 @@ from biosym.utils import states
 class ObjectiveFunction:
     """
     Manager for objective functions in optimal control problems.
-    
+
     This class handles multiple objective terms, their weights, and provides
     efficient evaluation methods for optimization algorithms. It supports
     adding various types of objectives and compiles them into JIT-optimized
     functions for performance during optimization.
-    
+
     Attributes
     ----------
     model : BiosymModel
@@ -54,7 +54,7 @@ class ObjectiveFunction:
         settings : dict
             Configuration dictionary containing objective function settings.
             Expected to contain 'objectives' list and optional 'weights' list.
-            
+
         Notes
         -----
         - Automatically processes objectives from settings during initialization
@@ -65,14 +65,23 @@ class ObjectiveFunction:
         self.settings = settings
         self.objective_functions = []
         self.objective_gradients = []
+        self._objectives = []
         self.required_variables = {"states": [], "constants": [], "calculated": []}
         self.weights = settings.get("weights", [])
         for objective in settings.get("objectives", []):
-            self.add_objective(objective.get("name"), objective.get("weight"), objective.get("args", None))
+            self.add_objective(
+                objective.get("name"),
+                objective.get("weight"),
+                objective.get("args", None),
+            )
 
-        self.objfun = jax.jit(partial(evaluate_objectives, self.objective_functions, self.weights))
+        self.objfun = jax.jit(
+            partial(evaluate_objectives, self.objective_functions, self.weights)
+        )
         self.objfun.__name__ = "evaluate_objectives"
-        self.gradfun = jax.jit(partial(evaluate_gradients, self.objective_gradients, self.weights))
+        self.gradfun = jax.jit(
+            partial(evaluate_gradients, self.objective_gradients, self.weights)
+        )
         self.gradfun.__name__ = "evaluate_gradients"
 
     def add_objective(self, name, weight, kwargs=None):
@@ -89,12 +98,12 @@ class ObjectiveFunction:
             Higher weights emphasize this objective more in optimization.
         kwargs : dict, optional
             Additional keyword arguments to pass to the objective constructor.
-            
+
         Raises
         ------
         ValueError
             If the objective class name is not found in the global namespace.
-            
+
         Notes
         -----
         - Objectives are instantiated with model and settings
@@ -105,7 +114,9 @@ class ObjectiveFunction:
         if isinstance(name, str):
             objective_class = globals().get(name)
             if objective_class:
-                objective = objective_class.Objective(self.model, self.settings, **kwargs if kwargs else {})
+                objective = objective_class.Objective(
+                    self.model, self.settings, **kwargs if kwargs else {}
+                )
             else:
                 raise ValueError(f"Objective class '{name}' not found.")
         elif hasattr(name, "__init__"):
@@ -118,6 +129,7 @@ class ObjectiveFunction:
 
         self.objective_functions.append(objective.get_objfun())
         self.objective_gradients.append(objective.get_gradient())
+        self._objectives.append(objective)
         self.weights.append(weight)
 
         # Update required variables
@@ -131,11 +143,11 @@ class ObjectiveFunction:
 def evaluate_objectives(objective_functions, weights, states_list, globals_dict=None):
     """
     Evaluate all objective functions and compute weighted total cost.
-    
+
     This function efficiently evaluates all objective terms and combines them
     into a single scalar cost value using the specified weights. It's designed
     to be JIT-compiled for performance during optimization.
-    
+
     Parameters
     ----------
     objective_functions : list
@@ -146,12 +158,12 @@ def evaluate_objectives(objective_functions, weights, states_list, globals_dict=
         Dictionary containing current state variables (positions, velocities, etc.).
     globals_dict : dict, optional
         Dictionary containing global variables or parameters.
-        
+
     Returns
     -------
     float
         Weighted sum of all objective function values - the total cost to minimize.
-        
+
     Notes
     -----
     - This function is typically JIT-compiled for optimal performance
@@ -168,11 +180,11 @@ def evaluate_objectives(objective_functions, weights, states_list, globals_dict=
 def evaluate_gradients(objective_gradients, weights, states_list, globals_dict=None):
     """
     Evaluate gradients of all objective functions for gradient-based optimization.
-    
+
     This function computes the gradients of all objective terms with respect to
     state and global variables, combining them with appropriate weighting to form
     the total cost gradient needed for optimization algorithms.
-    
+
     Parameters
     ----------
     objective_gradients : list
@@ -183,14 +195,14 @@ def evaluate_gradients(objective_gradients, weights, states_list, globals_dict=N
         Dictionary containing current state variables.
     globals_dict : dict, optional
         Dictionary containing global variables or parameters.
-        
+
     Returns
     -------
     tuple
         Tuple containing:
         - gradients: Weighted sum of state variable gradients
         - globals_gradients: Weighted sum of global variable gradients (or None)
-        
+
     Notes
     -----
     - Gradients are combined using weighted summation across objectives
@@ -210,7 +222,9 @@ def evaluate_gradients(objective_gradients, weights, states_list, globals_dict=N
     globals_gradients = [g for g in globals_gradients if g is not None]
     if globals_gradients:
         # Sum the global gradients if they exist
-        globals_gradients = states.reduce_dataclasses(globals_gradients, jnp.sum, weights)
+        globals_gradients = states.reduce_dataclasses(
+            globals_gradients, jnp.sum, weights
+        )
     else:
         globals_gradients = None
     return gradients, globals_gradients
