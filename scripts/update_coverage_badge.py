@@ -60,6 +60,7 @@ def update_readme_badge(readme_path: Path, coverage_percentage: int) -> bool:
 
         # Replace the badge
         new_content = re.sub(badge_pattern, new_badge, content)
+        print(new_badge, badge_pattern)
 
         if new_content != content:
             readme_path.write_text(new_content)
@@ -67,7 +68,7 @@ def update_readme_badge(readme_path: Path, coverage_percentage: int) -> bool:
             return True
 
         print("No coverage badge found to update")
-        return False
+        return True
 
     except (FileNotFoundError, OSError) as e:
         print(f"Error updating README: {e}")

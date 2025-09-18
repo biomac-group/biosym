@@ -38,6 +38,7 @@ test-cov = "python -m pytest tests/ -v --cov=biosym --cov-report=term-missing --
 lint = "ruff check ."
 format_check = "ruff format --check ."
 docs = "python _tasks.py docs"
+update-coverage-badge = "python scripts/update_coverage_badge.py"
 
 [tool.pytest.ini_options]
 markers = [
