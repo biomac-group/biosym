@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from biosym.objectives.base_objective import BaseObjective
-from biosym.utils import segment_gait_averages
+from biosym.utils import read_mot, segment_gait_averages
 
 
 class Objective(BaseObjective):
@@ -30,10 +30,19 @@ class Objective(BaseObjective):
         if "file" not in kwargs:
             raise ValueError("TrackGRFSObjective requires 'file' in args from YAML.")
 
-        # segment_gait_averages returns (gait_avg_joint_angles, gait_avg_grfs)
-        _, gait_grfs = segment_gait_averages(n_points=self.n_nodes)
-        grf_mean_df = gait_grfs.filter(like="_mean")
-        grf_var_df = gait_grfs.filter(like="_var")
+        # read grf file from yaml either as pre-segmented mean/var or raw data
+        preseg_file_path = kwargs.get("presegmented_file", None)
+        preseg = bool(kwargs.get("presegmented"))
+
+        if preseg:
+            # Treat file_path as a CSV that already contains mean/var columns
+            grf_df = read_mot(preseg_file_path)
+            grf_mean_df = grf_df.filter(like="_mean")
+            grf_var_df = grf_df.filter(like="_var")
+        else:
+            _, gait_grfs = segment_gait_averages(n_points=self.n_nodes)
+            grf_mean_df = gait_grfs.filter(like="_mean")
+            grf_var_df = gait_grfs.filter(like="_var")
 
         # number of rows (time points) must match n_nodes
         if grf_mean_df.shape[0] != int(self.n_nodes):

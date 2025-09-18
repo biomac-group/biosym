@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from biosym.objectives.base_objective import BaseObjective
-from biosym.utils import segment_gait_averages
+from biosym.utils import read_mot, segment_gait_averages
 
 
 class Objective(BaseObjective):
@@ -31,11 +31,19 @@ class Objective(BaseObjective):
         if "file" not in kwargs:
             raise ValueError("TrackAnglesObjective requires 'file' in args from YAML.")
 
-        # segment_gait_averages returns (gait_avg_joint_angles, gait_avg_qs)
-        gait_joint_angles, _ = segment_gait_averages(n_points=self.n_nodes)
-        # gait_joint_angles expected to have "<channel>_mean" and "<channel>_var" columns
-        q_mean_df = gait_joint_angles.filter(like="_mean")
-        q_var_df = gait_joint_angles.filter(like="_var")
+        # read grf file from yaml either as pre-segmented mean/var or raw data
+        preseg_file_path = kwargs.get("presegmented_file", None)
+        preseg = bool(kwargs.get("presegmented"))
+
+        if preseg:
+            print("Using pre-segmented GRF data from", preseg_file_path)
+            gait_joint_angles = read_mot(preseg_file_path)
+            q_mean_df = gait_joint_angles.filter(like="_mean")
+            q_var_df = gait_joint_angles.filter(like="_var")
+        else:
+            gait_joint_angles, _ = segment_gait_averages(n_points=self.n_nodes)
+            q_mean_df = gait_joint_angles.filter(like="_mean")
+            q_var_df = gait_joint_angles.filter(like="_var")
 
         # number of rows (time points) must match n_nodes
         if q_mean_df.shape[0] != int(self.n_nodes):
