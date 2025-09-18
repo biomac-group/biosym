@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 
@@ -31,19 +32,48 @@ def read_trc(filepath):
 
 def read_mot(filepath):
     """
-    Reads a .mot file with a header ending in 'endheader' and returns a pandas DataFrame.
+    Reads a .mot file with a header ending in 'endheader'.
+    Returns a tuple (df, header_dict).
+    If header contains 'inDegrees=yes' (case-insensitive), numeric data
+    columns (except 'time' or 'frame') are converted from degrees to radians.
     """
-    # First, find the line number where 'endheader' appears
+    header = {}
+    header_end_line = None
+
+    # Read header and store key/value pairs (keys lower-cased)
     with open(filepath, "r") as f:
         for i, line in enumerate(f):
-            if line.strip().lower() == "endheader":
+            s = line.strip()
+            if not s:
+                continue
+            if s.lower() == "endheader":
                 header_end_line = i
                 break
-        else:
-            raise ValueError("'endheader' not found in the file.")
+            if "=" in s:
+                k, v = s.split("=", 1)
+                header[k.strip().lower()] = v.strip()
+            else:
+                # keep non key=value header lines if you want:
+                # header.setdefault("_lines", []).append(s)
+                pass
 
-    # The data starts after the 'endheader' line
+    if header_end_line is None:
+        raise ValueError("'endheader' not found in the file.")
+
+    # Read the data section
     df = pd.read_csv(filepath, delim_whitespace=True, skiprows=header_end_line + 1)
+
+    # Check inDegrees flag (accept 'yes','true','1','y' as true)
+    in_degrees_val = header.get("inDegrees")
+    if in_degrees_val and in_degrees_val.strip().lower() in ("yes", "true", "1", "y"):
+        # Convert numeric columns except typical time/frame columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        cols_to_convert = [
+            c for c in numeric_cols if c.lower() not in ("time", "frame")
+        ]
+        if cols_to_convert:
+            df[cols_to_convert] = np.deg2rad(df[cols_to_convert])
+
     return df
 
 
