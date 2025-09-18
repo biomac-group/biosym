@@ -1,0 +1,36 @@
+-------------------------------------------------------
+Trial 'Subject3_trial6': Inverse Kinematics Summary
+-------------------------------------------------------
+
+Automatic processing achieved the following marker errors, averaged
+over all frames of this trial:
+
+  - Avg. Marker RMSE      = 3.45 cm
+  - Avg. Marker Max Error = 6.66 cm
+
+Markers with large root-mean-square error:
+
+  - WARNING: Marker SACR has RMSE = 5.48 cm!
+  - WARNING: Marker LSHO has RMSE = 5.04 cm!
+  - WARNING: Marker RMT1 has RMSE = 4.95 cm!
+  - WARNING: Marker LANK has RMSE = 4.71 cm!
+  - WARNING: Marker LHEEU has RMSE = 4.56 cm!
+  - WARNING: Marker RKNE has RMSE = 4.48 cm!
+  - WARNING: Marker RASI has RMSE = 4.26 cm!
+  - WARNING: Marker RSHO has RMSE = 4.10 cm!
+
+The input data for the following markers were modified to enable
+automatic processing:
+
+  - WARNING: Marker LHEEU dropped for accelerating too fast (1002.343487 m/s^2) on frame 9491.
+  - WARNING: Marker LHEEU dropped for accelerating too fast (1161.118610 m/s^2) on frame 28824.
+  - WARNING: Trial segmentation was not enabled, but the time range of trial "Subject3_trial6" where markers are present and force was non-zero is not equal to the full time range of the trial. We recommend enabling trial segmentation, which will trim this trial to the time range [0.01, 420.01]..
+
+Additional information:
+
+  - INFO: The marker "LCAL" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "LHEEL" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "LTOE" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "RCAL" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "RHEEL" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "RTOE" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..

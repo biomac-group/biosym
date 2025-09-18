@@ -1,0 +1,109 @@
+-------------------------------------------------------
+Trial 'Subject2_trial2': Inverse Kinematics Summary
+-------------------------------------------------------
+
+Automatic processing achieved the following marker errors, averaged
+over all frames of this trial:
+
+  - Avg. Marker RMSE      = 3.48 cm
+  - Avg. Marker Max Error = 6.49 cm
+
+Markers with large root-mean-square error:
+
+  - WARNING: Marker RSHO has RMSE = 5.29 cm!
+  - WARNING: Marker T10 has RMSE = 5.25 cm!
+  - WARNING: Marker LSHO has RMSE = 5.14 cm!
+  - WARNING: Marker SACR has RMSE = 4.71 cm!
+  - WARNING: Marker RASI has RMSE = 4.06 cm!
+  - WARNING: Marker LPSI has RMSE = 4.01 cm!
+
+The input data for the following markers were modified to enable
+automatic processing:
+
+  - WARNING: Marker LKNE dropped for accelerating too fast (1433.283185 m/s^2) on frame 42042.
+  - WARNING: Marker LTHI dropped for accelerating too fast (1970.871602 m/s^2) on frame 42042.
+  - WARNING: Marker SACR dropped for accelerating too fast (1345.948757 m/s^2) on frame 42042.
+  - WARNING: Marker LKNE dropped for accelerating too fast (1424.828538 m/s^2) on frame 42043.
+  - WARNING: Marker LTHI dropped for accelerating too fast (1937.283915 m/s^2) on frame 42043.
+  - WARNING: Marker SACR dropped for accelerating too fast (1335.754945 m/s^2) on frame 42043.
+  - WARNING: Dropping marker "", only on 0.147251 percent of frames.
+  - WARNING: Dropping marker CLAV for suspicious acceleration (2578.576972m/s^2) on frame 42043.
+  - WARNING: Dropping marker CLAV for suspicious acceleration (1292.676166m/s^2) on frame 42045.
+  - WARNING: Dropping marker LGTRO for suspicious acceleration (2221.666094m/s^2) on frame 42043.
+  - WARNING: Dropping marker LGTRO for suspicious acceleration (1112.902713m/s^2) on frame 42045.
+  - WARNING: Dropping marker LSHO for suspicious acceleration (2679.357435m/s^2) on frame 42043.
+  - WARNING: Dropping marker LSHO for suspicious acceleration (1337.146643m/s^2) on frame 42045.
+  - WARNING: Dropping marker RANK for suspicious acceleration (5585.547732m/s^2) on frame 42043.
+  - WARNING: Dropping marker RANK for suspicious acceleration (1381.808762m/s^2) on frame 42044.
+  - WARNING: Dropping marker RANK for suspicious acceleration (1880.525560m/s^2) on frame 42046.
+  - WARNING: Dropping marker RGTRO for suspicious acceleration (2534.340692m/s^2) on frame 42043.
+  - WARNING: Dropping marker RGTRO for suspicious acceleration (1258.918838m/s^2) on frame 42045.
+  - WARNING: Dropping marker RHEEU for suspicious acceleration (5631.563040m/s^2) on frame 42043.
+  - WARNING: Dropping marker RHEEU for suspicious acceleration (1391.839074m/s^2) on frame 42044.
+  - WARNING: Dropping marker RHEEU for suspicious acceleration (1895.709368m/s^2) on frame 42046.
+  - WARNING: Dropping marker RKNE for suspicious acceleration (4493.955043m/s^2) on frame 42043.
+  - WARNING: Dropping marker RKNE for suspicious acceleration (1132.040908m/s^2) on frame 42044.
+  - WARNING: Dropping marker RKNE for suspicious acceleration (1485.636830m/s^2) on frame 42046.
+  - WARNING: Dropping marker RMT1 for suspicious acceleration (5617.413739m/s^2) on frame 42043.
+  - WARNING: Dropping marker RMT1 for suspicious acceleration (1388.628961m/s^2) on frame 42044.
+  - WARNING: Dropping marker RMT1 for suspicious acceleration (1898.437703m/s^2) on frame 42046.
+  - WARNING: Dropping marker RMT5 for suspicious acceleration (5743.343397m/s^2) on frame 42043.
+  - WARNING: Dropping marker RMT5 for suspicious acceleration (1420.982962m/s^2) on frame 42044.
+  - WARNING: Dropping marker RMT5 for suspicious acceleration (1934.255837m/s^2) on frame 42046.
+  - WARNING: Dropping marker RSHO for suspicious acceleration (2629.123450m/s^2) on frame 42043.
+  - WARNING: Dropping marker RSHO for suspicious acceleration (1305.769771m/s^2) on frame 42045.
+  - WARNING: Dropping marker RTHI for suspicious acceleration (3714.014370m/s^2) on frame 42043.
+  - WARNING: Dropping marker RTHI for suspicious acceleration (1834.694499m/s^2) on frame 42045.
+  - WARNING: Dropping marker RTIB for suspicious acceleration (4938.545255m/s^2) on frame 42043.
+  - WARNING: Dropping marker RTIB for suspicious acceleration (1230.737884m/s^2) on frame 42044.
+  - WARNING: Dropping marker RTIB for suspicious acceleration (1657.609119m/s^2) on frame 42046.
+  - WARNING: Marker CLAV jumps a suspiciously large 0.257858m on frame 42043.
+  - WARNING: Marker CLAV jumps a suspiciously large 0.258060m on frame 42044.
+  - WARNING: Marker LASI jumps a suspiciously large 0.231576m on frame 42043.
+  - WARNING: Marker LASI jumps a suspiciously large 0.228928m on frame 42044.
+  - WARNING: Marker LGTRO jumps a suspiciously large 0.222167m on frame 42043.
+  - WARNING: Marker LGTRO jumps a suspiciously large 0.220263m on frame 42044.
+  - WARNING: Marker LPSI jumps a suspiciously large 0.229304m on frame 42043.
+  - WARNING: Marker LPSI jumps a suspiciously large 0.226854m on frame 42044.
+  - WARNING: Marker LSHO jumps a suspiciously large 0.267936m on frame 42043.
+  - WARNING: Marker LSHO jumps a suspiciously large 0.266612m on frame 42044.
+  - WARNING: Marker NAVE jumps a suspiciously large 0.237119m on frame 42043.
+  - WARNING: Marker NAVE jumps a suspiciously large 0.235513m on frame 42044.
+  - WARNING: Marker RANK jumps a suspiciously large 0.558555m on frame 42043.
+  - WARNING: Marker RANK jumps a suspiciously large 0.564386m on frame 42044.
+  - WARNING: Marker RASI jumps a suspiciously large 0.240006m on frame 42043.
+  - WARNING: Marker RASI jumps a suspiciously large 0.239558m on frame 42044.
+  - WARNING: Marker RGTRO jumps a suspiciously large 0.253434m on frame 42043.
+  - WARNING: Marker RGTRO jumps a suspiciously large 0.252520m on frame 42044.
+  - WARNING: Marker RHEEU jumps a suspiciously large 0.563156m on frame 42043.
+  - WARNING: Marker RHEEU jumps a suspiciously large 0.569586m on frame 42044.
+  - WARNING: Marker RKNE jumps a suspiciously large 0.449396m on frame 42043.
+  - WARNING: Marker RKNE jumps a suspiciously large 0.445975m on frame 42044.
+  - WARNING: Marker RMT1 jumps a suspiciously large 0.561741m on frame 42043.
+  - WARNING: Marker RMT1 jumps a suspiciously large 0.568036m on frame 42044.
+  - WARNING: Marker RMT5 jumps a suspiciously large 0.574334m on frame 42043.
+  - WARNING: Marker RMT5 jumps a suspiciously large 0.580277m on frame 42044.
+  - WARNING: Marker RPSI jumps a suspiciously large 0.228943m on frame 42043.
+  - WARNING: Marker RPSI jumps a suspiciously large 0.227829m on frame 42044.
+  - WARNING: Marker RSHO jumps a suspiciously large 0.262912m on frame 42043.
+  - WARNING: Marker RSHO jumps a suspiciously large 0.261448m on frame 42044.
+  - WARNING: Marker RTHI jumps a suspiciously large 0.371401m on frame 42043.
+  - WARNING: Marker RTHI jumps a suspiciously large 0.367607m on frame 42044.
+  - WARNING: Marker RTIB jumps a suspiciously large 0.493855m on frame 42043.
+  - WARNING: Marker RTIB jumps a suspiciously large 0.495418m on frame 42044.
+  - WARNING: Marker SACR jumps a suspiciously large 0.234240m on frame 42043.
+  - WARNING: Marker SACR jumps a suspiciously large 0.232964m on frame 42044.
+  - WARNING: Marker STRN jumps a suspiciously large 0.247238m on frame 42043.
+  - WARNING: Marker STRN jumps a suspiciously large 0.246636m on frame 42044.
+  - WARNING: Marker T10 jumps a suspiciously large 0.245422m on frame 42043.
+  - WARNING: Marker T10 jumps a suspiciously large 0.244814m on frame 42044.
+  - WARNING: Trial segmentation was not enabled, but the time range of trial "Subject2_trial2" where markers are present and force was non-zero is not equal to the full time range of the trial. We recommend enabling trial segmentation, which will trim this trial to the time range [0.01, 421.05]..
+
+Additional information:
+
+  - INFO: The marker "LCAL" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "LHEEL" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "LTOE" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "RCAL" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "RHEEL" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..
+  - INFO: The marker "RTOE" appears in the model, but not in the mocap data. This generally happens because the marker is a virtual marker. We ignore virtual markers, so this is not a problem, just a heads up..

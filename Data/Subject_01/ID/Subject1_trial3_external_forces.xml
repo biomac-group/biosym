@@ -1,0 +1,6 @@
+<OpenSimDocument Version="40000">
+    <ExternalLoads name="Subject1_trial3">
+        <objects/>
+        <datafile>Subject1_trial3_grf.mot</datafile>
+    </ExternalLoads>
+</OpenSimDocument>
