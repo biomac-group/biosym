@@ -1,29 +1,67 @@
-# %% Import and load GRF data for Subject 1, trial 1
+# %% Import and load IK and GRF data
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import yaml
 
 from biosym.utils import read_mot
 
-DATA_PATH = Path("~/.biosym/Data/Subject_01").expanduser()
-ik_path = DATA_PATH / "IK"
-id_path = DATA_PATH / "ID"
 
-# Ensure the data path exists and the requested files are present. Expanduser
-# makes the path independent of the current working directory.
-mot_path = DATA_PATH / "Subject1_trial1.mot"
-if not mot_path.exists():
-    raise FileNotFoundError(f"GRF file not found: {mot_path}")
+def read_tracking_objective_files(
+    yaml_path: str | Path = "tests/collocation/walking2d.yaml",
+):
+    """
+    Read IK and GRF .mot files referenced in the collocation YAML and return
+    (ik_df, grf_df) as returned by read_mot. Paths are used literally.
+    """
+    p = Path(yaml_path)
+    if not p.exists():
+        raise FileNotFoundError(f"Collocation YAML not found: {p}")
 
-# Read GRF data
-grf_trial1 = read_mot(str(mot_path))
-right_vgrf = grf_trial1["ground_force_vy"]
-left_vgrf = grf_trial1["1_ground_force_vy"]
+    with p.open("r") as f:
+        cfg = yaml.safe_load(f) or {}
 
-# Read IK data for trial 1
-ik_trial1 = read_mot(ik_path / "Subject1_trial1_ik.mot")
+    coll = cfg.get("collocation", cfg)
+    objectives = coll.get("objectives", [])
+
+    ik_path = None
+    grf_path = None
+    for obj in objectives:
+        name = obj.get("name", "")
+        args = obj.get("args", {}) or {}
+        fileval = args.get("file", None)
+        if fileval is None:
+            continue
+        if name == "track_angles":
+            ik_path = Path(fileval)
+        elif name == "track_grfs":
+            grf_path = Path(fileval)
+
+    if ik_path is None:
+        raise ValueError(
+            "track_angles objective not found or has no args.file in YAML."
+        )
+    if grf_path is None:
+        raise ValueError("track_grfs objective not found or has no args.file in YAML.")
+
+    if not ik_path.exists():
+        raise FileNotFoundError(f"IK mot file not found (literal path): {ik_path}")
+    if not grf_path.exists():
+        raise FileNotFoundError(f"GRF mot file not found (literal path): {grf_path}")
+
+    ik_df = read_mot(str(ik_path))
+    grf_df = read_mot(str(grf_path))
+    return ik_df, grf_df
+
+
+ik_df, grf_df = read_tracking_objective_files(
+    yaml_path="tests/collocation/walking2d.yaml"
+)
+
+# find right certical grf forces
+right_vgrf = grf_df["ground_force_vy"].values
 
 
 # %% Segement gait cycles based on heel strike
@@ -168,7 +206,7 @@ def create_averaged_gait_forces(
         pd.DataFrame: DataFrame with columns "<channel>_mean" and "<channel>_var" (length n_points),
                       ordered according to the canonical GRF ordering.
     """
-    # Canonical column order requested by you
+    # Forces order for output columns. First are left foot, then right foot.
     desired_order = [
         "1_ground_force_vx",
         "1_ground_force_vy",
@@ -176,12 +214,6 @@ def create_averaged_gait_forces(
         "ground_force_vx",
         "ground_force_vy",
         "ground_force_vz",
-        "1_ground_torque_x",
-        "1_ground_torque_y",
-        "1_ground_torque_z",
-        "ground_torque_x",
-        "ground_torque_y",
-        "ground_torque_z",
     ]
 
     # If user didn't pass channels, use desired_order but keep only existing columns
@@ -253,11 +285,9 @@ def segment_gait_averages(n_points=100):
         (gait_avg_joint_angles: pd.DataFrame, gait_avg_grfs: pd.DataFrame)
     """
     gait_avg_joint_angles = create_averaged_gait_joint_angles(
-        ik_trial1, right_hs_idx, n_points=n_points
+        ik_df, right_hs_idx, n_points=n_points
     )
-    gait_avg_grfs = create_averaged_gait_forces(
-        grf_trial1, right_hs_idx, n_points=n_points
-    )
+    gait_avg_grfs = create_averaged_gait_forces(grf_df, right_hs_idx, n_points=n_points)
     return gait_avg_joint_angles, gait_avg_grfs
 
 
