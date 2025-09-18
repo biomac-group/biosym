@@ -64,7 +64,7 @@ def read_mot(filepath):
     df = pd.read_csv(filepath, delim_whitespace=True, skiprows=header_end_line + 1)
 
     # Check inDegrees flag (accept 'yes','true','1','y' as true)
-    in_degrees_val = header.get("inDegrees")
+    in_degrees_val = header.get("inDegrees", None)
     if in_degrees_val and in_degrees_val.strip().lower() in ("yes", "true", "1", "y"):
         # Convert numeric columns except typical time/frame columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()

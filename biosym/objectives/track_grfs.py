@@ -24,7 +24,7 @@ class Objective(BaseObjective):
         self.model = model
         self.settings = settings
         self.n_nodes = self.settings["nnodes"]
-        self.n_grfs = self.model.ext_forces["n"] + self.model.ext_torques["n"]
+        self.n_grfs = self.model.ext_forces["n"]
         self.norm_factor = self.n_nodes * self.n_grfs
 
         if "file" not in kwargs:
@@ -32,11 +32,15 @@ class Objective(BaseObjective):
 
         # segment_gait_averages returns (gait_avg_joint_angles, gait_avg_grfs)
         _, gait_grfs = segment_gait_averages(n_points=self.n_nodes)
-        # gait_grfs expected to have "<channel>_mean" and "<channel>_var" columns
         grf_mean_df = gait_grfs.filter(like="_mean")
         grf_var_df = gait_grfs.filter(like="_var")
-        if grf_mean_df.shape[0] == 0:
-            raise ValueError("segment_gait_averages returned no GRF mean columns.")
+
+        # number of rows (time points) must match n_nodes
+        if grf_mean_df.shape[0] != int(self.n_nodes):
+            raise NotImplementedError(
+                f"Tracking data length mismatch: objective n_nodes={self.n_nodes} "
+                f"but grf tracking data has {grf_mean_df.shape[0]} rows."
+            )
         self.grf_exp = jnp.asarray(grf_mean_df.values)
         self.grf_var = jnp.asarray(grf_var_df.values) + 1e-8
 
@@ -98,4 +102,4 @@ def objfun(states_list, globals_dict, settings, info):
     # Weighted squared error
     error = (grf_sim - grf_exp) ** 2 / grf_var
 
-    return jnp.sum(error) / info["norm_factor"]
+    return jnp.mean(error)

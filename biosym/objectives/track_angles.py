@@ -23,10 +23,8 @@ class Objective(BaseObjective):
         """
         self.model = model
         self.settings = settings
+        self.initial_joints = self.model.coordinates["names"]
         self.n_nodes = self.settings["nnodes"]
-        self.n_joints = self.model.coordinates["n"]
-        self.joints = self.model.coordinates["names"]
-        self.norm_factor = self.n_nodes * self.n_joints
 
         eps = 1e-8  # avoid division by zero
 
@@ -38,10 +36,47 @@ class Objective(BaseObjective):
         # gait_joint_angles expected to have "<channel>_mean" and "<channel>_var" columns
         q_mean_df = gait_joint_angles.filter(like="_mean")
         q_var_df = gait_joint_angles.filter(like="_var")
-        if q_mean_df.shape[0] == 0:
-            raise ValueError("segment_gait_averages returned no q mean columns.")
-        self.q_exp = jnp.asarray(q_mean_df.values)
-        self.q_var = jnp.asarray(q_var_df.values) + eps
+
+        # number of rows (time points) must match n_nodes
+        if q_mean_df.shape[0] != int(self.n_nodes):
+            raise NotImplementedError(
+                f"Tracking data length mismatch: objective n_nodes={self.n_nodes} "
+                f"but  angle tracking data has {q_mean_df.shape[0]} rows."
+            )
+
+        # # column names (stripped of '_mean') must match the model coordinate names
+        # tracking_cols = [c.replace("_mean", "") for c in q_mean_df.columns.tolist()]
+        # model_coord_names = list(self.joints)
+        # if tracking_cols != model_coord_names:
+        #     raise NotImplementedError(
+        #         "Tracking data joint names do not match model coordinates"
+        #     )
+
+        # exclude certain coordinates from tracking
+        exclude = kwargs.get("exclude", None)
+        exclude_names_list = []
+        if exclude is not None:
+            for e in exclude:
+                exclude_names_list.append(e)
+
+        # build list of tracked indices (relative to coordinate slice)
+        tracked_indices = [
+            i
+            for i, name in enumerate(self.initial_joints)
+            if name not in exclude_names_list
+        ]
+        self.tracked_indices = tuple(tracked_indices)  # store as tuple for immutability
+
+        # index pandas DataFrame by integer positions
+        cols = list(self.tracked_indices)
+        self.q_exp = jnp.asarray(
+            q_mean_df.iloc[:, cols].values
+        )  # shape (n_points, n_tracked)
+        self.q_var = jnp.asarray(q_var_df.iloc[:, cols].values) + eps
+
+        self.n_joints = len(self.tracked_indices)
+        self.joints = [self.initial_joints[i] for i in self.tracked_indices]
+        self.norm_factor = self.n_nodes * self.n_joints
 
         # attach arrays into a settings dict passed to objfun so signature matches others
         self.obj_settings = {"q_exp": self.q_exp, "q_var": self.q_var}
@@ -54,6 +89,7 @@ class Objective(BaseObjective):
             "required_variables": {"states": ["model"], "constants": ["model"]},
             "n_nodes": self.n_nodes,
             "n_joints": self.n_joints,
+            "tracked_indices": self.tracked_indices,
             "joints": self.joints,
             "norm_factor": self.norm_factor,
         }
@@ -84,13 +120,13 @@ def objfun(states_list, globals_dict, settings, info):
     """
 
     # read expected values from settings passed in
-    q_exp = settings["q_exp"][:, 3:]
-    q_var = settings["q_var"][:, 3:]
+    q_exp = settings["q_exp"]
+    q_var = settings["q_var"]
 
     # Extract simulated joint angles from states
-    q_sim = states_list.states.model[: info["n_nodes"], 3 : info["n_joints"]]
+    q_sim = states_list.states.model[: info["n_nodes"], info["tracked_indices"]]
 
     # Weighted squared error
-    error = (q_sim - q_exp) ** 2  # / q_var
+    error = (q_sim - q_exp) ** 2 / q_var
 
-    return jnp.sum(error) / info["norm_factor"]
+    return jnp.mean(error)
