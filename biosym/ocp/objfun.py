@@ -75,6 +75,10 @@ class ObjectiveFunction:
                 objective.get("args", None),
             )
 
+    def _compile_callables(self):
+        """
+        Compile the objective and gradient functions into JIT-optimized callables.
+        """
         self.objfun = jax.jit(
             partial(evaluate_objectives, self.objective_functions, self.weights)
         )
@@ -138,6 +142,7 @@ class ObjectiveFunction:
                 if var_type not in self.required_variables:
                     self.required_variables[var_type] = []
                 self.required_variables[var_type].extend(vars)
+        self._compile_callables()
 
 
 def evaluate_objectives(objective_functions, weights, states_list, globals_dict=None):
