@@ -3,6 +3,7 @@
 import sys
 import time
 
+import biosym
 from biosym.ocp import collocation
 from biosym.ocp.utils import states_dict_to_x, x_to_states_dict
 
@@ -220,10 +221,19 @@ def test_constraint_and_objective_functions(standing_problem):
         assert elapsed_time < 10.0, f"{name} function took too long: {elapsed_time} seconds"
 
 
-def test_objective_function_addition(standing_problem):
-    """Test adding a custom objective function."""
+def test_all_objective_functions(walking_problem):
+    """Test all objective functions."""
     # Add the test objective function
-    standing_problem.objective.add_objective(TestObjectiveFunction, weight=1.0)
+    for objective in biosym.objectives.__all__:
+        kwargs = {}
+        if objective == 'track_angles':
+            kwargs = {'file': 'tests/collocation/walking2d_angles.csv'}
+        elif objective == 'track_grf':
+            kwargs = {'file': 'tests/collocation/walking2d_grf.csv'}
+        walking_problem.objective.add_objective(objective, weight=1.0, kwargs=kwargs)
+
+    walking_problem.objective.objfun(walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
+    walking_problem.objective.gradfun(walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
 
     # Verify it was added (this test depends on the internal structure)
     # You might need to adjust this based on how add_objective works
@@ -265,7 +275,7 @@ if __name__ == "__main__":
             test_constraint_and_objective_functions(standing_prob)
 
             print("Testing objective function addition...")
-            test_objective_function_addition(standing_prob)
+            test_all_objective_functions(walking_problem)
 
         print("=== All tests completed successfully! ===")
 
