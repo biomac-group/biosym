@@ -36,7 +36,7 @@ def read_tracking_objective_files(
             continue
         if name == "track_angles":
             ik_path = Path(fileval)
-        elif name == "track_grfs":
+        elif name == "track_grf":
             grf_path = Path(fileval)
 
     if ik_path is None:
@@ -46,22 +46,9 @@ def read_tracking_objective_files(
     if grf_path is None:
         raise ValueError("track_grfs objective not found or has no args.file in YAML.")
 
-    if not ik_path.exists():
-        raise FileNotFoundError(f"IK mot file not found (literal path): {ik_path}")
-    if not grf_path.exists():
-        raise FileNotFoundError(f"GRF mot file not found (literal path): {grf_path}")
-
     ik_df = read_mot(str(ik_path))
     grf_df = read_mot(str(grf_path))
     return ik_df, grf_df
-
-
-ik_df, grf_df = read_tracking_objective_files(
-    yaml_path="tests/collocation/walking2d.yaml"
-)
-
-# find right certical grf forces
-right_vgrf = grf_df["ground_force_vy"].values
 
 
 # %% Segement gait cycles based on heel strike
@@ -81,18 +68,21 @@ def find_heel_strikes(vgrf, force_increase=300, time_points=10):
     return np.array(hs_idx)
 
 
-right_hs_idx = find_heel_strikes(right_vgrf, force_increase=500, time_points=20)
+def detect_heel_strikes_from_grf(
+    grf_df: pd.DataFrame,
+    channel: str = "ground_force_vy",
+    force_increase: float = 500.0,
+    time_points: int = 20,
+):
+    """Return heel strike indices detected on grf_df[channel]."""
+    if channel not in grf_df.columns:
+        raise KeyError(f"GRF channel '{channel}' not found in GRF dataframe.")
+    vgrf = grf_df[channel].values
+    return find_heel_strikes(
+        vgrf, force_increase=force_increase, time_points=time_points
+    )
 
-# %% A gait cycle can be defined as the period between two consecutive
-# heel strikes for the same foot
 
-right_gait_cycles = []
-for i in range(len(right_hs_idx) - 1):
-    right_gait_cycles.append(right_vgrf[right_hs_idx[i] : right_hs_idx[i + 1]])
-
-# compute duration of each gait cycle and average over them
-cycle_durations = [len(cycle) for cycle in right_gait_cycles]
-avg_cycle_duration = np.mean(cycle_durations) / 100
 # %% Interpolate and average gait cycles.
 # save averaged joint angles to from dataframes to csv
 
@@ -277,24 +267,57 @@ def create_averaged_gait_forces(
     return df
 
 
-def segment_gait_averages(n_points=100):
+def segment_gait_averages(
+    heel_strike_index=None, n_points=100, grf_channel="ground_force_vy"
+):
     """
-    Compute and return averaged joint angles and GRFs.
+    Compute averaged joint angles and GRFs for the supplied trial data.
 
+    If heel_strike_index is None the function will detect heel strikes using grf_df and grf_channel.
     Returns:
-        (gait_avg_joint_angles: pd.DataFrame, gait_avg_grfs: pd.DataFrame)
+        (gait_avg_joint_angles: pd.DataFrame, gait_avg_grfs: pd.DataFrame, hs_idx: np.ndarray)
     """
-    gait_avg_joint_angles = create_averaged_gait_joint_angles(
-        ik_df, right_hs_idx, n_points=n_points
+
+    ik_df, grf_df = read_tracking_objective_files(
+        yaml_path="tests/collocation/walking2d.yaml"
     )
-    gait_avg_grfs = create_averaged_gait_forces(grf_df, right_hs_idx, n_points=n_points)
+
+    if heel_strike_index is None:
+        heel_strike_index = detect_heel_strikes_from_grf(
+            grf_df, channel=grf_channel, force_increase=500.0, time_points=20
+        )
+    gait_avg_joint_angles = create_averaged_gait_joint_angles(
+        ik_df, heel_strike_index, n_points=n_points
+    )
+    gait_avg_grfs = create_averaged_gait_forces(
+        grf_df, heel_strike_index, n_points=n_points
+    )
     return gait_avg_joint_angles, gait_avg_grfs
 
 
-gait_avg_joint_angles, gait_avg_grfs = segment_gait_averages(n_points=100)
-
 # %% Plot averaged joint angles with variance
 if __name__ == "__main__":
+    gait_avg_joint_angles, gait_avg_grfs = segment_gait_averages(n_points=100)
+
+    ik_df, grf_df = read_tracking_objective_files(
+        yaml_path="tests/collocation/walking2d.yaml"
+    )
+
+    # find right certical grf forces
+    right_vgrf = grf_df["ground_force_vy"].values
+
+    right_hs_idx = find_heel_strikes(right_vgrf, force_increase=500, time_points=20)
+
+    # A gait cycle can be defined as the period between two consecutive# heel strikes for the same foot
+
+    right_gait_cycles = []
+    for i in range(len(right_hs_idx) - 1):
+        right_gait_cycles.append(right_vgrf[right_hs_idx[i] : right_hs_idx[i + 1]])
+
+    # compute duration of each gait cycle and average over them
+    cycle_durations = [len(cycle) for cycle in right_gait_cycles]
+    avg_cycle_duration = np.mean(cycle_durations) / 100
+
     # print how many gait cycles were detected
     print(len(right_gait_cycles), "right foot gait cycles detected.")
 
