@@ -27,14 +27,14 @@ collocation:
     - name: track_angles
       weight: 1
       args:
-        file: "../biosym/Data/Subject_01/IK/Subject1_trial1_ik.mot" # or specify your mot file here
+        file: "../biosym/example_data/ik_data.mot" # or specify your mot file here
         presegmented: true # if true, file is expected to contain mean/var columns
-        presegmented_file: "../biosym/Data/Subject_01/gait_avg_joint_angles.mot"
+        presegmented_file: "../biosym/example_data/gait_avg_joint_angles.mot"
         exclude: ['q_pelvis_tx', 'q_pelvis_ty', 'q_pelvis_tilt'] # Exclude joints from tracking
-    - name: track_grfs
+    - name: track_grf
       weight: 1
       args:
-        file: "../biosym/Data/Subject_01/Subject1_trial1.mot" # or specify your mot file here
+        file: "../biosym/example_data/grf_data.mot" # or specify your mot file here
         presegmented: false # if true, file is expected to contain mean/var columns
         presegmented_file: ""
         
