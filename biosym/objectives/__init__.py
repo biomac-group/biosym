@@ -1,1 +1,1 @@
-__all__ = ["jerk_term", "torque_term", "track_angles", "track_grf"]
+__all__ = ["jerk_term", "torque_term", "track_angles", "track_grf", "track_markers"]

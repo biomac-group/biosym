@@ -37,6 +37,13 @@ collocation:
         file: "../biosym/example_data/grf_data.mot" # or specify your mot file here
         presegmented: false # if true, file is expected to contain mean/var columns
         presegmented_file: ""
+    - name: track_markers
+      weight: 1
+      args:
+        2d: true # If true, Z components in expected data are set to zero
+        file: "../biosym/example_data/marker_data.trc" # or specify your mot file here
+        presegmented: false # if true, file is expected to contain mean/var columns
+        presegmented_file: ""
         
 
 

@@ -1,12 +1,12 @@
-# %% Import and load IK and GRF data
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
+import re
 
-from biosym.utils import read_mot
+from biosym.utils import read_mot, read_trc
 
 
 def read_tracking_objective_files(
@@ -38,6 +38,9 @@ def read_tracking_objective_files(
             ik_path = Path(fileval)
         elif name == "track_grf":
             grf_path = Path(fileval)
+        elif name == "track_markers":
+            trc_path = Path(fileval)
+        
 
     if ik_path is None:
         raise ValueError(
@@ -48,7 +51,8 @@ def read_tracking_objective_files(
 
     ik_df = read_mot(str(ik_path))
     grf_df = read_mot(str(grf_path))
-    return ik_df, grf_df
+    trc_df = read_trc(str(trc_path))
+    return ik_df, grf_df, trc_df
 
 
 # %% Segement gait cycles based on heel strike
@@ -87,7 +91,7 @@ def detect_heel_strikes_from_grf(
 # save averaged joint angles to from dataframes to csv
 
 
-def create_averaged_gait_joint_angles(ik_data, heel_strike_index, n_points=100):
+def create_averaged_gait_joint_angles(ik_data: pd.DataFrame, heel_strike_index, n_points: int = 100) -> pd.DataFrame:
     """
     Extracts gait cycles from inverse kinematics data, interpolates them, calculates mean and variance,
     and creates a pandas DataFrame for averaged joint angles over gait cycles.
@@ -180,9 +184,7 @@ def create_averaged_gait_joint_angles(ik_data, heel_strike_index, n_points=100):
 
 
 # ...existing code...
-def create_averaged_gait_forces(
-    grf_data, heel_strike_index, channels=None, n_points=100
-):
+def create_averaged_gait_forces(grf_data: pd.DataFrame, heel_strike_index, channels=None, n_points: int = 100) -> pd.DataFrame:
     """
     Create averaged gait-cycle mean/variance for GRF channels.
 
@@ -266,6 +268,76 @@ def create_averaged_gait_forces(
 
     return df
 
+# ...existing code...
+
+def create_averaged_markers(trc_data: pd.DataFrame, heel_strike_index, n_points: int = 100) -> pd.DataFrame:
+    """
+    Average all markers' Cartesian coordinates over gait cycles.
+    Detects markers via columns named '<Marker>_X', '<Marker>_Y', '<Marker>_Z'.
+    Returns columns '<Marker>_<Axis>_mean' and '<Marker>_<Axis>_var' for each marker/axis.
+    """
+    axes = ("X", "Y", "Z")
+
+    # Detect markers present as <name>_(X|Y|Z); preserve first-seen order
+    marker_axes = {}
+    marker_order = []
+    for col in trc_data.columns:
+        m = re.match(r"^(?P<name>.+)_(?P<ax>[XYZ])$", col)
+        if not m:
+            continue
+        name = m.group("name")
+        ax = m.group("ax")
+        if name not in marker_axes:
+            marker_axes[name] = set()
+            marker_order.append(name)
+        marker_axes[name].add(ax)
+    markers = [m for m in marker_order if set(axes).issubset(marker_axes[m])]
+    if not markers:
+        raise KeyError("No markers with X/Y/Z columns found in TRC data.")
+
+    # Collect segments per marker/axis between heel strikes
+    cycles = {name: {ax: [] for ax in axes} for name in markers}
+    hs = np.asarray(heel_strike_index).astype(int)
+    for i in range(len(hs) - 1):
+        start = hs[i]
+        end = hs[i + 1]
+        if end - start <= 1:
+            continue
+        for name in markers:
+            for ax in axes:
+                series = trc_data[f"{name}_{ax}"].values
+                cycles[name][ax].append(series[start:end])
+
+    # Interpolate to n_points and compute mean/var
+    x_new = np.linspace(0, 1, n_points)
+    out = {}
+    for name in markers:
+        for ax in axes:
+            segs = cycles[name][ax]
+            if len(segs) == 0:
+                out[f"{name}_{ax}_mean"] = np.zeros(n_points)
+                out[f"{name}_{ax}_var"] = np.zeros(n_points)
+                continue
+            interp_segs = []
+            for seg in segs:
+                x_old = np.linspace(0, 1, len(seg))
+                interp_segs.append(np.interp(x_new, x_old, seg))
+            arr = np.vstack(interp_segs)
+            out[f"{name}_{ax}_mean"] = np.mean(arr, axis=0)
+            out[f"{name}_{ax}_var"] = np.var(arr, axis=0)
+
+    # Deterministic column order: by marker order, then X,Y,Z, each mean then var
+    ordered_cols = []
+    for name in markers:
+        for ax in axes:
+            mean_c = f"{name}_{ax}_mean"
+            var_c = f"{name}_{ax}_var"
+            if mean_c in out:
+                ordered_cols.append(mean_c)
+            if var_c in out:
+                ordered_cols.append(var_c)
+    return pd.DataFrame({c: out[c] for c in ordered_cols})
+
 
 def segment_gait_averages(
     heel_strike_index=None, n_points=100, grf_channel="ground_force_vy"
@@ -278,7 +350,7 @@ def segment_gait_averages(
         (gait_avg_joint_angles: pd.DataFrame, gait_avg_grfs: pd.DataFrame, hs_idx: np.ndarray)
     """
 
-    ik_df, grf_df = read_tracking_objective_files(
+    ik_df, grf_df, trc_df = read_tracking_objective_files(
         yaml_path="tests/collocation/walking2d.yaml"
     )
 
@@ -292,14 +364,17 @@ def segment_gait_averages(
     gait_avg_grfs = create_averaged_gait_forces(
         grf_df, heel_strike_index, n_points=n_points
     )
-    return gait_avg_joint_angles, gait_avg_grfs
+
+    gait_avg_markers = create_averaged_markers(
+        trc_data=trc_df, heel_strike_index=heel_strike_index, n_points=n_points
+        )
+    return gait_avg_joint_angles, gait_avg_grfs, gait_avg_markers
 
 
-# %% Plot averaged joint angles with variance
+# Plot averaged joint angles with variance
 if __name__ == "__main__":
-    gait_avg_joint_angles, gait_avg_grfs = segment_gait_averages(n_points=100)
-
-    ik_df, grf_df = read_tracking_objective_files(
+    
+    ik_df, grf_df, trc_df = read_tracking_objective_files(
         yaml_path="tests/collocation/walking2d.yaml"
     )
 
@@ -307,6 +382,10 @@ if __name__ == "__main__":
     right_vgrf = grf_df["ground_force_vy"].values
 
     right_hs_idx = find_heel_strikes(right_vgrf, force_increase=500, time_points=20)
+
+    gait_avg_joint_angles, gait_avg_grfs, gait_avg_markers = segment_gait_averages(n_points=100)
+    gait_avg_markers.to_csv("gait_averaged_markers.csv", index=False)
+
 
     # A gait cycle can be defined as the period between two consecutive# heel strikes for the same foot
 
@@ -359,4 +438,4 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
 
-# %%
+
