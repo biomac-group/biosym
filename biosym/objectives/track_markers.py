@@ -25,6 +25,8 @@ class Objective(BaseObjective):
         self.settings = settings
         self.markers = [f"site_{n}" for n in self.model.sites.get("base_names", [])]
         self.n_nodes = self.settings["nnodes"]
+        self.treadmill_speed = self.settings["bounds"]["speed"][0]
+        print(self.treadmill_speed)
 
         eps = 1e-8  # avoid division by zero
 
@@ -36,7 +38,7 @@ class Objective(BaseObjective):
             raise ValueError("TrackMarkersObjective requires 'file' in args from YAML.")
         
         # Get averaged marker data (columns like CLAV_X_mean, ..., CLAV_X_var, ...)
-        _, _, gait_marker_angles = segment_gait_averages(n_points=self.n_nodes)
+        _, _, gait_marker_angles = segment_gait_averages(n_points=self.n_nodes,  treadmill_speed=self.treadmill_speed)
         markers_mean_df = gait_marker_angles.filter(like="_mean")
         markers_var_df = gait_marker_angles.filter(like="_var")
 
@@ -167,10 +169,5 @@ def objfun(states_list, globals_dict, settings, info):
     err_X = (sim_X - exp_X) ** 2 / var_X
     err_Y = (sim_Y - exp_Y) ** 2 / var_Y
     err_Z = (sim_Z - exp_Z) ** 2 / var_Z
-
-    # # Final guard against non-finites
-    # err_X = jnp.nan_to_num(err_X, nan=0.0, posinf=1e6, neginf=1e6)
-    # err_Y = jnp.nan_to_num(err_Y, nan=0.0, posinf=1e6, neginf=1e6)
-    # err_Z = jnp.nan_to_num(err_Z, nan=0.0, posinf=1e6, neginf=1e6)
 
     return jnp.mean(err_X) + jnp.mean(err_Y) + jnp.mean(err_Z)

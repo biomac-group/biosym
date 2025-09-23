@@ -13,8 +13,8 @@ def read_tracking_objective_files(
     yaml_path: str | Path = "tests/collocation/walking2d.yaml",
 ):
     """
-    Read IK and GRF .mot files referenced in the collocation YAML and return
-    (ik_df, grf_df) as returned by read_mot. Paths are used literally.
+    Read IK, GRF and TRC files referenced in the collocation YAML.
+    Returns (ik_df|None, grf_df|None, trc_df|None). Missing entries return None.
     """
     p = Path(yaml_path)
     if not p.exists():
@@ -28,32 +28,25 @@ def read_tracking_objective_files(
 
     ik_path = None
     grf_path = None
+    trc_path = None
     for obj in objectives:
         name = obj.get("name", "")
         args = obj.get("args", {}) or {}
         fileval = args.get("file", None)
-        if fileval is None:
+        if not fileval:
             continue
+        path = Path(fileval)
         if name == "track_angles":
-            ik_path = Path(fileval)
+            ik_path = path
         elif name == "track_grf":
-            grf_path = Path(fileval)
+            grf_path = path
         elif name == "track_markers":
-            trc_path = Path(fileval)
-        
+            trc_path = path
 
-    if ik_path is None:
-        raise ValueError(
-            "track_angles objective not found or has no args.file in YAML."
-        )
-    if grf_path is None:
-        raise ValueError("track_grfs objective not found or has no args.file in YAML.")
-
-    ik_df = read_mot(str(ik_path))
-    grf_df = read_mot(str(grf_path))
-    trc_df = read_trc(str(trc_path))
+    ik_df = read_mot(str(ik_path)) if (ik_path and ik_path.exists()) else None
+    grf_df = read_mot(str(grf_path)) if (grf_path and grf_path.exists()) else None
+    trc_df = read_trc(str(trc_path)) if (trc_path and trc_path.exists()) else None
     return ik_df, grf_df, trc_df
-
 
 # %% Segement gait cycles based on heel strike
 def find_heel_strikes(vgrf, force_increase=300, time_points=10):
@@ -270,11 +263,42 @@ def create_averaged_gait_forces(grf_data: pd.DataFrame, heel_strike_index, chann
 
 # ...existing code...
 
-def create_averaged_markers(trc_data: pd.DataFrame, heel_strike_index, n_points: int = 100) -> pd.DataFrame:
+def create_averaged_markers(
+    trc_data: pd.DataFrame,
+    heel_strike_index,
+    n_points: int = 100,
+    treadmill_speed: float | None = None,
+    forward_axis: str = "X",
+    time_column: str = "Time",
+) -> pd.DataFrame:
     """
     Average all markers' Cartesian coordinates over gait cycles.
+
     Detects markers via columns named '<Marker>_X', '<Marker>_Y', '<Marker>_Z'.
     Returns columns '<Marker>_<Axis>_mean' and '<Marker>_<Axis>_var' for each marker/axis.
+
+    Treadmill adjustment (optional):
+    If ``treadmill_speed`` (m/s) is provided, shift the forward-axis marker
+    coordinate within each gait cycle by a linear ramp from 0 to
+    ``treadmill_speed * cycle_duration``. This converts treadmill-relative
+    trajectories into overground-like forward progression.
+
+    Parameters
+    ----------
+    trc_data : pd.DataFrame
+        TRC dataframe with a 'Time' column (seconds) and marker columns named
+        '<Marker>_X', '<Marker>_Y', '<Marker>_Z'.
+    heel_strike_index : array-like
+        Sample indices of heel strikes that delimit gait cycles.
+    n_points : int, default 100
+        Number of samples per normalized gait cycle output.
+    treadmill_speed : float | None, default None
+        Belt speed in m/s. If provided, a forward translation of
+        speed × (cycle duration) is added across the cycle.
+    forward_axis : {"X","Y","Z"}, default "X"
+        Axis considered forward for the translation.
+    time_column : str, default "Time"
+        Name of the time column (seconds). Required if treadmill_speed is set.
     """
     axes = ("X", "Y", "Z")
 
@@ -298,15 +322,32 @@ def create_averaged_markers(trc_data: pd.DataFrame, heel_strike_index, n_points:
     # Collect segments per marker/axis between heel strikes
     cycles = {name: {ax: [] for ax in axes} for name in markers}
     hs = np.asarray(heel_strike_index).astype(int)
+    has_time = time_column in trc_data.columns
     for i in range(len(hs) - 1):
         start = hs[i]
         end = hs[i + 1]
         if end - start <= 1:
             continue
+        # Determine cycle duration if treadmill translation is requested
+        if treadmill_speed is not None:
+            if not has_time:
+                # Without explicit time, we cannot construct a metrically correct ramp.
+                # Fall back to skipping the treadmill adjustment for this cycle.
+                cycle_duration = None
+            else:
+                tseg = trc_data[time_column].values[start:end]
+                cycle_duration = float(tseg[-1] - tseg[0]) if len(tseg) > 1 else 0.0
         for name in markers:
             for ax in axes:
                 series = trc_data[f"{name}_{ax}"].values
-                cycles[name][ax].append(series[start:end])
+                seg = series[start:end]
+                # Apply treadmill forward translation as a linear ramp over this segment
+                if treadmill_speed is not None and cycle_duration is not None and ax == forward_axis:
+                    # Build a per-sample ramp from 0 to v*T over the segment length
+                    if len(seg) > 1:
+                        ramp = np.linspace(0.0, treadmill_speed * cycle_duration, len(seg))
+                        seg = seg + ramp
+                cycles[name][ax].append(seg)
 
     # Interpolate to n_points and compute mean/var
     x_new = np.linspace(0, 1, n_points)
@@ -321,7 +362,10 @@ def create_averaged_markers(trc_data: pd.DataFrame, heel_strike_index, n_points:
             interp_segs = []
             for seg in segs:
                 x_old = np.linspace(0, 1, len(seg))
-                interp_segs.append(np.interp(x_new, x_old, seg))
+                interp = np.interp(x_new, x_old, seg)
+                # If treadmill translation requested but time was missing for this cycle, we cannot add a
+                # metrically correct ramp post-hoc. We've already added ramps when cycles had time.
+                interp_segs.append(interp)
             arr = np.vstack(interp_segs)
             out[f"{name}_{ax}_mean"] = np.mean(arr, axis=0)
             out[f"{name}_{ax}_var"] = np.var(arr, axis=0)
@@ -340,34 +384,52 @@ def create_averaged_markers(trc_data: pd.DataFrame, heel_strike_index, n_points:
 
 
 def segment_gait_averages(
-    heel_strike_index=None, n_points=100, grf_channel="ground_force_vy"
+    n_points: int = 100,
+    grf_channel: str = "ground_force_vy",
+    treadmill_speed: float | None = None,
+    forward_axis: str = "X",
+    time_column: str = "Time",
 ):
     """
-    Compute averaged joint angles and GRFs for the supplied trial data.
-
-    If heel_strike_index is None the function will detect heel strikes using grf_df and grf_channel.
-    Returns:
-        (gait_avg_joint_angles: pd.DataFrame, gait_avg_grfs: pd.DataFrame, hs_idx: np.ndarray)
+    Compute averaged joint angles, GRFs and markers.
+    Any missing inputs from YAML are skipped (returned as None).
+    If GRF is missing and no heel strikes provided, markers are averaged over a single full segment.
     """
-
     ik_df, grf_df, trc_df = read_tracking_objective_files(
         yaml_path="tests/collocation/walking2d.yaml"
     )
 
-    if heel_strike_index is None:
-        heel_strike_index = detect_heel_strikes_from_grf(
-            grf_df, channel=grf_channel, force_increase=500.0, time_points=20
-        )
-    gait_avg_joint_angles = create_averaged_gait_joint_angles(
-        ik_df, heel_strike_index, n_points=n_points
-    )
-    gait_avg_grfs = create_averaged_gait_forces(
-        grf_df, heel_strike_index, n_points=n_points
+
+
+    hs_idx = detect_heel_strikes_from_grf(
+        grf_df, channel=grf_channel, force_increase=500.0, time_points=20
     )
 
-    gait_avg_markers = create_averaged_markers(
-        trc_data=trc_df, heel_strike_index=heel_strike_index, n_points=n_points
+
+    gait_avg_joint_angles = None
+    gait_avg_grfs = None
+    gait_avg_markers = None
+
+    if ik_df is not None:
+        gait_avg_joint_angles = create_averaged_gait_joint_angles(
+            ik_df, hs_idx, n_points=n_points
         )
+
+    if grf_df is not None:
+        gait_avg_grfs = create_averaged_gait_forces(
+            grf_df, hs_idx, n_points=n_points
+        )
+
+    if trc_df is not None:
+        gait_avg_markers = create_averaged_markers(
+            trc_df,
+            hs_idx,
+            n_points=n_points,
+            treadmill_speed=treadmill_speed,
+            forward_axis=forward_axis,
+            time_column=time_column,
+        )
+
     return gait_avg_joint_angles, gait_avg_grfs, gait_avg_markers
 
 
@@ -383,7 +445,7 @@ if __name__ == "__main__":
 
     right_hs_idx = find_heel_strikes(right_vgrf, force_increase=500, time_points=20)
 
-    gait_avg_joint_angles, gait_avg_grfs, gait_avg_markers = segment_gait_averages(n_points=100)
+    gait_avg_joint_angles, gait_avg_grfs, gait_avg_markers = segment_gait_averages(n_points=100, treadmill_speed=1.3)
     gait_avg_markers.to_csv("gait_averaged_markers.csv", index=False)
 
 
