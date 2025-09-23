@@ -159,3 +159,32 @@ def get_state_row(obj, idx):
     if isinstance(obj, jnp.ndarray) and obj.ndim > 0:
         return obj[idx]
     return obj  # Pass through scalars or non-array fields
+
+
+def get_row_FK_vis(obj, idx):
+    """
+    Extract a single time row suitable for FK_vis inputs.
+
+    This variant only indexes arrays that have a batch/time dimension (ndim > 1)
+    and leaves 1D arrays (constants) unchanged. Use this when calling FK_vis,
+    which expects 1D state vectors and 1D constants.
+
+    Parameters
+    ----------
+    obj : dataclass or nested structure
+        StatesDict-like structure with batched arrays in .states and 1D arrays in .constants.
+    idx : int
+        Time index to extract.
+
+    Returns
+    -------
+    dataclass or structure
+        Same structure with the idx-th row for batched arrays and unchanged 1D arrays.
+    """
+    if is_dataclass(obj):
+        return obj.__class__(**{f.name: get_row_FK_vis(getattr(obj, f.name), idx) for f in fields(obj)})
+    if isinstance(obj, jnp.ndarray):
+        if obj.ndim > 1:
+            return obj[idx]
+        return obj
+    return obj

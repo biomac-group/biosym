@@ -3,6 +3,8 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+from jax import lax
+from biosym.ocp.utils import get_row_FK_vis
 
 from biosym.objectives.base_objective import BaseObjective
 from biosym.utils import read_mot, segment_gait_averages
@@ -26,7 +28,6 @@ class Objective(BaseObjective):
         self.markers = [f"site_{n}" for n in self.model.sites.get("base_names", [])]
         self.n_nodes = self.settings["nnodes"]
         self.treadmill_speed = self.settings["bounds"]["speed"][0]
-        print(self.treadmill_speed)
 
         eps = 1e-8  # avoid division by zero
 
@@ -95,6 +96,10 @@ class Objective(BaseObjective):
             "markers_var": self.markers_var,
             "force_2d": self.movement_2d,
             "eps": eps,
+            # Provide FK function and layout info so objfun can compute sim markers
+            "fk_vis": self.model.run.get("FK_vis"),
+            "n_bodies": len(self.model.dicts.get("bodies", [])),
+            "n_sites": self.n_markers,
         }
 
     def _get_info(self):
@@ -104,7 +109,6 @@ class Objective(BaseObjective):
             "description": "Objective term for tracking markers against experimental data.",
             "required_variables": {"states": ["model"], "constants": ["model"]},
             "n_nodes": self.n_nodes,
-            "idx_markers": self.model.sites["idx"],
             "n_markers": self.n_markers,
             "tracked_markers": self.tracked_markers,
             "norm_factor": self.norm_factor,
@@ -139,14 +143,26 @@ def objfun(states_list, globals_dict, settings, info):
     eps         = settings.get("eps", 1e-8)
 
     N = info["n_nodes"]
-    idx0 = info["idx_markers"]
     n_markers = info["n_markers"]
 
-    # Slice full site block [X_all | Y_all | Z_all] from states
-    block = states_list.states.model[:N, slice(idx0, idx0 + 3 * n_markers)]
-    sim_X = block[:, 0:n_markers]
-    sim_Y = block[:, n_markers:2 * n_markers]
-    sim_Z = block[:, 2 * n_markers:3 * n_markers]
+    # Compute simulated marker positions via FK (bodies + sites), then take site rows
+    fk_vis = settings.get("fk_vis", None)
+    n_bodies = settings.get("n_bodies", 0)
+    n_sites = settings.get("n_sites", n_markers)
+
+    def fk_step(i):
+        # Extract single-timepoint states/constants tailored for FK_vis (1D constants untouched)
+        single = get_row_FK_vis(states_list, i)
+        # fk_vis returns array of shape (n_bodies + n_sites, 3)
+        return fk_vis(single.states, single.constants)
+
+    # Map FK over time points
+    pos_all = lax.map(lambda i: fk_step(i), jnp.arange(N, dtype=jnp.int32))
+    # Keep only site rows
+    sites_pos = pos_all[:, n_bodies : n_bodies + n_sites, :]  # (N, n_sites, 3)
+    sim_X = sites_pos[:, :, 0]
+    sim_Y = sites_pos[:, :, 1]
+    sim_Z = sites_pos[:, :, 2]
 
     exp_X = markers_exp[:, 0:n_markers]
     exp_Y = markers_exp[:, n_markers:2 * n_markers]

@@ -229,16 +229,12 @@ class BiosymModel:
             "n": n_ext_forces,
         }
 
-        # Optionally expose site positions as states (x,y,z per site) immediately after external torques.
-        # This lets the FK/visualization positions be part of the state vector if desired.
-        sites_list = parser.get_sites() 
+        # Sites (markers) are fixed relative to parent body frame -> NOT part of state vector
+        sites_list = parser.get_sites()
         n_sites = parser.get_n_sites()
-        site_state_names = [f"site_{s['name']}_{dim}" for dim in ["X", "Y", "Z"] for s in sites_list]
         self.sites = {
-            "names": site_state_names,
-            "base_names": [f"site_{s['name']}" for s in sites_list],  # site names without axis
-            "idx": self.ext_torques["idx"] + self.ext_torques["n"],
-            "n": 3 * n_sites,  # 3 states per site
+            # Keep names for ordering/labeling, but do not add states
+            "base_names": [f"site_{s['name']}" for s in sites_list],
             "n_sites": n_sites,
         }
 
@@ -250,7 +246,6 @@ class BiosymModel:
             + self.forces["names"]
             + self.ext_forces["names"]
             + self.ext_torques["names"]
-            + self.sites["names"]
         )
         self.n_states = len(self.state_vector)
 
@@ -499,23 +494,18 @@ class BiosymModel:
 
         build_bodies(self.topology_tree)
 
-        # create site Points so vel/acc exist symbolically
+        # create site Points so vel/acc exist symbolically (fixed offset in parent frame)
         self.markers = {}
         sites_list = self.dicts.get("sites")
-        n_sites = self.sites["n_sites"]
-        for s_idx, site_ in enumerate(sites_list):
+        for site_ in sites_list:
             name = site_.get("name")
-            parent = site_.get("parent") or site_.get("body")
+            parent = site_.get("parent")
             parent_frame = self.reference_frames[parent]
             parent_origin = self.body_origins[parent]
             site_pt = Point(f"{name}_site")
-
-            ix = self.sites["idx"] + s_idx
-            iy = self.sites["idx"] + n_sites + s_idx
-            iz = self.sites["idx"] + 2 * n_sites + s_idx
-            vec_syms = [self._v[ix], self._v[iy], self._v[iz]]
-            sym_vec = _to_sympy_vector(vec_syms, parent_frame)
-
+            # Use parser-provided local position (fixed in parent frame), otherwise zero
+            local_pos = site_.get("pos", [0.0, 0.0, 0.0])
+            sym_vec = _to_sympy_vector(list(local_pos), parent_frame)
             site_pt.set_pos(parent_origin, sym_vec)
             site_pt.v2pt_theory(parent_origin, self.ground_frame, parent_frame)
             self.markers[name] = site_pt
@@ -700,7 +690,7 @@ class BiosymModel:
         for _, point in self.body_origins.items():
             pos_vector.append(
                 [
-                    point.pos_from(self.origin).dot(frame_dim)
+                    point.pos_from(self.origin).dot(frame_dim) # position of bidy origins in ground (global) frame
                     for frame_dim in [
                         self.ground_frame.x,
                         self.ground_frame.y,
@@ -905,9 +895,6 @@ class BiosymModel:
                 # Might need adjustment later, hardcoding isn't great
                 xmin = -1000
                 xmax = 1000
-            elif name.startswith("site_"):
-                xmin = -100  # 100 m seems reasonable for a site
-                xmax = 100
 
             # @todo: parse limits and find reasonable limits
             df.loc[len(df)] = [type, name, x0, xmin, xmax]
