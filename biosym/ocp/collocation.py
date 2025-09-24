@@ -5,12 +5,16 @@ This module provides collocation-based optimal control problem (OCP) solvers
 using direct transcription methods. It includes interfaces to IPOPT and other
 nonlinear optimization solvers for biomechanical motion optimization.
 """
+
 import os
+
 from biosym.model.model import *
 
 _cachedir = os.path.expanduser("~/.biosym/jax_cache")
 _model_cache = os.path.expanduser("~/.biosym/")
-os.environ["JAX_COMPILATION_CACHE_DIR"] = _cachedir  # This needs to happen before importing jax
+os.environ["JAX_COMPILATION_CACHE_DIR"] = (
+    _cachedir  # This needs to happen before importing jax
+)
 os.makedirs((_cachedir), exist_ok=True)
 
 
@@ -28,11 +32,11 @@ from biosym.visualization import stickfigure
 
 class Collocation:
     """A class to handle collocation methods for optimal control problems.
-    
+
     This class provides direct transcription methods for solving optimal control
     problems using collocation techniques. It interfaces with nonlinear solvers
     like IPOPT for biomechanical motion optimization.
-    
+
     Attributes
     ----------
     model : BiosymModel
@@ -43,14 +47,14 @@ class Collocation:
 
     def __init__(self, *args, **kwargs):
         """Initialize the Collocation class.
-        
+
         Parameters
         ----------
         *args : tuple
             Positional arguments, can be a YAML file path
         **kwargs : dict
             Keyword arguments, can include 'model' and 'settings'
-            
+
         Raises
         ------
         ValueError
@@ -77,7 +81,7 @@ class Collocation:
 
     def _process_yaml(self, yaml_data, **kwargs):
         """Process a YAML file to extract model and settings.
-        
+
         Parameters
         ----------
         yaml_data : str
@@ -88,22 +92,23 @@ class Collocation:
         with open(yaml_data) as file:
             self.settings = yaml.safe_load(file)["collocation"]
             self.model = load_model(
-                self.settings.get("settings").get("model"), force_rebuild=kwargs.get("force_rebuild", False)
+                self.settings.get("settings").get("model"),
+                force_rebuild=kwargs.get("force_rebuild", False),
             )
         self.settings = process_collocation_settings(self.model, self.settings)
 
     def make_initial_guess(self, initial_guess):
         """Set up the initial guess for the collocation problem.
-        
-        This method needs to be implemented for the most part. It should always 
-        return a list with nNodes entries, each entry being a dict with the 
+
+        This method needs to be implemented for the most part. It should always
+        return a list with nNodes entries, each entry being a dict with the
         initial guess for the optimization problem.
-        
+
         Parameters
         ----------
         initial_guess : str, dict, list, or None
             Initial guess for the optimization problem
-            
+
         Raises
         ------
         ValueError
@@ -132,13 +137,18 @@ class Collocation:
                 pass
             elif initial_guess["type"] == "from_file":
                 print("Loading initial guess from file")
-                with open(initial_guess["file"], "rb") as f:
+                ig_file = os.path.expanduser(initial_guess["file"])
+                with open(ig_file, "rb") as f:
                     (x, globals), info, ig_settings = cloudpickle.load(f)
                 if ig_settings["nnodes"] == 1:
                     x = x[0].replace_vector("states", "h", jnp.ones((1,)))
-                    self.initial_guess_states = states.stack_dataclasses([x] * self.settings["nnodes_dur"])
+                    self.initial_guess_states = states.stack_dataclasses(
+                        [x] * self.settings["nnodes_dur"]
+                    )
                 else:
-                    raise NotImplementedError("Initial guess from file with resampling is not implemented yet.")
+                    raise NotImplementedError(
+                        "Initial guess from file with resampling is not implemented yet."
+                    )
             else:
                 raise ValueError(
                     f"Invalid initial guess type: {initial_guess['type']}. Allowed types are 'random', 'default', 'mid', 'from_file'."
@@ -155,7 +165,9 @@ class Collocation:
             elif initial_guess == "mid":
                 pass
         else:
-            raise ValueError("Invalid initial guess type. Must be dict, list, str, or None.")
+            raise ValueError(
+                "Invalid initial guess type. Must be dict, list, str, or None."
+            )
 
         if self.settings["nnodes"] > 1:
             if "dur" in self.settings["bounds"]:
@@ -168,11 +180,16 @@ class Collocation:
                 if len(speed_) == 1:
                     speed_ = np.array([speed_, speed_])
                 speed_mean = jnp.mean(speed_)
-            if self.settings["discretization"]["args"]["adaptive_h"] and len(self.initial_guess_states.states.h) == 0:
+            if (
+                self.settings["discretization"]["args"]["adaptive_h"]
+                and len(self.initial_guess_states.states.h) == 0
+            ):
                 self.initial_guess_states = self.initial_guess_states.replace_vector(
                     "states",
                     "h",
-                    jnp.ones((self.settings["nnodes_dur"], 1)) * dur_mean / (self.settings["nnodes_dur"] - 1),
+                    jnp.ones((self.settings["nnodes_dur"], 1))
+                    * dur_mean
+                    / (self.settings["nnodes_dur"] - 1),
                 )
             if not self.settings["discretization"]["args"]["adaptive_h"]:
                 self.initial_guess_states = self.initial_guess_states.replace_vector(
@@ -187,12 +204,12 @@ class Collocation:
     def setup(self):
         """
         Set up the nonlinear programming problem for IPOPT optimization.
-        
+
         This method configures the optimization problem by setting up bounds,
         initial conditions, and solver options. It creates the CyIpopt problem
         interface and configures IPOPT-specific parameters for the collocation
         optimization.
-        
+
         Notes
         -----
         - Creates the optimization variable vector from initial guess
@@ -209,14 +226,24 @@ class Collocation:
 
         lb = utils.states_dict_to_x(
             self.settings["bounds"]["min"],
-            self.settings["bounds"]["global_min"] if self.settings["nnodes"] > 1 else None,
+            self.settings["bounds"]["global_min"]
+            if self.settings["nnodes"] > 1
+            else None,
         )
         ub = utils.states_dict_to_x(
             self.settings["bounds"]["max"],
-            self.settings["bounds"]["global_max"] if self.settings["nnodes"] > 1 else None,
+            self.settings["bounds"]["global_max"]
+            if self.settings["nnodes"] > 1
+            else None,
         )
         self.problem = CyIpoptProblem(
-            self.model, self.objective, self.constraints, self.initial_guess_states, lb, ub, globals=ig_globals
+            self.model,
+            self.objective,
+            self.constraints,
+            self.initial_guess_states,
+            lb,
+            ub,
+            globals=ig_globals,
         )
         cl = np.zeros(m)
         cu = np.zeros(m)
@@ -232,7 +259,10 @@ class Collocation:
         )
         self.nlp.add_option("mu_strategy", "adaptive")
         self.nlp.add_option("tol", float(self.settings["settings"].get("tol", 1e-5)))
-        self.nlp.add_option("constr_viol_tol", float(self.settings["settings"].get("constr_viol_tol", 1e-3)))
+        self.nlp.add_option(
+            "constr_viol_tol",
+            float(self.settings["settings"].get("constr_viol_tol", 1e-3)),
+        )
         self.nlp.add_option("print_level", 5)
         self.nlp.add_option("max_iter", self.settings["settings"].get("max_iter", 1000))
         self.nlp.add_option("hessian_approximation", "limited-memory")
@@ -241,11 +271,11 @@ class Collocation:
     def solve(self, visualize=False, **kwargs):
         """
         Solve the optimal control problem using IPOPT.
-        
+
         This method executes the nonlinear optimization using the IPOPT solver
         to find the optimal trajectory that minimizes the objective function
         while satisfying all constraints.
-        
+
         Parameters
         ----------
         visualize : bool, optional
@@ -253,14 +283,14 @@ class Collocation:
             Default is False.
         **kwargs : dict
             Additional keyword arguments passed to the visualization function.
-            
+
         Returns
         -------
         tuple
             Tuple containing:
             - x: Optimized states dictionary with solution trajectory
             - info: IPOPT solver information and statistics
-            
+
         Notes
         -----
         - Prevents re-solving unless explicitly confirmed by user
@@ -269,19 +299,25 @@ class Collocation:
         - Can generate stick figure animations of the optimized motion
         """
         if self._solved:
-            if input("Collocation problem has already been solved. Press y to repeat, x to leave") in ["y", "Y"]:
+            if input(
+                "Collocation problem has already been solved. Press y to repeat, x to leave"
+            ) in ["y", "Y"]:
                 return None
         x, info = self.nlp.solve(self.x0)
 
         self.x = utils.x_to_states_dict(
-            x, self.initial_guess_states, self.initial_guess_globals if self.settings["nnodes"] > 1 else None
+            x,
+            self.initial_guess_states,
+            self.initial_guess_globals if self.settings["nnodes"] > 1 else None,
         )
         if visualize:
             stickfigure.plot_stick_figure(self.model, self.x, **kwargs)
         if "output" in self.settings["settings"]:
             output = (self.x, info, self.settings)
-            os.makedirs(os.path.dirname(self.settings["settings"]["output"]["file"]), exist_ok=True)
-            with open(self.settings["settings"]["output"]["file"], "wb") as f:
+            out_file = os.path.expanduser(self.settings["settings"]["output"]["file"])
+            print(f"Saving results to {out_file}")
+            os.makedirs(os.path.dirname(out_file), exist_ok=True)
+            with open(out_file, "wb") as f:
                 cloudpickle.dump(output, f)
         # Todo: Cleanup the result a bit nicer
         return self.x, info
@@ -290,15 +326,15 @@ class Collocation:
 class CyIpoptProblem:
     """
     IPOPT problem interface for optimal control problems.
-    
+
     This class provides the required interface for the CyIpopt Python wrapper,
     implementing all necessary methods for objective function evaluation,
     constraint evaluation, and their respective gradients/Jacobians.
-    
+
     The class serves as a bridge between the biosym optimal control formulation
     and the IPOPT nonlinear programming solver, handling data conversion and
     function evaluations efficiently.
-    
+
     Attributes
     ----------
     model : BiosymModel
@@ -315,7 +351,7 @@ class CyIpoptProblem:
         Upper bounds for optimization variables.
     globals : dict, optional
         Global variables and parameters for the problem.
-        
+
     Notes
     -----
     Required methods for IPOPT interface:
@@ -326,10 +362,19 @@ class CyIpoptProblem:
     - jacobianstructure: Return Jacobian sparsity pattern
     """
 
-    def __init__(self, model, objective, constraints, template, upper_bound, lower_bound, globals=None):
+    def __init__(
+        self,
+        model,
+        objective,
+        constraints,
+        template,
+        upper_bound,
+        lower_bound,
+        globals=None,
+    ):
         """
         Initialize the IPOPT problem interface.
-        
+
         Parameters
         ----------
         model : BiosymModel
@@ -342,7 +387,7 @@ class CyIpoptProblem:
             Template for reconstructing state structures from flat vectors.
         upper_bound : jnp.ndarray
             Upper bounds for optimization variables.
-        lower_bound : jnp.ndarray  
+        lower_bound : jnp.ndarray
             Lower bounds for optimization variables.
         globals : dict, optional
             Global variables and parameters for the problem.
@@ -359,12 +404,12 @@ class CyIpoptProblem:
     def objective(self, x):
         """
         Evaluate the objective function for IPOPT.
-        
+
         Parameters
         ----------
         x : jnp.ndarray
             Flat optimization vector containing states and global parameters.
-            
+
         Returns
         -------
         float
@@ -376,12 +421,12 @@ class CyIpoptProblem:
     def gradient(self, x):
         """
         Compute the gradient of the objective function for IPOPT.
-        
+
         Parameters
         ----------
         x : jnp.ndarray
             Flat optimization vector.
-            
+
         Returns
         -------
         jnp.ndarray
@@ -393,12 +438,12 @@ class CyIpoptProblem:
     def constraints(self, x):
         """
         Evaluate all constraint functions for IPOPT.
-        
+
         Parameters
         ----------
         x : jnp.ndarray
             Flat optimization vector.
-            
+
         Returns
         -------
         jnp.ndarray
@@ -410,12 +455,12 @@ class CyIpoptProblem:
     def jacobian(self, x):
         """
         Compute the constraint Jacobian for IPOPT.
-        
+
         Parameters
         ----------
         x : jnp.ndarray
             Flat optimization vector.
-            
+
         Returns
         -------
         jnp.ndarray
@@ -428,18 +473,18 @@ class CyIpoptProblem:
     def jacobianstructure(self):
         """
         Determine the sparsity structure of the constraint Jacobian.
-        
+
         This method analyzes the Jacobian sparsity pattern by evaluating
         the Jacobian at multiple random points to identify consistently
         non-zero entries. This structure is used by IPOPT for efficient
         sparse matrix computations.
-        
+
         Returns
         -------
         tuple
             Tuple of (row_indices, col_indices) indicating non-zero locations
             in the sparse Jacobian matrix.
-            
+
         Notes
         -----
         - Uses multiple random evaluations to capture all possible non-zeros
@@ -472,7 +517,9 @@ class CyIpoptProblem:
 
         print(f"Found {nnz} nonzeros in jacobian structure")
         print(f"{100 * nnz / len(j0):.2f}% of the (sparse) jacobian is nonzero")
-        print(f"{100 * nnz / (len(x_random) * self.cons.ncon):.2f}% of the full jacobian is nonzero")
+        print(
+            f"{100 * nnz / (len(x_random) * self.cons.ncon):.2f}% of the full jacobian is nonzero"
+        )
         self.jac_indices = np.nonzero(j0)
         self._init_jac = True
         self.jacstruct = rows[self.jac_indices[0]], cols[self.jac_indices[0]]
@@ -482,12 +529,12 @@ class CyIpoptProblem:
 def process_collocation_settings(model, settings):
     """
     Process and validate collocation settings for optimal control problems.
-    
+
     This function takes raw settings from configuration files or dictionaries
     and processes them into a standardized format suitable for collocation-based
     optimal control. It validates required keys, sets up discretization parameters,
     and handles data type conversions.
-    
+
     Parameters
     ----------
     model : BiosymModel
@@ -496,20 +543,20 @@ def process_collocation_settings(model, settings):
         Dictionary containing collocation method configuration including:
         - settings: solver parameters, nnodes, discretization
         - constraints: constraint specifications
-        - objectives: objective function specifications  
+        - objectives: objective function specifications
         - bounds: variable bounds for optimization
-        
+
     Returns
     -------
     dict
         Processed and validated settings dictionary with additional computed
         fields like dtype conversions, node handling, and discretization setup.
-        
+
     Raises
     ------
     ValueError
         If required settings keys are missing or invalid values are provided.
-        
+
     Notes
     -----
     - Validates required configuration structure for collocation methods
@@ -518,7 +565,12 @@ def process_collocation_settings(model, settings):
     - Sets up adaptive time stepping if specified
     """
     # Assert that required settings are present
-    required_keys = {"settings": ["model", "nnodes"], "constraints": [], "objectives": [], "bounds": []}
+    required_keys = {
+        "settings": ["model", "nnodes"],
+        "constraints": [],
+        "objectives": [],
+        "bounds": [],
+    }
     for key, value in required_keys.items():
         if key not in settings:
             raise ValueError(f"Missing required key: {key}")
@@ -527,10 +579,14 @@ def process_collocation_settings(model, settings):
                 raise ValueError(f"Missing required sub-key: {sub_key} in {key}")
 
     # Check nnodes is a positive integer
-    print("Collocation warning in process collocation settings: Bounds are not correctly handled")
+    print(
+        "Collocation warning in process collocation settings: Bounds are not correctly handled"
+    )
     if settings["settings"]["nnodes"] > 1:
         if settings["settings"]["discretization"]["args"]["adaptive_h"]:
-            model.default_inputs = model.default_inputs.replace_vector("states", "h", jnp.ones((1,)))
+            model.default_inputs = model.default_inputs.replace_vector(
+                "states", "h", jnp.ones((1,))
+            )
 
     settings["nnodes"] = settings["settings"]["nnodes"]
 
@@ -540,7 +596,10 @@ def process_collocation_settings(model, settings):
     settings["int_dtype"] = jnp.int64 if dtype.endswith("float64") else jnp.int32
 
     # Nnodes handling
-    if not isinstance(settings["settings"]["nnodes"], int) or settings["settings"]["nnodes"] <= 0:
+    if (
+        not isinstance(settings["settings"]["nnodes"], int)
+        or settings["settings"]["nnodes"] <= 0
+    ):
         raise ValueError("nnodes must be a positive integer.")
     if settings["settings"]["nnodes"] > 1:  # Discretization is needed
         if "discretization" not in settings["settings"]:
@@ -565,14 +624,18 @@ def process_collocation_settings(model, settings):
         settings["constraints"].append(
             {
                 "name": "discretization",
-                "weight": settings["settings"]["discretization"]["args"].get("weight", 1),
+                "weight": settings["settings"]["discretization"]["args"].get(
+                    "weight", 1
+                ),
                 "args": settings["settings"]["discretization"].get("args", {}),
             }
         )
         settings["constraints"].append(
             {
                 "name": "speed",
-                "weight": settings["settings"]["discretization"]["args"].get("weight", 1),
+                "weight": settings["settings"]["discretization"]["args"].get(
+                    "weight", 1
+                ),
                 "args": settings["settings"]["discretization"].get("args", {}),
             }
         )
@@ -586,24 +649,41 @@ def process_collocation_settings(model, settings):
                 }
             )
             # The initial guess needs to include h in this case, otherwise we leave it
-            Warning("Initial guess handling for adaptive step size is not implemented yet.")
+            Warning(
+                "Initial guess handling for adaptive step size is not implemented yet."
+            )
 
-        if any(constraint["name"] == "periodicity" for constraint in settings["constraints"]):
+        if any(
+            constraint["name"] == "periodicity"
+            for constraint in settings["constraints"]
+        ):
             settings["nnodes_dur"] = settings["nnodes"] + 1
         else:
             settings["nnodes_dur"] = settings["nnodes"]
 
         # set globals and bounds for dur and speed, and verify inputs being set correctly
         if "speed" not in settings["bounds"]:
-            raise ValueError("Speed bounds are required for collocation with multiple nodes.")
+            raise ValueError(
+                "Speed bounds are required for collocation with multiple nodes."
+            )
         if "dur" not in settings["bounds"]:
-            raise ValueError("Duration bounds are required for collocation with multiple nodes.")
+            raise ValueError(
+                "Duration bounds are required for collocation with multiple nodes."
+            )
         if type(settings["bounds"]["speed"]) == float:
-            settings["bounds"]["speed"] = [settings["bounds"]["speed"], settings["bounds"]["speed"]]
+            settings["bounds"]["speed"] = [
+                settings["bounds"]["speed"],
+                settings["bounds"]["speed"],
+            ]
         if type(settings["bounds"]["dur"]) == float:
-            settings["bounds"]["dur"] = [settings["bounds"]["dur"], settings["bounds"]["dur"]]
+            settings["bounds"]["dur"] = [
+                settings["bounds"]["dur"],
+                settings["bounds"]["dur"],
+            ]
         if len(settings["bounds"]["speed"]) != 2 or len(settings["bounds"]["dur"]) != 2:
-            raise ValueError("Speed and duration bounds must be a list of two values [min, max].")
+            raise ValueError(
+                "Speed and duration bounds must be a list of two values [min, max]."
+            )
         settings["bounds"]["global_min"] = states.Globals(
             dur=settings["bounds"]["dur"][0], speed=settings["bounds"]["speed"][0]
         )
@@ -614,17 +694,33 @@ def process_collocation_settings(model, settings):
         settings["nnodes_dur"] = settings["nnodes"]
 
     states_variables = model.variables[model.variables.type == "state"]
-    min_generic = model.default_inputs.replace_vector("states", "model", jnp.array(states_variables.xmin))
-    max_generic = model.default_inputs.replace_vector("states", "model", jnp.array(states_variables.xmax))
+    min_generic = model.default_inputs.replace_vector(
+        "states", "model", jnp.array(states_variables.xmin)
+    )
+    max_generic = model.default_inputs.replace_vector(
+        "states", "model", jnp.array(states_variables.xmax)
+    )
 
     # Placeholders for gc and actuator model
-    min_generic = min_generic.replace_vector("states", "actuator_model", min_generic.states.actuator_model - 1e3)
-    max_generic = max_generic.replace_vector("states", "actuator_model", max_generic.states.actuator_model + 1e3)
-    min_generic = min_generic.replace_vector("states", "gc_model", min_generic.states.gc_model - 1e3)
-    max_generic = max_generic.replace_vector("states", "gc_model", max_generic.states.gc_model + 1e3)
+    min_generic = min_generic.replace_vector(
+        "states", "actuator_model", min_generic.states.actuator_model - 1e3
+    )
+    max_generic = max_generic.replace_vector(
+        "states", "actuator_model", max_generic.states.actuator_model + 1e3
+    )
+    min_generic = min_generic.replace_vector(
+        "states", "gc_model", min_generic.states.gc_model - 1e3
+    )
+    max_generic = max_generic.replace_vector(
+        "states", "gc_model", max_generic.states.gc_model + 1e3
+    )
 
-    settings["bounds"]["min"] = states.stack_dataclasses([min_generic] * settings["nnodes_dur"])
-    settings["bounds"]["max"] = states.stack_dataclasses([max_generic] * settings["nnodes_dur"])
+    settings["bounds"]["min"] = states.stack_dataclasses(
+        [min_generic] * settings["nnodes_dur"]
+    )
+    settings["bounds"]["max"] = states.stack_dataclasses(
+        [max_generic] * settings["nnodes_dur"]
+    )
 
     if settings["settings"]["nnodes"] == 1:  # Bounds on ddot and dot values set to zero
         # return settings
@@ -633,14 +729,18 @@ def process_collocation_settings(model, settings):
                 "states",
                 "model",
                 settings["bounds"][section]
-                .states.model.at[0, model.speeds["idx"] : model.speeds["idx"] + model.speeds["n"]]
+                .states.model.at[
+                    0, model.speeds["idx"] : model.speeds["idx"] + model.speeds["n"]
+                ]
                 .set(jnp.zeros(model.speeds["n"], dtype=settings["dtype"])),
             )
             settings["bounds"][section] = settings["bounds"][section].replace_vector(
                 "states",
                 "model",
                 settings["bounds"][section]
-                .states.model.at[0, model.accs["idx"] : model.accs["idx"] + model.accs["n"]]
+                .states.model.at[
+                    0, model.accs["idx"] : model.accs["idx"] + model.accs["n"]
+                ]
                 .set(jnp.zeros(model.accs["n"], dtype=settings["dtype"])),
             )
     elif not settings["discretization"]["args"]["adaptive_h"]:
