@@ -39,9 +39,13 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
     if n_frames > 1:
         for i in range(n_frames):
             if isinstance(states, list):
-                joint_positions = model.run["FK_vis"](states[i].states, states[i].constants)
+                joint_positions = model.run["FK_vis"](
+                    states[i].states, states[i].constants
+                )
             else:
-                joint_positions = model.run["FK_vis"](states[i].states, states[i].constants)
+                joint_positions = model.run["FK_vis"](
+                    states[i].states, states[i].constants
+                )
             anim_joint_positions.append(joint_positions)
         anim_joint_positions = np.array(anim_joint_positions)
 
@@ -111,13 +115,17 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
             children = node["children"]
             for child in children:
                 child_name = child["name"]
-                child_idx = [body["name"] for body in model.dicts["bodies"]].index(child_name)
+                child_idx = [body["name"] for body in model.dicts["bodies"]].index(
+                    child_name
+                )
                 connections.append((body_idx, child_idx))
             _get_child_connections(children, model)
         for idx, site in enumerate(model.dicts["sites"]):
             parent_name = site["parent"]
             site_idx = len(model.dicts["bodies"]) + idx
-            parent_idx = [body["name"] for body in model.dicts["bodies"]].index(parent_name)
+            parent_idx = [body["name"] for body in model.dicts["bodies"]].index(
+                parent_name
+            )
             connections.append((parent_idx, site_idx))
 
     _get_child_connections(model.topology_tree, model)
@@ -161,7 +169,9 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
         segments.append(l)
 
     if hascontact:
-        plot_objects = model.gc_model.plot(states, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes)
+        plot_objects = model.gc_model.plot(
+            states, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
+        )
 
     # Set axis labels
     ax.set_xlabel("X-axis [m]")
@@ -196,11 +206,15 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
                 ispaused = not ispaused
             elif event.key == "up":  # Up arrow increases speed
                 speed_multiplier = min(speed_multiplier * 1.2, 10.0)  # Max 10x speed
-                speed_text.set_text(f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed")
+                speed_text.set_text(
+                    f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed"
+                )
                 fig.canvas.draw_idle()
             elif event.key == "down":  # Down arrow decreases speed
                 speed_multiplier = max(speed_multiplier / 1.2, 0.1)  # Min 0.1x speed
-                speed_text.set_text(f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed")
+                speed_text.set_text(
+                    f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed"
+                )
                 fig.canvas.draw_idle()
 
         fig.canvas.mpl_connect("key_press_event", on_key_press)
@@ -255,8 +269,16 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
                 if case_ == "2D":
                     segments[i].set_data(
                         [
-                            [anim_joint_positions[frame][connection][:, non_zero_axes[0]]],
-                            [anim_joint_positions[frame][connection][:, non_zero_axes[1]]],
+                            [
+                                anim_joint_positions[frame][connection][
+                                    :, non_zero_axes[0]
+                                ]
+                            ],
+                            [
+                                anim_joint_positions[frame][connection][
+                                    :, non_zero_axes[1]
+                                ]
+                            ],
                         ]
                     )
                 else:
@@ -287,3 +309,4 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
             blit=False,  # 50ms = 20 FPS for smooth animation
         )
         plt.show()
+        return ani
