@@ -318,7 +318,6 @@ def create_averaged_gait_forces(
 
     return df
 
-# ...existing code...
 
 def create_averaged_markers(
     trc_data: pd.DataFrame,
@@ -427,6 +426,7 @@ def create_averaged_markers(
                         seg = seg + ramp
                 cycles[name][ax].append(seg)
 
+
     # Interpolate to n_points and compute mean/var
     x_new = np.linspace(0, 1, n_points)
     out = {}
@@ -467,10 +467,7 @@ def segment_gait_averages(
     treadmill_speed: float | None = None,
     forward_axis: str = "X",
     time_column: str = "Time",
-    interpolate_missing: bool = True,
-    interpolate_missing_angles: bool | None = None,
-    interpolate_missing_forces: bool | None = None,
-    interpolate_missing_markers: bool | None = None,
+    interpolate_missing: bool = True
 ):
     """
     Compute averaged joint angles, GRFs and markers (mean/variance across cycles).
@@ -515,19 +512,13 @@ def segment_gait_averages(
     gait_avg_grfs = None
     gait_avg_markers = None
 
-    if interpolate_missing_angles is None:
-        interpolate_missing_angles = interpolate_missing
-    if interpolate_missing_forces is None:
-        interpolate_missing_forces = interpolate_missing
-    if interpolate_missing_markers is None:
-        interpolate_missing_markers = interpolate_missing
 
     if ik_df is not None:
         gait_avg_joint_angles = create_averaged_gait_joint_angles(
             ik_df,
             hs_idx,
             n_points=n_points,
-            interpolate_missing=interpolate_missing_angles,
+            interpolate_missing=interpolate_missing
         )
 
     if grf_df is not None:
@@ -535,7 +526,7 @@ def segment_gait_averages(
             grf_df,
             hs_idx,
             n_points=n_points,
-            interpolate_missing=interpolate_missing_forces,
+            interpolate_missing=interpolate_missing
         )
 
     if trc_df is not None:
@@ -546,7 +537,7 @@ def segment_gait_averages(
             treadmill_speed=treadmill_speed,
             forward_axis=forward_axis,
             time_column=time_column,
-            interpolate_missing=interpolate_missing_markers,
+            interpolate_missing=interpolate_missing
         )
 
     return gait_avg_joint_angles, gait_avg_grfs, gait_avg_markers
@@ -604,19 +595,19 @@ if __name__ == "__main__":
     plt.show()
 
     # plot selected joint
-    mean = gait_avg_joint_angles["knee_angle_l_mean"]
-    std = np.sqrt(gait_avg_joint_angles["knee_angle_l_var"])
-    x = np.linspace(0, 100, len(mean))
+    # mean = gait_avg_joint_angles["knee_angle_l_mean"]
+    # std = np.sqrt(gait_avg_joint_angles["knee_angle_l_var"])
+    # x = np.linspace(0, 100, len(mean))
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(x, mean, label="Mean")
-    plt.fill_between(x, mean - std, mean + std, alpha=0.3, label="Standard Deviation")
-    plt.title("Hip Flexion: Mean and Standard Deviation over Gait Cycle")
-    plt.xlabel("Gait Cycle (%)")
-    plt.ylabel("Hip Flexion (degrees)")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(x, mean, label="Mean")
+    # plt.fill_between(x, mean - std, mean + std, alpha=0.3, label="Standard Deviation")
+    # plt.title("Hip Flexion: Mean and Standard Deviation over Gait Cycle")
+    # plt.xlabel("Gait Cycle (%)")
+    # plt.ylabel("Hip Flexion (degrees)")
+    # plt.legend()
+    # plt.grid(True)
+    # plt.tight_layout()
+    # plt.show()
 
 
