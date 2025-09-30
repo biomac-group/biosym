@@ -419,7 +419,7 @@ def create_averaged_markers(
                 series = trc_data[f"{name}_{ax}"].values
                 seg = series[start:end]
                 # Apply treadmill forward translation as a linear ramp over this segment
-                if treadmill_speed is not None and cycle_duration is not None and ax == forward_axis:
+                if (treadmill_speed is not None) and (cycle_duration is not None) and (ax == forward_axis):
                     # Build a per-sample ramp from 0 to v*T over the segment length
                     if len(seg) > 1:
                         ramp = np.linspace(0.0, treadmill_speed * cycle_duration, len(seg))

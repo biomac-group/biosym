@@ -27,7 +27,6 @@ class Objective(BaseObjective):
         self.settings = settings
         self.markers = [f"site_{n}" for n in self.model.sites.get("base_names", [])]
         self.n_nodes = self.settings["nnodes"]
-        self.treadmill_speed = self.settings["bounds"]["speed"][0]
 
         eps = 1e-8  # avoid division by zero
 
@@ -38,8 +37,17 @@ class Objective(BaseObjective):
         if "file" not in kwargs:
             raise ValueError("TrackMarkersObjective requires 'file' in args from YAML.")
         
+        # Treadmill speed must be provided explicitly now (no longer pulled from model/settings bounds)
+        treadmill_speed = kwargs.get("treadmill_speed", None)
+        if treadmill_speed is None:
+            treadmill_speed = self.settings.get("treadmill_speed", None)
+        if treadmill_speed is None:
+            raise ValueError(
+                "treadmill_speed must be provided (add 'treadmill_speed' under the objective's YAML kwargs)."
+            )
+        
         # Get averaged marker data (columns like CLAV_X_mean, ..., CLAV_X_var, ...)
-        _, _, gait_marker_angles = segment_gait_averages(n_points=self.n_nodes,  treadmill_speed=self.treadmill_speed)
+        _, _, gait_marker_angles = segment_gait_averages(n_points=self.n_nodes,  treadmill_speed=treadmill_speed)
         markers_mean_df = gait_marker_angles.filter(like="_mean")
         markers_var_df = gait_marker_angles.filter(like="_var")
 

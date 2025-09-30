@@ -41,6 +41,7 @@ collocation:
       weight: 1
       args:
         2d: true # If true, Z components in expected data are set to zero
+        treadmill_speed: 1.3 # specify treadmill speed here (m/s)
         file: "../biosym/example_data/marker_data.trc" # or specify your mot file here
         presegmented: false # if true, file is expected to contain mean/var columns
         presegmented_file: ""
@@ -66,9 +67,9 @@ collocation:
 
   bounds:
     from_model: true
-    start_at_origin: true
+    start_at_origin: false
     dur: 1.05
-    speed: [1,1.5]
+    speed: [0.1,1.5]
 
 
   
