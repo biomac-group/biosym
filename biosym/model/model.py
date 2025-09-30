@@ -112,7 +112,7 @@ class BiosymModel:
                         os.path.dirname(definition_file),
                         cfg["model"]["additional_parameters"]["actuators"]["file"],
                     )
-                    self.actuators = actuator_parser.get(actuator_model_file)
+                    self.actuators = actuator_parser.get(actuator_model_file, joint_names=[j["name"] for j in parser.get_joints()])
                     if cfg["model"]["additional_parameters"]["actuators"]["replace_existing"] == True:
                         parser.actuators = self.actuators.get_actuators()
                     else:
@@ -986,7 +986,7 @@ if __name__ == "__main__":
 
     start = time.time()
     # model_file = "tests/models/pendulum.xml"
-    model_file = "tests/models/gait2d_torque/gait2d_torque.yaml"
+    model_file = "tests/models/gait2d/gait2d.yaml"
     model = load_model(model_file, True)
     print(model.dicts["joints"])
     print(f"Reloading model in {time.time() - start} seconds")
