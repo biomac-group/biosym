@@ -241,3 +241,12 @@ $RECYCLE.BIN/
 # debug folder
 _debug
 notebooks/collocation_outputs.ipynb
+.github/copilot-instructions.md
+example_data/gait_averaged_markers.csv
+examples/sympy_example.py
+gait_averaged_markers.csv
+notebooks/sympy_training.ipynb
+notebooks/testing.ipynb
+scripts/biosymmodel_checks.py
+scripts/trace_pipeline.py
+tests/test_markers_order.py
