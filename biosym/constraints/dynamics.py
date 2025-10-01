@@ -128,27 +128,26 @@ def jacobian(modelfn, states_list, globals_dict, settings, info):
     cols_out = jnp.empty((nnz,), dtype=int)
     data_out = jnp.empty((nnz,), dtype=float)
 
-    block_size = ncons_sympy * nvpn
 
-    def body_fun(n, carry):
-        rows_out, cols_out, data_out = carry
-        state_ = states_list[n]
-        jac = modelfn(state_.states, state_.constants)
 
-        row_block = n * ncons_sympy + jnp.arange(ncons_sympy)
-        col_block = state_.states.size() * n + jnp.arange(nvpn)
+    jac_all = jax.vmap(modelfn, in_axes=(0, None))(states_list[:nnodes].states, states_list.constants)
 
-        rows_block = jnp.repeat(row_block, nvpn)  # Shape: (ncons_sympy * nvpn,)
-        cols_block = jnp.tile(col_block, ncons_sympy)  # Shape: (ncons_sympy * nvpn,)
-        data_block = jac.model.flatten()  # Flatten the block
+    # Vectorized computation for all nodes at once
+    # Create node indices for all blocks
+    node_indices = jnp.arange(nnodes)  # [0, 1, 2, ..., nnodes-1]
+    
+    # Compute row blocks [shape (nnodes, ncons_sympy)] and column blocks [shape (nnodes, nvpn)]
+    row_blocks = node_indices[:, None] * ncons_sympy + jnp.arange(ncons_sympy)[None, :]
+    col_blocks = node_indices[:, None] * states_list[0].states.size() + jnp.arange(nvpn)[None, :]
+    
+    # Create rows indices by repeating each row block nvpn times: shape (nnodes, ncons_sympy * nvpn)
+    rows_blocks = jnp.repeat(row_blocks, nvpn, axis=1)
+    cols_blocks = jnp.tile(col_blocks, (1, ncons_sympy))
+    data_blocks = jac_all.model.reshape(nnodes, -1)
+    
+    # Flatten all blocks to create final arrays
+    rows_out = rows_blocks.flatten()
+    cols_out = cols_blocks.flatten()
+    data_out = data_blocks.flatten()
 
-        start = n * block_size  # Calculate where to insert this block
-
-        rows_out = jax.lax.dynamic_update_slice(rows_out, rows_block, (start,))
-        cols_out = jax.lax.dynamic_update_slice(cols_out, cols_block, (start,))
-        data_out = jax.lax.dynamic_update_slice(data_out, data_block, (start,))
-
-        return (rows_out, cols_out, data_out)
-
-    rows_out, cols_out, data_out = jax.lax.fori_loop(0, nnodes, body_fun, (rows_out, cols_out, data_out))
     return rows_out, cols_out, data_out
