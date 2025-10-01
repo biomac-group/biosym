@@ -36,28 +36,50 @@ class PassiveTorques(BaseActuator):
         Resets the actuator behaviour.
         """
 
+    def get_n_states(self):
+        return 0
+
+    def get_n_constants(self):
+        return 0
+
     def get_actuated_joints(self):
         """
         Returns the list of actuated joints.
         """
         return [
-            ji["name"] for ji in self.joints_dict if ji.get("damping", 0.0) > 0.0 or ji.get("stiffness", 0.0) > 0.0
+            ji["name"]
+            for ji in self.joints_dict
+            if ji.get("damping", 0.0) > 0.0 or ji.get("stiffness", 0.0) > 0.0
         ]  # or ji.get("armature", 0.0) > 0.0]
 
     def forward(self, states, constants, model):
         def f_plus(x):
             return 0.5 * (x + jnp.sqrt(x**2 + JOINT_RANGE_TOL**2))
 
-        damp_term = -self.damping * states.model[model.speeds["idx"] : model.speeds["idx"] + model.speeds["n"]]
-        upper_limit_term = f_plus(
-            states.model[model.coordinates["idx"] : model.coordinates["idx"] + model.coordinates["n"]]
-            - self.upper_limits
-        )
-        lower_limit_term = f_plus(
-            self.lower_limits
-            - states.model[model.coordinates["idx"] : model.coordinates["idx"] + model.coordinates["n"]]
-        )
+        if len(states) < 2:
+            speeds = states.model[
+                model.speeds["idx"] : model.speeds["idx"] + model.speeds["n"]
+            ]
+            coordinates = states.model[
+                model.coordinates["idx"] : model.coordinates["idx"]
+                + model.coordinates["n"]
+            ]
+        else:
+            speeds = states.model[
+                :, model.speeds["idx"] : model.speeds["idx"] + model.speeds["n"]
+            ]
+            coordinates = states.model[
+                :,
+                model.coordinates["idx"] : model.coordinates["idx"]
+                + model.coordinates["n"],
+            ]
 
-        passive_torque = damp_term - self.stiffness * (upper_limit_term - lower_limit_term)
+        damp_term = -self.damping * speeds
+        upper_limit_term = f_plus(coordinates - self.upper_limits)
+        lower_limit_term = f_plus(self.lower_limits - coordinates)
+
+        passive_torque = damp_term - self.stiffness * (
+            upper_limit_term - lower_limit_term
+        )
 
         return passive_torque  # Always return full array, even if some joints are not actuated
