@@ -18,11 +18,19 @@ class PassiveTorques(BaseActuator):
 
         self.damping = jnp.array([ji.get("damping", 0.0) for ji in joints_dict])
         self.stiffness = jnp.array([ji.get("stiffness", 0.0) for ji in joints_dict])
-        self.upper_limits = jnp.array([ji.get("range", [-np.inf, np.inf])[1] for ji in joints_dict])
-        self.lower_limits = jnp.array([ji.get("range", [-np.inf, np.inf])[0] for ji in joints_dict])
+        self.upper_limits = jnp.array(
+            [ji.get("range", [-np.inf, np.inf])[1] for ji in joints_dict]
+        )
+        self.lower_limits = jnp.array(
+            [ji.get("range", [-np.inf, np.inf])[0] for ji in joints_dict]
+        )
 
         self.idx_actuated_joints = jnp.array(
-            [i for i, ji in enumerate(joints_dict) if ji.get("damping", 0.0) > 0.0 or ji.get("stiffness", 0.0) > 0.0]
+            [
+                i
+                for i, ji in enumerate(joints_dict)
+                if ji.get("damping", 0.0) > 0.0 or ji.get("stiffness", 0.0) > 0.0
+            ]
         )  # or ji.get("armature", 0.0) > 0.0]
 
     def get_n_actuators(self):
@@ -56,7 +64,7 @@ class PassiveTorques(BaseActuator):
         def f_plus(x):
             return 0.5 * (x + jnp.sqrt(x**2 + JOINT_RANGE_TOL**2))
 
-        if len(states) < 2:
+        if states.model.ndim < 2:
             speeds = states.model[
                 model.speeds["idx"] : model.speeds["idx"] + model.speeds["n"]
             ]

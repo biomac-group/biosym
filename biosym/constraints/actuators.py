@@ -73,7 +73,7 @@ class Constraint(BaseConstraint):
 
         :return: The number of constraints.
         """
-        return self.nf * self.settings.get("nnodes")
+        return (self.nf + self.model.actuators.get_n_constraints()) * self.settings.get("nnodes")
 
     def get_nnz(self):
         """
@@ -100,13 +100,18 @@ def confun(model, states_list, globals_dict, settings, info):
     data_out = jnp.empty((info["ncons"],), dtype=float)
     nnodes = settings.get("nnodes")
     ncons = info["ncons_pernode"]
+    model.run["actuator_model"](states_list.states, states_list.constants)  # Test full function
 
+    forces_act = model.run["actuator_model"](states_list.states, states_list.constants)  # Get ground contact forces and moments
+    forces_model = states_list.states.model[:, model.forces["idx"] : model.forces["idx"] + model.forces["n"]]
+    print(forces_act.shape, forces_model.shape)
+    data_out = (forces_act - forces_model).flatten()
+    return data_out
+
+    # Find
     def body_fun(n, carry):
         data_out = carry
         state_ = states_list[n]
-        forces_act = model.run["actuator_model"](
-            state_.states, state_.constants
-        )  # Get ground contact forces and moments
         # Find forces and moments in the model
         forces_model = state_.states.model[model.forces["idx"] : model.forces["idx"] + model.forces["n"]]
 
@@ -115,8 +120,12 @@ def confun(model, states_list, globals_dict, settings, info):
         start = n * ncons
         data_out = jax.lax.dynamic_update_slice(data_out, val, (start,))
         return data_out
-
+    
     data_out = jax.lax.fori_loop(0, nnodes, body_fun, data_out)
+    
+    if model.actuator_model.get_n_constraints() > 0:
+        pass
+    
     return data_out
 
 

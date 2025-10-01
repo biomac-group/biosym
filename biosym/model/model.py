@@ -7,7 +7,7 @@ The module handles model parsing, symbolic equation generation, JAX compilation,
 and provides interfaces for optimal control problems.
 """
 import os
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple
 
 _cachedir = os.path.expanduser("~/.biosym/jax_cache")
 _model_cache = os.path.expanduser("~/.biosym/")
@@ -201,8 +201,8 @@ class BiosymModel:
         self.passive_actuators = PassiveTorques(self.dicts["joints"])
         passive_actuated_joints = self.passive_actuators.get_actuated_joints()
 
-        active_forces_dict = parser.get_internal_forces()
-        active_actuated_joints = [active_forces_dict[name]["joint"] for name in active_forces_dict.keys()]
+        active_forces_dict = self.actuators.get_actuated_joints()
+        active_actuated_joints = list(active_forces_dict)
         actuated_joints = list(dict.fromkeys(active_actuated_joints + passive_actuated_joints))
         all_joints = [joint["name"] for joint in self.dicts["joints"]]
         self.forces = {
@@ -836,9 +836,11 @@ class BiosymModel:
 
         actuator_function = actuator_model.forward
 
-        lambda_func = lambda states, constants, model: (
-            actuator_function(states, constants, model) + self.passive_actuators.forward(states, constants, model)
-        )[self.forces["combined_idx"]]
+        def lambda_func(states: Any, constants: Any, model: Any) -> Any:
+            f = actuator_function(states, constants, model) + self.passive_actuators.forward(states, constants, model)
+            print(f.ndim)
+            return f[self.forces["combined_idx"]] if f.ndim == 1 else f[:, self.forces["combined_idx"]]
+
         lambda_func = partial(lambda_func, model=self)
         self.run["actuator_model"] = jax.jit(lambda_func)
         self.run["actuator_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
@@ -987,20 +989,19 @@ if __name__ == "__main__":
     start = time.time()
     # model_file = "tests/models/pendulum.xml"
     model_file = "tests/models/gait2d/gait2d.yaml"
+    model_file = "tests/models/gait2d_torque/gait2d_torque.yaml"
+
     model = load_model(model_file, True)
-    print(model.dicts["joints"])
     print(f"Reloading model in {time.time() - start} seconds")
     start = time.time()
-    states = {
-        "model": np.zeros(model.n_states),
-        "gc_model": np.zeros(0),
-        "actuator_model": np.zeros(0),
-    }
-    constants = {
-        "model": np.zeros(model.n_constants),
-        "gc_model": np.zeros(0),
-        "actuator_model": np.zeros(0),
-    }
+    states = model.default_inputs.states
+    constants = model.default_inputs.constants
+    print(states)
+    model.run["actuator_model"](states, constants)
+    from biosym.utils import states
+    states_dict = states.stack_dataclasses([model.default_inputs]*100)
+    model.run["actuator_model"](states_dict.states, states_dict.constants)
+    
     for _ in range(1):
         model.run["jacobian"](states, constants)
     print(f"1 jacobian in in {time.time() - start} seconds (with reimporting)")
@@ -1029,9 +1030,9 @@ if __name__ == "__main__":
     print(f"gc_model jacobian runs in {a / 10000} seconds")
 
     print("confun shape:", model.run["confun"](states, constants).shape)
-    print("jacobian shape:", model.run["jacobian"](states, constants)["model"].shape)
+    print("jacobian shape:", model.run["jacobian"](states, constants).model.shape)
     print("gc_model shape:", model.run["gc_model"](states, constants)[1].shape)
     print(
         "gc_model jacobian shape:",
-        model.run["gc_model_jacobian"](states, constants)[0]["model"].shape,
+        model.run["gc_model_jacobian"](states, constants)[0].model.shape,
     )

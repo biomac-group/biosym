@@ -196,7 +196,7 @@ class General(BaseActuator):
         all_joints = all_joints.at[:, jnp.array(model.forces["active_idx"])].set(
             states.actuator_model
         )
-        return all_joints if len(states) > 1 else all_joints[0]
+        return all_joints if (states.model.ndim > 1) else all_joints[0]
 
 
 class GeneralMujoco(General):
