@@ -102,10 +102,26 @@ class General(BaseActuator):
         """
         return self.actuators
 
+    def get_actuated_joints(self):
+        """
+        Get the list of joints actuated by this actuator model.
+
+        Returns
+        -------
+        list of str
+            List of joint names that are actuated by the defined actuators.
+            If no specific joints are defined, returns an empty list.
+        """
+        return [
+            self.actuators[name].get("joint", None)
+            for name in self.actuators
+            if self.actuators[name].get("joint", None) is not None
+        ]
+
     def get_n_states(self):
         """
         Get the number of state variables required by the actuator model.
-        
+
         Returns
         -------
         int
@@ -163,44 +179,46 @@ class General(BaseActuator):
             Current constant parameter values (unused for general actuators).
         model : biosym.model.model.BiosymModel
             The biomechanical model containing joint and force information.
-            
+
         Returns
         -------
         jax.Array
             Array of joint torques with shape (n_coordinates,). Torques are
             placed at the indices specified by model.forces["active_idx"].
-            
+
         Notes
         -----
         The method creates a zero array for all coordinates and fills in
         the actuator torques at the active joint indices. This ensures
         proper mapping between actuator outputs and joint inputs.
         """
-        all_joints = jnp.zeros(model.coordinates["n"])
-        all_joints = all_joints.at[jnp.array(model.forces["active_idx"])].set(states.actuator_model)
-        return all_joints
+        all_joints = jnp.zeros((len(states), model.coordinates["n"]))
+        all_joints = all_joints.at[:, jnp.array(model.forces["active_idx"])].set(
+            states.actuator_model
+        )
+        return all_joints if len(states) > 1 else all_joints[0]
 
 
 class GeneralMujoco(General):
     """
     General actuator model specifically for MuJoCo-format XML files.
-    
+
     This class extends the General actuator class to handle actuator
     definitions in MuJoCo XML format, which uses 'motor' elements instead
     of 'general' elements.
-    
+
     Parameters
     ----------
     actuator_list : list of xml.etree.ElementTree.Element
         List of XML elements representing motor actuators from MuJoCo format.
-        
+
     Notes
     -----
     MuJoCo format differences:
     - Uses 'motor' elements instead of 'general'
     - May have different attribute naming conventions
     - Handles MuJoCo-specific actuator properties
-    
+
     See Also
     --------
     General : Base general actuator implementation
