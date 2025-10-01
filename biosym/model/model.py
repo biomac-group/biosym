@@ -41,7 +41,7 @@ from biosym.model.actuators.actuator_models.passive_torques import PassiveTorque
 from biosym.model.contact import *
 from biosym.model.parsers import *
 from biosym.model.parsers.base_parser import BaseParser
-from biosym.utils import states
+from biosym.utils import states as states_module
 
 
 class BiosymModel:
@@ -135,9 +135,6 @@ class BiosymModel:
         self._set_default_values()
 
         # Future work, tbd: (These should be disabled or enabled by a flag in the config file); so that we don't need to compile everything every time
-        self._create_eom()
-        self._create_jax_eom()
-        self._create_FK(True)
         if hasattr(self, "gc_model"):
             self.gc_model.process_eom(
                 self, body_weight=sum(self.default_values[_slice(self.masses)])
@@ -146,11 +143,15 @@ class BiosymModel:
         if hasattr(self, "actuators"):
             self.actuators.process_eom(self)
             self._register_actuator_model(self.actuators)
+        self._create_eom()
+        self._create_jax_eom()
+        self._create_FK(True)
         self._create_variable_dataframe()
+
         # self._create_FK(parser)
         # self._create_IMU(parser) ....
 
-    def _create_dictionaries(self, parser: 'BaseParser') -> None:
+    def _create_dictionaries(self, parser: "BaseParser") -> None:
         """Create dictionaries for model components.
         
         Creates dictionaries for coordinates, speeds, accelerations, forces,
@@ -283,7 +284,7 @@ class BiosymModel:
         self.n_constants = len(self.constants)
 
         self.gravity = parser.get_gravity()
-        self.default_inputs = states.dict_to_dataclass(
+        self.default_inputs = states_module.dict_to_dataclass(
             {
                 "states": {
                     "model": np.zeros(self.n_states),
@@ -614,7 +615,7 @@ class BiosymModel:
 
         print(f"Lambdifying the EOM took {time.time() - a} seconds")
         a = time.time()
-        self._precompile_fn(self.confun, self.default_inputs, "jacobian", jacobian=True)
+        self._precompile_fn(self.confun, self.default_inputs, "jacobian", jacobian=True, skip_export=False)
         print(f"Precompiling the Jacobian took {time.time() - a} seconds")
         a = time.time()
         self._precompile_fn(self.confun, self.default_inputs, "confun")
@@ -770,10 +771,34 @@ class BiosymModel:
                 selected = tuple(getattr(states, key) for key in input_names) + tuple(
                     getattr(constants, key) for key in input_names
                 )
-                flat_inputs = jnp.concatenate(tree_util.tree_leaves(selected))
+                flat_inputs = jnp.concatenate(tree_util.tree_leaves(selected))                   
                 return function_(*flat_inputs)
 
             return jax.jit(wrapped)
+
+        def serialize_states_fn(states_: Any):
+            selected = states_.model
+            flat_inputs = jnp.concatenate(tree_util.tree_leaves(selected))
+            return flat_inputs
+        
+        def serialize_constants_fn(constants: Any):
+            selected = constants.model
+            flat_inputs = jnp.concatenate(tree_util.tree_leaves(selected))
+            return flat_inputs
+
+        def deserialize_states_fn(flat_inputs: jnp.ndarray):
+            states_ = states_module.States(
+                model=flat_inputs[: self.n_states],
+                gc_model=jnp.zeros(0,),
+                actuator_model=jnp.zeros(0,),
+                h = None,
+            )
+            constants = states_module.Constants(
+                model=flat_inputs[self.n_states : self.n_states + self.n_constants],
+                gc_model=jnp.zeros(0,),
+                actuator_model=jnp.zeros(0,),
+            )
+            return states_#(states_, constants)
 
         jit_function = _jit_function_template(function)
         # Cause jit compilation
@@ -786,6 +811,20 @@ class BiosymModel:
                 jit_function = jax.jit(jit_function)
             self.run[name] = jit_function
             return
+        else:
+            #jax.export.register_pytree_node_serialization(states_.States,serialize_auxdata=serialize_states_fn,deserialize_auxdata=deserialize_states_fn,serialized_name="States")
+            #jax.export.register_pytree_node_serialization(states_.Constants,serialize_auxdata=serialize_constants_fn,deserialize_auxdata=deserialize_states_fn,serialized_name="Constants")
+
+            if jacobian:
+                jit_function = jax.jacobian(function)
+                exp = jax.export.export(jax.jit(jit_function))(*np.zeros(self.n_states+self.n_constants)).serialize()
+                rehydrated = jax.export.deserialize(exp)
+                self.run[name] = jax.jit(lambda x,y: deserialize_states_fn(rehydrated.call(*serialize_states_fn(x),*serialize_constants_fn(y))))
+            else:
+                exp = jax.export.export(jit_function)(self.default_inputs.states, self.default_inputs.constants).serialize()
+                rehydrated = jax.export.deserialize(exp)
+                self.run[name] = jax.jit(rehydrated)
+            # Export the jaxpr to avoid recompilation issues
 
     def _replace_dyn(self, function: Callable, replace_d_q: bool = False) -> Callable:
         """
@@ -838,7 +877,6 @@ class BiosymModel:
 
         def lambda_func(states: Any, constants: Any, model: Any) -> Any:
             f = actuator_function(states, constants, model) + self.passive_actuators.forward(states, constants, model)
-            print(f.ndim)
             return f[self.forces["combined_idx"]] if f.ndim == 1 else f[:, self.forces["combined_idx"]]
 
         lambda_func = partial(lambda_func, model=self)
@@ -923,7 +961,7 @@ def _to_sympy_vector(values: List[Any], reference_frame: ReferenceFrame) -> Any:
     return values[0] * reference_frame.x + values[1] * reference_frame.y + values[2] * reference_frame.z
 
 
-def load_model(model_file: str, force_rebuild: bool = False) -> 'BiosymModel':
+def load_model(model_file: str, force_rebuild: bool = False) -> "BiosymModel":
     """Load a model from a file with caching support.
     
     Parameters
@@ -985,11 +1023,11 @@ def clear_caches() -> None:
 # Small testing script
 if __name__ == "__main__":
     import time
-
+    from biosym.utils import states as states_module
     start = time.time()
     # model_file = "tests/models/pendulum.xml"
     model_file = "tests/models/gait2d/gait2d.yaml"
-    model_file = "tests/models/gait2d_torque/gait2d_torque.yaml"
+    #model_file = "tests/models/gait2d_torque/gait2d_torque.yaml"
 
     model = load_model(model_file, True)
     print(f"Reloading model in {time.time() - start} seconds")
@@ -998,8 +1036,8 @@ if __name__ == "__main__":
     constants = model.default_inputs.constants
     print(states)
     model.run["actuator_model"](states, constants)
-    from biosym.utils import states
-    states_dict = states.stack_dataclasses([model.default_inputs]*100)
+
+    states_dict = states_module.stack_dataclasses([model.default_inputs]*100)
     model.run["actuator_model"](states_dict.states, states_dict.constants)
     
     for _ in range(1):
