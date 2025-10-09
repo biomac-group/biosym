@@ -133,6 +133,7 @@ class BiosymModel:
             return
         self._create_sympy_model()
         self._set_default_values()
+        self._create_FK(True)
 
         # Future work, tbd: (These should be disabled or enabled by a flag in the config file); so that we don't need to compile everything every time
         if hasattr(self, "gc_model"):
@@ -145,7 +146,6 @@ class BiosymModel:
             self._register_actuator_model(self.actuators)
         self._create_eom()
         self._create_jax_eom()
-        self._create_FK(True)
         self._create_variable_dataframe()
 
         # self._create_FK(parser)
@@ -173,7 +173,6 @@ class BiosymModel:
         - Add muscles, they have a different number of states than torques
         - Mujoco: allow assignment of less bodies for external forces
         """
-
         self.dicts = {
             "bodies": parser.get_bodies(),
             "joints": parser.get_joints(),
@@ -517,7 +516,9 @@ class BiosymModel:
                 parent_frame if parent_frame is not None else self.ground_frame,
             )
             force_body = (child_frame, force_vector)
+            force_body_parent_frame = (parent_frame, -force_vector)
             self.loads.append(force_body)
+            self.loads.append(force_body_parent_frame)
 
         # Add external forces - double check if this is correct
         # We are using body.origin to apply the force, but it could also be applied to the mass center or an arbitrary point - that is tbd
@@ -545,7 +546,6 @@ class BiosymModel:
                 [self._v[i] for i in range(torque_idx, torque_idx + 3)],
                 self.ground_frame,
             )
-            # print(f"Torque vector: {torque_vector} at {self.body_origins[body_name]}")
             torque_body = (self.reference_frames[body_name], torque_vector)
             self.loads.append(torque_body)
 
@@ -816,14 +816,12 @@ class BiosymModel:
             #jax.export.register_pytree_node_serialization(states_.Constants,serialize_auxdata=serialize_constants_fn,deserialize_auxdata=deserialize_states_fn,serialized_name="Constants")
 
             if jacobian:
-                jit_function = jax.jacobian(function)
-                exp = jax.export.export(jax.jit(jit_function))(*np.zeros(self.n_states+self.n_constants)).serialize()
+                jit_function = jax.jacobian(lambda x,y: function(*x,*y))
+                exp = jax.export.export(jax.jit(jit_function))(np.zeros(self.n_states),np.zeros(self.n_constants)).serialize()
                 rehydrated = jax.export.deserialize(exp)
-                self.run[name] = jax.jit(lambda x,y: deserialize_states_fn(rehydrated.call(*serialize_states_fn(x),*serialize_constants_fn(y))))
+                self.run[name] = jax.jit(lambda x,y: deserialize_states_fn(rehydrated.call(serialize_states_fn(x),serialize_constants_fn(y))))
             else:
-                exp = jax.export.export(jit_function)(self.default_inputs.states, self.default_inputs.constants).serialize()
-                rehydrated = jax.export.deserialize(exp)
-                self.run[name] = jax.jit(rehydrated)
+                raise NotImplementedError("You probably don't want to export non-jacobian functions, as they are not that slow anyway and it breaks differentiability.")
             # Export the jaxpr to avoid recompilation issues
 
     def _replace_dyn(self, function: Callable, replace_d_q: bool = False) -> Callable:
@@ -879,6 +877,7 @@ class BiosymModel:
             f = actuator_function(states, constants, model) + self.passive_actuators.forward(states, constants, model)
             return f[self.forces["combined_idx"]] if f.ndim == 1 else f[:, self.forces["combined_idx"]]
 
+        self.actuator_model = actuator_model
         lambda_func = partial(lambda_func, model=self)
         self.run["actuator_model"] = jax.jit(lambda_func)
         self.run["actuator_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
@@ -1043,6 +1042,7 @@ if __name__ == "__main__":
     for _ in range(1):
         model.run["jacobian"](states, constants)
     print(f"1 jacobian in in {time.time() - start} seconds (with reimporting)")
+    print(model.run["jacobian"](states, constants))
     start = time.time()
     import timeit
 
