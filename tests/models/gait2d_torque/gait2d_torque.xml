@@ -39,7 +39,7 @@
       </body>
       <body name="femur_l" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
         <inertial pos=" -0.0        -0.191       0" mass="7.5" fullinertia="0.1522    0.1522    0.1522   0        0        0"></inertial>
-        <joint name="hip_l" type="hinge" pos="0 0 0" axis="       0        0        1" limited="true" range=" -2.7925268032   1.5707963268"></joint>
+        <joint name="hip_l" type="hinge" pos="0 0 0" axis="       0        0        1" limited="true" range=" -1.5707963268   2.7925268032"></joint>
         <body name="tibia_l" pos="0 -0.441 0" quat="1.0 0.0 0.0 0.0">
           <inertial pos=" -0.0        -0.1917       0" mass="3.4875" fullinertia="0.0624    0.0642    0.0624   0        0        0"></inertial>
           <joint name="knee_l" type="hinge" pos="0 0 0" axis="       0        0        1" limited="true" range=" -2.7925268032   0"></joint>

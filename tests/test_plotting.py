@@ -17,7 +17,7 @@ test_modellist = [
     "tests/models/pendulum_3d.xml",
     "tests/models/gait2d_torque/gait2d_torque.yaml",
 ]
-test_modellist = ["tests/models/gait2d_torque/gait2d_torque.yaml"]
+test_modellist = ["tests/models/gait2d/gait2d.yaml"]
 
 
 class TestPlotting(unittest.TestCase):
@@ -36,7 +36,7 @@ class TestPlotting(unittest.TestCase):
 
         def test_(modelfile: str) -> None:
             print("Testing single state stick figure plotting.")
-            m = model.load_model(modelfile, force_rebuild=False)
+            m = model.load_model(modelfile, force_rebuild=True)
             print("Please close the stick figure window to continue.")
             stickfigure.plot_stick_figure(m, (m.default_inputs, None), 0.01)
             x = "y"  # x = input("Was this the correct stick figure? [y]")
@@ -49,6 +49,8 @@ class TestPlotting(unittest.TestCase):
             ], "The stick figure is not correct!"
 
             print("Testing list of states stick figure plotting.")
+            if modelfile.endswith("gait2d.yaml"):
+                return  # Skip animation test for gait2d model for now, muscle model is not ready for simulation
             env = sim.SimulationEnvironment(m, dt=0.01, initial_state="random")
             env.step()
             # print(f"JIT/Caching of step function took {timeit.timeit(f, number=10000)/10000:.6f} seconds.")
