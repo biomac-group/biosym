@@ -284,14 +284,13 @@ if __name__ == "__main__":
         else:
             print("Running in test mode (no visualization)...")
             # Create problems for testing
-            standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
-            walking_prob = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
-
             # Run individual tests
             print("Testing standing problem...")
+            standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
             test_standing_problem_solve(standing_prob)
 
             print("Testing walking problem...")
+            walking_prob = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
             test_walking_problem_solve(walking_prob)
 
             print("Testing constraint and objective functions...")
