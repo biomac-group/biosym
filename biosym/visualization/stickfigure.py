@@ -28,6 +28,9 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
 
     # Check if the model has a contact model
     hascontact = hasattr(model, "gc_model") and model.gc_model is not None
+    
+    # Check if the model has an actuator model (muscles)
+    hasmuscles = hasattr(model, "actuator_model") and model.actuator_model is not None and hasattr(model.actuator_model, "plot")
 
     # First node joint positions
     if isinstance(states, list) or len(states.states.model.shape) == 1:
@@ -169,9 +172,18 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
         segments.append(l)
 
     if hascontact:
-        plot_objects = model.gc_model.plot(
+        contact_plot_objects = model.gc_model.plot(
             states, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
         )
+    else:
+        contact_plot_objects = None
+    
+    if hasmuscles:
+        muscle_plot_objects = model.actuator_model.plot(
+            states, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
+        )
+    else:
+        muscle_plot_objects = None
 
     # Set axis labels
     ax.set_xlabel("X-axis [m]")
@@ -289,14 +301,26 @@ def plot_stick_figure(model, states, dt=0.01, frame=None, **kwargs):
             ax.set_title(f"T = {frame * dt:.2f} s")
             if hascontact:
                 model.gc_model.plot(
-                    False,
+                    states,
                     model,
                     mode="update",
                     ax=ax,
                     case=case_,
                     non_zero_axes=non_zero_axes,
                     frame=frame,
-                    plot_objects=plot_objects,
+                    plot_objects=contact_plot_objects,
+                )
+            
+            if hasmuscles:
+                model.actuator_model.plot(
+                    states,
+                    model,
+                    mode="update",
+                    ax=ax,
+                    case=case_,
+                    non_zero_axes=non_zero_axes,
+                    frame=frame,
+                    plot_objects=muscle_plot_objects,
                 )
 
                 return ax.collections
