@@ -859,6 +859,7 @@ class BiosymModel:
         lambda_func = partial(contact_model.forward, model=self)
         self.run["gc_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
         self.run["gc_model"] = jax.jit(lambda_func)
+        self.contact_model = contact_model
 
     def _register_actuator_model(self, actuator_model: Any) -> None:
         """

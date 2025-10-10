@@ -89,5 +89,4 @@ class PassiveTorques(BaseActuator):
         passive_torque = damp_term - self.stiffness * (
             upper_limit_term - lower_limit_term
         )
-
         return passive_torque  # Always return full array, even if some joints are not actuated

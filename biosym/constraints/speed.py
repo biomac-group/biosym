@@ -82,7 +82,6 @@ def confun(states_list, globals_dict, settings, info):
     :param info: Information about the constraint function.
     :return: The evaluated constraint function.
     """
-    print(states_list.states.model)
     return globals_dict.speed - jnp.mean(
         states_list.states.model[: settings.get("nnodes_dur") - 1, info["speed_var_idx"]]
     )  # Ensure the sum of step sizes equals the total duration

@@ -6,18 +6,18 @@ from biosym.model.actuators.base_actuator import BaseActuator
 class General(BaseActuator):
     """
     General torque actuator model for biomechanical simulations.
-    
+
     This class implements a simple torque actuator model where actuators
     directly apply torques to joints without complex dynamics. It is suitable
     for models where actuator dynamics are simplified or when representing
     idealized motor inputs.
-    
+
     Parameters
     ----------
     xml_root : xml.etree.ElementTree.Element
         Root element of the XML tree containing actuator definitions.
         Expected to contain 'general' subelements with actuator specifications.
-        
+
     Attributes
     ----------
     actuators : dict
@@ -28,34 +28,34 @@ class General(BaseActuator):
     states : list of str
         List of state variable names, formatted as "torque_i" where i is the
         actuator index.
-        
+
     Notes
     -----
     The general actuator model assumes:
     - Direct torque application to joints
     - No actuator dynamics (instantaneous response)
     - Linear mapping from actuator states to joint torques
-    
+
     XML Format
     ----------
     The expected XML format for actuator definition:
-    
+
     .. code-block:: xml
-    
+
         <actuators type="general">
             <general name="actuator_1" pos="0 0 1"/>
             <general name="actuator_2" pos="1 0 0"/>
         </actuators>
-        
+
     Examples
     --------
     Create actuators from XML:
-    
+
     >>> import xml.etree.ElementTree as ET
     >>> root = ET.fromstring(xml_string)
     >>> actuators = General(root)
     >>> n_act = actuators.get_n_actuators()
-    
+
     See Also
     --------
     GeneralMujoco : MuJoCo-specific general actuator implementation
@@ -77,12 +77,19 @@ class General(BaseActuator):
                     actuators[actuator_name][key] = value
         self.actuators = actuators
         self.n_actuators = len(actuators)
-        self.states = [f"torque_{i}" for i in range(self.n_actuators)]
+        self.states = [f"torque_{i}" for i in self.actuators.keys()]
+        self.bounds = {
+            "states": {
+                "min": jnp.zeros(self.n_actuators) * -1e4,
+                "max": jnp.ones(self.n_actuators) * 1e4,
+            }
+        }
+        self.state_vector = self.states
 
     def get_n_actuators(self):
         """
         Get the number of actuators in the model.
-        
+
         Returns
         -------
         int
@@ -93,7 +100,7 @@ class General(BaseActuator):
     def get_actuators(self):
         """
         Get the dictionary of actuator definitions.
-        
+
         Returns
         -------
         dict
@@ -133,7 +140,7 @@ class General(BaseActuator):
     def get_n_constants(self):
         """
         Get the number of constant parameters required by the actuator model.
-        
+
         Returns
         -------
         int
@@ -145,7 +152,7 @@ class General(BaseActuator):
     def is_torque_actuator(self):
         """
         Check if this is a torque-based actuator model.
-        
+
         Returns
         -------
         bool
@@ -156,7 +163,7 @@ class General(BaseActuator):
     def reset(self):
         """
         Reset the actuator model to its initial state.
-        
+
         Notes
         -----
         For general actuators, there is no internal state to reset.
@@ -166,10 +173,10 @@ class General(BaseActuator):
     def forward(self, states, constants, model):
         """
         Evaluate the actuator model to compute joint torques.
-        
+
         This method maps actuator states (torque commands) to the appropriate
         joints in the biomechanical model.
-        
+
         Parameters
         ----------
         states : object
@@ -234,4 +241,10 @@ class GeneralMujoco(General):
             for key, value in actuator.attrib.items():
                 self.actuators[actuator_name][key] = value
         self.n_actuators = len(actuator_list)
-        self.states = [f"torque_{i}" for i in range(self.n_actuators)]
+        self.states = [f"torque_{i}" for i in self.actuators.keys()]
+        self.bounds = {
+            "states": {
+                "min": jnp.zeros(self.n_actuators)*-1e4,
+                "max": jnp.ones(self.n_actuators)*1e4,
+            }
+        }
