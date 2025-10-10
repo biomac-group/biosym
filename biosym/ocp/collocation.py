@@ -762,4 +762,15 @@ def process_collocation_settings(model, settings):
         settings["bounds"]["max"] = settings["bounds"]["max"].replace_vector(
             "states", "model", settings["bounds"]["max"].states.model.at[0, 0].set(0)
         )
+
+    if model.actuator_model.get_n_states() > 0:
+        for bound in ["min", "max"]:
+            settings["bounds"][bound] = settings["bounds"][bound].replace_vector(
+                "states",
+                "actuator_model",
+                jnp.tile(
+                    model.actuator_model.bounds["states"][bound][jnp.newaxis, :],
+                    (settings["nnodes_dur"], 1)
+                ),
+            )
     return settings
