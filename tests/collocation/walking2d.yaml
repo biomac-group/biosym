@@ -14,7 +14,7 @@ collocation:
     output:
       file: "~/.biosym/walking2d.pkl"
     tol: 1e-2
-    max_iter: 4000
+    max_iter: 100
     dtype: float32 # float64 still makes problems
 
   objectives:

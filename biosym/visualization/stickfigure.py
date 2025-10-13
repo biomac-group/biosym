@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+import matplotlib
+import warnings
 import numpy as np
 from matplotlib import animation
 
@@ -78,6 +80,51 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
         "n_sites": n_sites,
         "n_frames": anim_joint_positions.shape[0],
     }
+
+
+def _auto_markers_from_objective(obj):
+    """Try to extract experimental markers from a tracking objective.
+
+    Looks through an ObjectiveFunction instance's sub-objectives for a
+    `obj_settings` dict containing a `markers_exp` array with shape (N, 3*n_sites).
+
+    Parameters
+    ----------
+    obj : ObjectiveFunction or None
+        The objective manager instance (e.g., `prob.objective`).
+
+    Returns
+    -------
+    np.ndarray or None
+        Experimental markers array if found, else None.
+    """
+    if obj is None:
+        return None
+    try:
+        subs = getattr(obj, "_objectives", [])
+        # Prefer objectives with name indicating marker tracking
+        ordered = []
+        for sub in subs:
+            name = None
+            if hasattr(sub, "_get_info"):
+                try:
+                    info = sub._get_info()
+                    name = info.get("name")
+                except Exception:
+                    name = None
+            ordered.append((name or "", sub))
+        # Sort so entries containing 'marker' bubble first
+        ordered.sort(key=lambda t: ("marker" not in (t[0] or "").lower(), t[0]))
+        for _, sub in ordered:
+            settings = getattr(sub, "obj_settings", None)
+            if isinstance(settings, dict) and ("markers_exp" in settings):
+                try:
+                    return settings["markers_exp"] 
+                except Exception:
+                    return None
+    except Exception:
+        return None
+    return None
 
 
 def _detect_case(joint0):
@@ -424,7 +471,10 @@ def plot_stick_figure(
         Whether to display experimental expected markers (green) when
         `markers_exp` kwarg is provided.
     markers_exp : array-like, optional (via **kwargs)
-        Experimental markers shaped (N, 3*n_sites).
+        Experimental markers shaped (N, 3*n_sites). If not provided, this
+        function will attempt to auto-discover them from a tracking markers
+        objective if you pass either `objective=prob.objective` or
+        `problem=prob`/`prob=prob` in **kwargs.
 
     Notes
     -----
@@ -459,7 +509,17 @@ def plot_stick_figure(
     # Contact model? (Used in updates)
     hascontact = hasattr(model, "gc_model") and model.gc_model is not None
 
+    # Auto-discover experimental markers from objectives if not provided
     markers_exp = kwargs.get("markers_exp", None)
+    if markers_exp is None and plot_expected:
+        # 1) If the model carries an attached objective (set by ObjectiveFunction), use it.
+        objective = getattr(model, "_biosym_objective", None)
+        # 2) Otherwise, try any provided problem handle fallback
+        if objective is None:
+            prob = kwargs.get("problem") or kwargs.get("prob")
+            if prob is not None and hasattr(prob, "objective"):
+                objective = prob.objective
+        markers_exp = _auto_markers_from_objective(objective)
     data = _extract_fk_vis_data(model, state_sequence, markers_exp if plot_expected else None)
     joint_positions = data["joint0"]
     site_positions = data["site0"] if plot_sites else None
@@ -528,7 +588,13 @@ def plot_stick_figure(
     if n_frames == 1:  # standing
         ax.set_title("Stick Figure")
         plt.tight_layout()
-        plt.show()
+        # Only show if using an interactive backend
+        backend = matplotlib.get_backend().lower()
+        if any(k in backend for k in ("qt", "tk", "macosx", "wx", "gtk", "webagg", "nbagg")):
+            plt.show()
+        else:
+            # Headless: don't attempt to show
+            pass
         return None
 
     update = _create_update_func(
@@ -551,7 +617,18 @@ def plot_stick_figure(
     ani = animation.FuncAnimation(
         fig, update, frames=np.arange(n_frames), interval=50, blit=False
     )
-    plt.show()
+    # Show only if interactive backend; otherwise suppress deletion warning
+    backend = matplotlib.get_backend().lower()
+    if any(k in backend for k in ("qt", "tk", "macosx", "wx", "gtk", "webagg", "nbagg")):
+        plt.show()
+    else:
+        # Avoid noisy warning in headless runs where we neither show nor save
+        warnings.filterwarnings(
+            "ignore",
+            message="Animation was deleted without rendering anything",
+            category=UserWarning,
+            module="matplotlib.animation",
+        )
     # Attach contact plot objects for use inside update via closure if needed
     if hascontact:
         # Monkey-patch attribute onto animation for potential external use/debugging
