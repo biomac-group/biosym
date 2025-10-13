@@ -190,9 +190,20 @@ def _compute_limits(case_, non_zero_axes, anim_joints, anim_sites, anim_exp, joi
         all_pos = np.vstack(stack)
         min_ = np.min(all_pos, axis=0)
         max_ = np.max(all_pos, axis=0)
-    d = np.abs((max_ - min_) * pad_ratio)
-    min_ -= d
-    max_ += d
+
+        # Build per-axis padding: only X gets padding in standing mode
+        d = np.zeros_like(min_)
+        # X axis index: first displayed axis in 2D, or 0 in 3D
+        x_idx = non_zero_axes[0] if case_ == "2D" else 0
+        span_x = max_[x_idx] - min_[x_idx]
+        # If degenerate, give a small default span to make limits visible
+        if not np.isfinite(span_x) or span_x == 0:
+            span_x = 0.1
+        d[x_idx] = np.abs(span_x * pad_ratio)
+        min_[x_idx] -= d[x_idx]
+        max_[x_idx] += d[x_idx]
+        # Y (and Z) unchanged
+  
     if case_ == "2D":
         return (min_[non_zero_axes[0]], max_[non_zero_axes[0]], min_[non_zero_axes[1]], max_[non_zero_axes[1]])
     return (min_[0], max_[0], min_[1], max_[1], min_[2], max_[2])
@@ -539,7 +550,7 @@ def plot_stick_figure(
 
     # Compute and set limits
     # Allow user override of padding; enlarge default for standing (single frame)
-    user_pad = kwargs.get("pad_ratio", 0.25 if n_frames == 1 else 0.05)
+    user_pad = kwargs.get("pad_ratio", 1 if n_frames == 1 else 0.05)
     limits = _compute_limits(case_, non_zero_axes, anim_joint_positions, anim_site_positions, anim_exp_sites,
                               joint_positions, site_positions, exp0, pad_ratio=user_pad)
     if case_ == "2D":
@@ -588,14 +599,7 @@ def plot_stick_figure(
     if n_frames == 1:  # standing
         ax.set_title("Stick Figure")
         plt.tight_layout()
-        # Only show if using an interactive backend
-        backend = matplotlib.get_backend().lower()
-        if any(k in backend for k in ("qt", "tk", "macosx", "wx", "gtk", "webagg", "nbagg")):
-            plt.show()
-        else:
-            # Headless: don't attempt to show
-            pass
-        return None
+        plt.show()
 
     update = _create_update_func(
         anim_joint_positions,
@@ -617,18 +621,7 @@ def plot_stick_figure(
     ani = animation.FuncAnimation(
         fig, update, frames=np.arange(n_frames), interval=50, blit=False
     )
-    # Show only if interactive backend; otherwise suppress deletion warning
-    backend = matplotlib.get_backend().lower()
-    if any(k in backend for k in ("qt", "tk", "macosx", "wx", "gtk", "webagg", "nbagg")):
-        plt.show()
-    else:
-        # Avoid noisy warning in headless runs where we neither show nor save
-        warnings.filterwarnings(
-            "ignore",
-            message="Animation was deleted without rendering anything",
-            category=UserWarning,
-            module="matplotlib.animation",
-        )
+    plt.show()
     # Attach contact plot objects for use inside update via closure if needed
     if hascontact:
         # Monkey-patch attribute onto animation for potential external use/debugging
