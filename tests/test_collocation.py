@@ -23,10 +23,10 @@ if __name__ == "__main__":
     VIS = True #args.vis
     if VIS:
         print("Running with visualization enabled...")
-        standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
+        standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
         standing_prob.solve(visualize=VIS)
 
-        walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
+        walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=True)
         walking_problem.solve(visualize=VIS)
 else:
     # Default values when running through pytest
@@ -158,7 +158,7 @@ def standing_problem():
 @pytest.fixture
 def walking_problem():
     """Fixture to create a walking problem for testing."""
-    return collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
+    return collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=True)
 
 
 def test_standing_problem_solve(standing_problem):

@@ -4,7 +4,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 from jax import lax
-from biosym.ocp.utils import get_row_FK_vis
+from biosym.ocp.utils import get_row_FK
 
 from biosym.objectives.base_objective import BaseObjective
 from biosym.utils import read_mot, segment_gait_averages
@@ -25,7 +25,7 @@ class Objective(BaseObjective):
         """
         self.model = model
         self.settings = settings
-        self.markers = [f"site_{n}" for n in self.model.sites.get("base_names", [])]
+        self.markers = [f"marker_{n}" for n in self.model.markers_parsed.get("base_names", [])]
         self.n_nodes = self.settings["nnodes"]
 
         eps = 1e-8  # avoid division by zero
@@ -58,8 +58,8 @@ class Objective(BaseObjective):
                 f"but marker tracking data has {markers_mean_df.shape[0]} rows."
             )
 
-        # Build base marker names in model order, strip 'site_' prefix
-        base_names = [n.replace("site_", "") for n in self.markers]
+        # Build base marker names in model order, strip 'marker_' prefix
+        base_names = [n.replace("marker_", "") for n in self.markers]
         n_nodes = int(self.n_nodes)
 
         # Helper to fetch a mean/var column or fallback (Z->0 mean, 1 var)
@@ -77,7 +77,7 @@ class Objective(BaseObjective):
             # Neutral variance when missing axis
             return jnp.ones((n_nodes,))
 
-        # Build [X | Y | Z] blocks in model site order so they match state layout
+        # Build [X | Y | Z] blocks in model marker order so they match state layout
         exp_X = jnp.stack([get_mean_col(m, "X") for m in base_names], axis=1)
         exp_Y = jnp.stack([get_mean_col(m, "Y") for m in base_names], axis=1)
         exp_Z = jnp.stack([get_mean_col(m, "Z") for m in base_names], axis=1)
@@ -93,7 +93,7 @@ class Objective(BaseObjective):
         self.markers_exp = jnp.concatenate([exp_X, exp_Y, exp_Z], axis=1)  # (N, 3*n_markers)
         self.markers_var = jnp.concatenate([var_X, var_Y, var_Z], axis=1) + eps
 
-        # Number of model sites (tracked in model order)
+        # Number of model markers (tracked in model order)
         self.n_markers = len(base_names)
         self.tracked_markers = base_names
         self.norm_factor = self.n_nodes * self.n_markers
@@ -105,9 +105,9 @@ class Objective(BaseObjective):
             "force_2d": self.movement_2d,
             "eps": eps,
             # Provide FK function and layout info so objfun can compute sim markers
-            "fk_vis": self.model.run.get("FK_vis"),
+            "fk_marker": self.model.run.get("FK_marker"),
             "n_bodies": len(self.model.dicts.get("bodies", [])),
-            "n_sites": self.n_markers,
+            "n_markers": self.n_markers,
         }
 
     def _get_info(self):
@@ -153,24 +153,24 @@ def objfun(states_list, globals_dict, settings, info):
     N = info["n_nodes"]
     n_markers = info["n_markers"]
 
-    # Compute simulated marker positions via FK (bodies + sites), then take site rows
-    fk_vis = settings.get("fk_vis", None)
+    # Compute simulated marker positions via FK (bodies + markers), then take marker rows
+    fk_marker = settings.get("fk_marker", None)
     n_bodies = settings.get("n_bodies", 0)
-    n_sites = settings.get("n_sites", n_markers)
+    n_markers = settings.get("n_markers", n_markers)
 
     def fk_step(i):
-        # Extract single-timepoint states/constants tailored for FK_vis (1D constants untouched)
-        single = get_row_FK_vis(states_list, i)
-        # fk_vis returns array of shape (n_bodies + n_sites, 3)
-        return fk_vis(single.states, single.constants)
+        # Extract single-timepoint states/constants tailored for FK_marker (1D constants untouched)
+        single = get_row_FK(states_list, i)
+        # fk_marker returns array of shape (n_bodies + n_markers, 3)
+        return fk_marker(single.states, single.constants)
 
     # Map FK over time points
     pos_all = lax.map(lambda i: fk_step(i), jnp.arange(N, dtype=jnp.int32))
-    # Keep only site rows
-    sites_pos = pos_all[:, n_bodies : n_bodies + n_sites, :]  # (N, n_sites, 3)
-    sim_X = sites_pos[:, :, 0]
-    sim_Y = sites_pos[:, :, 1]
-    sim_Z = sites_pos[:, :, 2]
+    # Keep only marker rows
+    markers_pos = pos_all[:, n_bodies : n_bodies + n_markers, :]  # (N, n_markers, 3)
+    sim_X = markers_pos[:, :, 0]
+    sim_Y = markers_pos[:, :, 1]
+    sim_Z = markers_pos[:, :, 2]
 
     exp_X = markers_exp[:, 0:n_markers]
     exp_Y = markers_exp[:, n_markers:2 * n_markers]

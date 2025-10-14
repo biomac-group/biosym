@@ -161,7 +161,7 @@ def get_state_row(obj, idx):
     return obj  # Pass through scalars or non-array fields
 
 
-def get_row_FK_vis(obj, idx):
+def get_row_FK(obj, idx):
     """
     Extract a single time row suitable for FK_vis inputs.
 
@@ -182,7 +182,7 @@ def get_row_FK_vis(obj, idx):
         Same structure with the idx-th row for batched arrays and unchanged 1D arrays.
     """
     if is_dataclass(obj):
-        return obj.__class__(**{f.name: get_row_FK_vis(getattr(obj, f.name), idx) for f in fields(obj)})
+        return obj.__class__(**{f.name: get_row_FK(getattr(obj, f.name), idx) for f in fields(obj)})
     if isinstance(obj, jnp.ndarray):
         if obj.ndim > 1:
             return obj[idx]
