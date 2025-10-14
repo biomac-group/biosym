@@ -1,20 +1,21 @@
-# %% Import and load IK and GRF data
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
+import re
+import warnings
 
-from biosym.utils import read_mot
+from biosym.utils import read_mot, read_trc
 
 
 def read_tracking_objective_files(
     yaml_path: str | Path = "tests/collocation/walking2d.yaml",
 ):
     """
-    Read IK and GRF .mot files referenced in the collocation YAML and return
-    (ik_df, grf_df) as returned by read_mot. Paths are used literally.
+    Read IK, GRF and TRC files referenced in the collocation YAML.
+    Returns (ik_df|None, grf_df|None, trc_df|None). Missing entries return None.
     """
     p = Path(yaml_path)
     if not p.exists():
@@ -28,28 +29,25 @@ def read_tracking_objective_files(
 
     ik_path = None
     grf_path = None
+    trc_path = None
     for obj in objectives:
         name = obj.get("name", "")
         args = obj.get("args", {}) or {}
         fileval = args.get("file", None)
-        if fileval is None:
+        if not fileval:
             continue
+        path = Path(fileval)
         if name == "track_angles":
-            ik_path = Path(fileval)
+            ik_path = path
         elif name == "track_grf":
-            grf_path = Path(fileval)
+            grf_path = path
+        elif name == "track_markers":
+            trc_path = path
 
-    if ik_path is None:
-        raise ValueError(
-            "track_angles objective not found or has no args.file in YAML."
-        )
-    if grf_path is None:
-        raise ValueError("track_grfs objective not found or has no args.file in YAML.")
-
-    ik_df = read_mot(str(ik_path))
-    grf_df = read_mot(str(grf_path))
-    return ik_df, grf_df
-
+    ik_df = read_mot(str(ik_path)) if (ik_path and ik_path.exists()) else None
+    grf_df = read_mot(str(grf_path)) if (grf_path and grf_path.exists()) else None
+    trc_df = read_trc(str(trc_path)) if (trc_path and trc_path.exists()) else None
+    return ik_df, grf_df, trc_df
 
 # %% Segement gait cycles based on heel strike
 def find_heel_strikes(vgrf, force_increase=300, time_points=10):
@@ -87,18 +85,33 @@ def detect_heel_strikes_from_grf(
 # save averaged joint angles to from dataframes to csv
 
 
-def create_averaged_gait_joint_angles(ik_data, heel_strike_index, n_points=100):
+def create_averaged_gait_joint_angles(
+    ik_data: pd.DataFrame,
+    heel_strike_index,
+    n_points: int = 100,
+    interpolate_missing: bool = True,
+) -> pd.DataFrame:
     """
-    Extracts gait cycles from inverse kinematics data, interpolates them, calculates mean and variance,
-    and creates a pandas DataFrame for averaged joint angles over gait cycles.
+    Extract gait cycles from inverse kinematics data, (optionally) fill NaNs, interpolate
+    each cycle to a fixed length and return per-sample mean/variance for every joint.
 
-    Args:
-        ik_trial1 (pd.DataFrame): DataFrame containing raw inverse kinematics data.
-        hs_idx (list): List of heel strike indices.
-        joint_angles (list): A list of joint names.
+    Parameters
+    ----------
+    ik_data : pd.DataFrame
+        Raw inverse kinematics dataframe (columns are joint angle signals).
+    heel_strike_index : array-like
+        Sample indices of heel strikes delimiting cycles.
+    n_points : int, default 100
+        Number of samples in the normalized output gait cycle.
+    interpolate_missing : bool, default True
+        If True, linearly interpolate NaNs in each joint angle column (extending to
+        both ends). Entirely NaN columns are zero-filled with a warning.
 
-    Returns:
-        pd.DataFrame: A DataFrame with mean and variance columns for each joint.
+    Returns
+    -------
+    pd.DataFrame
+        Columns '<joint>_mean' and '<joint>_var' (length n_points) in a canonical order
+        subset matching available joints.
     """
 
     joint_angles = [
@@ -117,6 +130,19 @@ def create_averaged_gait_joint_angles(ik_data, heel_strike_index, n_points=100):
             )
         )
     ]
+
+    # Optionally interpolate NaNs in joint angle columns before cycle extraction
+    if interpolate_missing:
+        for col in joint_angles:
+            if ik_data[col].isna().any():
+                filled = ik_data[col].interpolate(method="linear", limit_direction="both")
+                if filled.isna().any():
+                    warnings.warn(
+                        f"Joint angle column '{col}' all-NaN; filling with zeros.",
+                        RuntimeWarning,
+                    )
+                    filled = filled.fillna(0.0)
+                ik_data[col] = filled
 
     # Extracts individual gait cycles from raw joint angle data
     joint_angle_cycles = {col: [] for col in joint_angles}
@@ -181,20 +207,33 @@ def create_averaged_gait_joint_angles(ik_data, heel_strike_index, n_points=100):
 
 # ...existing code...
 def create_averaged_gait_forces(
-    grf_data, heel_strike_index, channels=None, n_points=100
-):
+    grf_data: pd.DataFrame,
+    heel_strike_index,
+    channels=None,
+    n_points: int = 100,
+    interpolate_missing: bool = True,
+) -> pd.DataFrame:
     """
-    Create averaged gait-cycle mean/variance for GRF channels.
+    Create averaged gait-cycle mean/variance for selected GRF channels.
 
-    Args:
-        grf_data (pd.DataFrame): GRF trial data (indexed by sample, contains time column).
-        heel_strike_index (array-like): indices of heel strikes (sample indices).
-        channels (list or None): list of column names to process. If None, uses a canonical GRF order.
-        n_points (int): number of samples per normalized gait cycle.
+    Parameters
+    ----------
+    grf_data : pd.DataFrame
+        Raw ground reaction force dataframe.
+    heel_strike_index : array-like
+        Sample indices of heel strikes delimiting cycles.
+    channels : list[str] | None, default None
+        Channels to include; if None a canonical subset is used (present columns only).
+    n_points : int, default 100
+        Samples per normalized gait cycle.
+    interpolate_missing : bool, default True
+        If True, linearly interpolate NaNs in each channel (extending ends). Entirely
+        NaN channels are zero-filled with a warning.
 
-    Returns:
-        pd.DataFrame: DataFrame with columns "<channel>_mean" and "<channel>_var" (length n_points),
-                      ordered according to the canonical GRF ordering.
+    Returns
+    -------
+    pd.DataFrame
+        Columns '<channel>_mean' and '<channel>_var' ordered canonically.
     """
     # Forces order for output columns. First are left foot, then right foot.
     desired_order = [
@@ -214,6 +253,19 @@ def create_averaged_gait_forces(
         channels = [c for c in channels if c in grf_data.columns]
         # preserve canonical ordering
         channels = [c for c in desired_order if c in channels]
+
+    # Optionally interpolate NaNs in force channels before cycle extraction
+    if interpolate_missing:
+        for ch in channels:
+            if grf_data[ch].isna().any():
+                filled = grf_data[ch].interpolate(method="linear", limit_direction="both")
+                if filled.isna().any():
+                    warnings.warn(
+                        f"GRF channel '{ch}' all-NaN; filling with zeros.",
+                        RuntimeWarning,
+                    )
+                    filled = filled.fillna(0.0)
+                grf_data[ch] = filled
 
     # Extract cycles
     force_cycles = {ch: [] for ch in channels}
@@ -267,39 +319,234 @@ def create_averaged_gait_forces(
     return df
 
 
+def create_averaged_markers(
+    trc_data: pd.DataFrame,
+    heel_strike_index,
+    n_points: int = 100,
+    treadmill_speed: float | None = None,
+    forward_axis: str = "X",
+    time_column: str = "Time",
+    interpolate_missing: bool = True,
+) -> pd.DataFrame:
+    """
+    Average all markers' Cartesian coordinates over gait cycles.
+
+    Detects markers via columns named '<Marker>_X', '<Marker>_Y', '<Marker>_Z'.
+    Returns columns '<Marker>_<Axis>_mean' and '<Marker>_<Axis>_var' for each marker/axis.
+
+    Treadmill adjustment (optional):
+    If ``treadmill_speed`` (m/s) is provided, shift the forward-axis marker
+    coordinate within each gait cycle by a linear ramp from 0 to
+    ``treadmill_speed * cycle_duration``. This converts treadmill-relative
+    trajectories into overground-like forward progression.
+
+    Parameters
+    ----------
+    trc_data : pd.DataFrame
+        TRC dataframe with a 'Time' column (seconds) and marker columns named
+        '<Marker>_X', '<Marker>_Y', '<Marker>_Z'.
+    heel_strike_index : array-like
+        Sample indices of heel strikes that delimit gait cycles.
+    n_points : int, default 100
+        Number of samples per normalized gait cycle output.
+    treadmill_speed : float | None, default None
+        Belt speed in m/s. If provided, a forward translation of
+        speed × (cycle duration) is added across the cycle.
+    forward_axis : {"X","Y","Z"}, default "X"
+        Axis considered forward for the translation.
+    time_column : str, default "Time"
+        Name of the time column (seconds). Required if treadmill_speed is set.
+    interpolate_missing : bool, default True
+        If True, linearly interpolate NaNs in each marker axis column before
+        cycle segmentation. Leading/trailing NaNs are extended (both
+        directions). Entirely NaN columns are filled with zeros and a warning.
+    """
+    axes = ("X", "Y", "Z")
+
+    # Detect markers present as <name>_(X|Y|Z); preserve first-seen order
+    marker_axes = {}
+    marker_order = []
+    for col in trc_data.columns:
+        m = re.match(r"^(?P<name>.+)_(?P<ax>[XYZ])$", col)
+        if not m:
+            continue
+        name = m.group("name")
+        ax = m.group("ax")
+        if name not in marker_axes:
+            marker_axes[name] = set()
+            marker_order.append(name)
+        marker_axes[name].add(ax)
+    markers = [m for m in marker_order if set(axes).issubset(marker_axes[m])]
+    if not markers:
+        raise KeyError("No markers with X/Y/Z columns found in TRC data.")
+
+    # Optionally interpolate missing marker samples (occlusions) BEFORE segmentation
+    if interpolate_missing:
+        for name in markers:
+            for ax in axes:
+                col = f"{name}_{ax}"
+                series = trc_data[col]
+                if series.isna().any():
+                    filled = series.interpolate(method="linear", limit_direction="both")
+                    if filled.isna().any():
+                        warnings.warn(
+                            f"Column '{col}' contains only NaNs after interpolation; filling with zeros.",
+                            RuntimeWarning,
+                        )
+                        filled = filled.fillna(0.0)
+                    trc_data[col] = filled
+
+    # Collect segments per marker/axis between heel strikes
+    cycles = {name: {ax: [] for ax in axes} for name in markers}
+    hs = np.asarray(heel_strike_index).astype(int)
+    has_time = time_column in trc_data.columns
+    for i in range(len(hs) - 1):
+        start = hs[i]
+        end = hs[i + 1]
+        if end - start <= 1:
+            continue
+        # Determine cycle duration if treadmill translation is requested
+        if treadmill_speed is not None:
+            if not has_time:
+                # Without explicit time, we cannot construct a metrically correct ramp.
+                # Fall back to skipping the treadmill adjustment for this cycle.
+                cycle_duration = None
+            else:
+                tseg = trc_data[time_column].values[start:end]
+                cycle_duration = float(tseg[-1] - tseg[0]) if len(tseg) > 1 else 0.0
+        for name in markers:
+            for ax in axes:
+                series = trc_data[f"{name}_{ax}"].values
+                seg = series[start:end]
+                # Apply treadmill forward translation as a linear ramp over this segment
+                if (treadmill_speed is not None) and (cycle_duration is not None) and (ax == forward_axis):
+                    # Build a per-sample ramp from 0 to v*T over the segment length
+                    if len(seg) > 1:
+                        ramp = np.linspace(0.0, treadmill_speed * cycle_duration, len(seg))
+                        seg = seg + ramp
+                cycles[name][ax].append(seg)
+
+
+    # Interpolate to n_points and compute mean/var
+    x_new = np.linspace(0, 1, n_points)
+    out = {}
+    for name in markers:
+        for ax in axes:
+            segs = cycles[name][ax]
+            if len(segs) == 0:
+                out[f"{name}_{ax}_mean"] = np.zeros(n_points)
+                out[f"{name}_{ax}_var"] = np.zeros(n_points)
+                continue
+            interp_segs = []
+            for seg in segs:
+                x_old = np.linspace(0, 1, len(seg))
+                interp = np.interp(x_new, x_old, seg)
+                # If treadmill translation requested but time was missing for this cycle, we cannot add a
+                # metrically correct ramp post-hoc. We've already added ramps when cycles had time.
+                interp_segs.append(interp)
+            arr = np.vstack(interp_segs)
+            out[f"{name}_{ax}_mean"] = np.mean(arr, axis=0)
+            out[f"{name}_{ax}_var"] = np.var(arr, axis=0)
+
+    # Deterministic column order: by marker order, then X,Y,Z, each mean then var
+    ordered_cols = []
+    for name in markers:
+        for ax in axes:
+            mean_c = f"{name}_{ax}_mean"
+            var_c = f"{name}_{ax}_var"
+            if mean_c in out:
+                ordered_cols.append(mean_c)
+            if var_c in out:
+                ordered_cols.append(var_c)
+    return pd.DataFrame({c: out[c] for c in ordered_cols})
+
+
 def segment_gait_averages(
-    heel_strike_index=None, n_points=100, grf_channel="ground_force_vy"
+    n_points: int = 100,
+    grf_channel: str = "ground_force_vy",
+    treadmill_speed: float | None = None,
+    forward_axis: str = "X",
+    time_column: str = "Time",
+    interpolate_missing: bool = True
 ):
     """
-    Compute averaged joint angles and GRFs for the supplied trial data.
+    Compute averaged joint angles, GRFs and markers (mean/variance across cycles).
 
-    If heel_strike_index is None the function will detect heel strikes using grf_df and grf_channel.
-    Returns:
-        (gait_avg_joint_angles: pd.DataFrame, gait_avg_grfs: pd.DataFrame, hs_idx: np.ndarray)
+    Parameters
+    ----------
+    n_points : int, default 100
+        Samples per normalized gait cycle for each averaged signal.
+    grf_channel : str, default 'ground_force_vy'
+        Vertical GRF channel used for heel strike detection.
+    treadmill_speed : float | None
+        If provided, forward translation (belt * time) added to marker forward axis.
+    forward_axis : {"X","Y","Z"}, default "X"
+        Axis considered forward when applying treadmill translation.
+    time_column : str, default 'Time'
+        Name of TRC time column.
+    interpolate_missing : bool, default True
+        Global default for filling NaNs in angles/forces/markers.
+    interpolate_missing_angles / forces / markers : bool | None
+        Override flags (if None, fall back to global default).
+
+    Returns
+    -------
+    tuple[pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]
+        (averaged_joint_angles, averaged_grfs, averaged_markers)
     """
-
-    ik_df, grf_df = read_tracking_objective_files(
+    ik_df, grf_df, trc_df = read_tracking_objective_files(
         yaml_path="tests/collocation/walking2d.yaml"
     )
 
-    if heel_strike_index is None:
-        heel_strike_index = detect_heel_strikes_from_grf(
+
+    # Heel strikes (only if GRF available)
+    if grf_df is not None:
+        hs_idx = detect_heel_strikes_from_grf(
             grf_df, channel=grf_channel, force_increase=500.0, time_points=20
         )
-    gait_avg_joint_angles = create_averaged_gait_joint_angles(
-        ik_df, heel_strike_index, n_points=n_points
-    )
-    gait_avg_grfs = create_averaged_gait_forces(
-        grf_df, heel_strike_index, n_points=n_points
-    )
-    return gait_avg_joint_angles, gait_avg_grfs
+    else:
+        hs_idx = np.array([0, len(trc_df)]) if trc_df is not None else np.array([0, 1])
 
 
-# %% Plot averaged joint angles with variance
+    gait_avg_joint_angles = None
+    gait_avg_grfs = None
+    gait_avg_markers = None
+
+
+    if ik_df is not None:
+        gait_avg_joint_angles = create_averaged_gait_joint_angles(
+            ik_df,
+            hs_idx,
+            n_points=n_points,
+            interpolate_missing=interpolate_missing
+        )
+
+    if grf_df is not None:
+        gait_avg_grfs = create_averaged_gait_forces(
+            grf_df,
+            hs_idx,
+            n_points=n_points,
+            interpolate_missing=interpolate_missing
+        )
+
+    if trc_df is not None:
+        gait_avg_markers = create_averaged_markers(
+            trc_df,
+            hs_idx,
+            n_points=n_points,
+            treadmill_speed=treadmill_speed,
+            forward_axis=forward_axis,
+            time_column=time_column,
+            interpolate_missing=interpolate_missing
+        )
+
+    return gait_avg_joint_angles, gait_avg_grfs, gait_avg_markers
+
+
+# Plot averaged joint angles with variance
 if __name__ == "__main__":
-    gait_avg_joint_angles, gait_avg_grfs = segment_gait_averages(n_points=100)
-
-    ik_df, grf_df = read_tracking_objective_files(
+    
+    ik_df, grf_df, trc_df = read_tracking_objective_files(
         yaml_path="tests/collocation/walking2d.yaml"
     )
 
@@ -307,6 +554,10 @@ if __name__ == "__main__":
     right_vgrf = grf_df["ground_force_vy"].values
 
     right_hs_idx = find_heel_strikes(right_vgrf, force_increase=500, time_points=20)
+
+    gait_avg_joint_angles, gait_avg_grfs, gait_avg_markers = segment_gait_averages(n_points=100, treadmill_speed=1.3)
+    gait_avg_markers.to_csv("gait_averaged_markers.csv", index=False)
+
 
     # A gait cycle can be defined as the period between two consecutive# heel strikes for the same foot
 
@@ -344,19 +595,19 @@ if __name__ == "__main__":
     plt.show()
 
     # plot selected joint
-    mean = gait_avg_joint_angles["knee_angle_l_mean"]
-    std = np.sqrt(gait_avg_joint_angles["knee_angle_l_var"])
-    x = np.linspace(0, 100, len(mean))
+    # mean = gait_avg_joint_angles["knee_angle_l_mean"]
+    # std = np.sqrt(gait_avg_joint_angles["knee_angle_l_var"])
+    # x = np.linspace(0, 100, len(mean))
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(x, mean, label="Mean")
-    plt.fill_between(x, mean - std, mean + std, alpha=0.3, label="Standard Deviation")
-    plt.title("Hip Flexion: Mean and Standard Deviation over Gait Cycle")
-    plt.xlabel("Gait Cycle (%)")
-    plt.ylabel("Hip Flexion (degrees)")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(x, mean, label="Mean")
+    # plt.fill_between(x, mean - std, mean + std, alpha=0.3, label="Standard Deviation")
+    # plt.title("Hip Flexion: Mean and Standard Deviation over Gait Cycle")
+    # plt.xlabel("Gait Cycle (%)")
+    # plt.ylabel("Hip Flexion (degrees)")
+    # plt.legend()
+    # plt.grid(True)
+    # plt.tight_layout()
+    # plt.show()
 
-# %%
+

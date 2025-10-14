@@ -79,3 +79,22 @@ class BaseParser(ABC):
         """
         Returns the gravity vector in the model.
         """
+
+    @abstractmethod
+    def get_n_sites(self):
+       """
+       Returns the number of sites (e.g., MuJoCo <site> elements or marker points)
+       defined in the model.
+        """
+
+    @abstractmethod
+    def get_sites(self):
+        """
+        Returns the list of sites in the model.
+        Each site should be represented as a dictionary with keys such as:
+            - name: site name
+            - pos: position (x, y, z) relative to parent body/frame
+            - body: parent body name (optional)
+            - size: visual size (optional)
+            - rgba: color/alpha tuple (optional)
+        """

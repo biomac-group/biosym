@@ -14,7 +14,7 @@ collocation:
     output:
       file: "~/.biosym/walking2d.pkl"
     tol: 1e-2
-    max_iter: 1000
+    max_iter: 2000
     dtype: float32 # float64 still makes problems
 
   objectives:
@@ -24,17 +24,25 @@ collocation:
         exponent: 3
     - name: jerk_term
       weight: 1e-2
-    - name: track_angles
-      weight: 1
-      args:
-        file: "../biosym/example_data/ik_data.mot" # or specify your mot file here
-        presegmented: true # if true, file is expected to contain mean/var columns
-        presegmented_file: "../biosym/example_data/gait_avg_joint_angles.mot"
-        exclude: ['q_pelvis_tx', 'q_pelvis_ty', 'q_pelvis_tilt'] # Exclude joints from tracking
+    # - name: track_angles
+    #   weight: 1
+    #   args:
+    #     file: "../biosym/example_data/ik_data.mot" # or specify your mot file here
+    #     presegmented: true # if true, file is expected to contain mean/var columns
+    #     presegmented_file: "../biosym/example_data/gait_avg_joint_angles.mot"
+    #     exclude: ['q_pelvis_tx', 'q_pelvis_ty', 'q_pelvis_tilt'] # Exclude joints from tracking
     - name: track_grf
       weight: 1
       args:
         file: "../biosym/example_data/grf_data.mot" # or specify your mot file here
+        presegmented: false # if true, file is expected to contain mean/var columns
+        presegmented_file: ""
+    - name: track_markers
+      weight: 1
+      args:
+        2d: true # If true, Z components in expected data are set to zero
+        treadmill_speed: 1.3 # specify treadmill speed here (m/s)
+        file: "../biosym/example_data/marker_data.trc" # or specify your mot file here
         presegmented: false # if true, file is expected to contain mean/var columns
         presegmented_file: ""
         
@@ -59,9 +67,9 @@ collocation:
 
   bounds:
     from_model: true
-    start_at_origin: true
-    dur: [0.5, 1.5]
-    speed: 1.3
+    start_at_origin: false
+    dur: 1.05
+    speed: [0.1,1.5]
 
 
   

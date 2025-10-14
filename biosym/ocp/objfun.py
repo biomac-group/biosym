@@ -74,6 +74,12 @@ class ObjectiveFunction:
                 objective.get("weight"),
                 objective.get("args", None),
             )
+        # Expose objective manager on the model for downstream utilities (e.g., visualization)
+        # so they can auto-discover objectives without explicit kwargs.
+        try:
+            setattr(self.model, "_biosym_objective", self)
+        except Exception:
+            pass
 
     def _compile_callables(self):
         """

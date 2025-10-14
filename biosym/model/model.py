@@ -173,10 +173,15 @@ class BiosymModel:
         - Mujoco: allow assignment of less bodies for external forces
         """
 
+        all_sites = parser.get_sites()
+        markers = [s for s in all_sites if s.get("name") != "torso"]
+        sites = [s for s in all_sites if s.get("name") == "torso"]
+
         self.dicts = {
             "bodies": parser.get_bodies(),
             "joints": parser.get_joints(),
-            "sites": parser.get_sites(),
+            "sites": sites,     # keep only torso as a site
+            "markers": markers,  # all other xml sites become markers
         }
 
         # Create overviews of all states
@@ -227,6 +232,20 @@ class BiosymModel:
             "names": [f"m_{force}_{dim}" for force in parser.get_external_forces_bodies() for dim in ["x", "y", "z"]],
             "idx": 3 * n_dof + len(actuated_joints) + n_ext_forces,
             "n": n_ext_forces,
+        }
+
+        # Sites and markers are fixed relative to parent body frame -> NOT part of state vector
+        
+        n_sites = len(sites)
+        self.sites_parsed = {
+            "base_names": [f"site_{s['name']}" for s in sites],
+            "n_sites": n_sites,
+        }
+
+        n_markers = len(markers)
+        self.markers_parsed = {
+            "base_names": [f"marker_{m['name']}" for m in markers],
+            "n_markers": n_markers,
         }
 
         self.state_vector = (
@@ -484,6 +503,37 @@ class BiosymModel:
 
         build_bodies(self.topology_tree)
 
+        # create site Points so vel/acc exist symbolically (fixed offset in parent frame)
+        self.markers = {}
+        markers_list = self.dicts.get("markers")
+        for marker_ in markers_list:
+            name = marker_.get("name")
+            parent = marker_.get("parent")
+            parent_frame = self.reference_frames[parent]
+            parent_origin = self.body_origins[parent]
+            marker_pt = Point(f"{name}_marker")
+            # Use parser-provided local position (fixed in parent frame), otherwise zero
+            local_pos = marker_.get("pos", [0.0, 0.0, 0.0])
+            sym_vec = _to_sympy_vector(list(local_pos), parent_frame)
+            marker_pt.set_pos(parent_origin, sym_vec)
+            marker_pt.v2pt_theory(parent_origin, self.ground_frame, parent_frame)
+            self.markers[name] = marker_pt
+        
+        self.sites = {}
+        sites_list = self.dicts.get("sites")
+        for site_ in sites_list:
+            name = site_.get("name")
+            parent = site_.get("parent")
+            parent_frame = self.reference_frames[parent]
+            parent_origin = self.body_origins[parent]
+            site_pt = Point(f"{name}_site")
+            # Use parser-provided local position (fixed in parent frame), otherwise zero
+            local_pos = site_.get("pos", [0.0, 0.0, 0.0])
+            sym_vec = _to_sympy_vector(list(local_pos), parent_frame)
+            site_pt.set_pos(parent_origin, sym_vec)
+            site_pt.v2pt_theory(parent_origin, self.ground_frame, parent_frame)
+            self.sites[name] = site_pt
+
         # Add gravitational forces
         for bodyname, rigid_body in self.rigid_bodies.items():
             gravity_f = rigid_body.mass * (
@@ -664,7 +714,7 @@ class BiosymModel:
         for _, point in self.body_origins.items():
             pos_vector.append(
                 [
-                    point.pos_from(self.origin).dot(frame_dim)
+                    point.pos_from(self.origin).dot(frame_dim) # position of bidy origins in ground (global) frame
                     for frame_dim in [
                         self.ground_frame.x,
                         self.ground_frame.y,
@@ -678,33 +728,45 @@ class BiosymModel:
         self.run["FK_uncompiled"] = pos_vector_
         pos_vector_ = self._precompile_fn(pos_vector_, self.default_inputs, "FK")
 
-        if self.dicts["sites"] is not None:
-            # Visualization version of pos_vector
-            for site_ in self.dicts["sites"]:
-                # Create a sympy point for the site
-                site = Point(site_["name"])
-                parent = site_["parent"]
-                parent_frame = self.reference_frames[parent]
-                site.set_pos(
-                    self.body_origins[parent],
-                    _to_sympy_vector(site_["pos"], parent_frame),
-                )
-                pos_vector.append(
-                    [
-                        site.pos_from(self.origin).dot(frame_dim)
-                        for frame_dim in [
-                            self.ground_frame.x,
-                            self.ground_frame.y,
-                            self.ground_frame.z,
-                        ]
-                    ]
-                )
-            pos_vector = Matrix(pos_vector)
-            pos_vector = self._replace_dyn(pos_vector)
-            pos_vector = lambdify(self._v, pos_vector, modules="jax", cse=True, docstring_limit=2)
-            self.run["FK_vis_uncompiled"] = pos_vector
-            pos_vector = self._precompile_fn(pos_vector, self.default_inputs, "FK_vis", skip_export=True)
-        else:
+        # Visualization FK: append site positions (use pre-built SymPy Points)
+        if self.dicts.get("markers") is not None:
+            # Marker Visualization FK: append markerpositions (use pre-built SymPy Points)
+            if self.dicts.get("markers") is not None:
+                if hasattr(self, "markers") and self.markers:
+                    for marker_pt in self.markers.values():
+                        pos_vector.append(
+                            [
+                                marker_pt.pos_from(self.origin).dot(frame_dim)
+                                for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
+                            ]
+                        )
+                
+            pos_vector_marker = Matrix(pos_vector)
+            pos_vector_marker = self._replace_dyn(pos_vector_marker)
+            pos_vector_marker = lambdify(self._v, pos_vector_marker, modules="jax", cse=True, docstring_limit=2)
+            self.run["FK_marker_uncompiled"] = pos_vector
+            # store compiled/jitted visualization function
+            self._precompile_fn(pos_vector_marker, self.default_inputs, "FK_marker", skip_export=True)
+            
+            if (self.dicts.get("sites") is not None) and (self.dicts.get("markers") is None):
+                if hasattr(self, "sites") and self.sites:
+                    for site_pt in self.sites.values():
+                        pos_vector.append(
+                            [
+                                site_pt.pos_from(self.origin).dot(frame_dim)
+                                for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
+                            ]
+                        )
+
+                pos_vector_vis = Matrix(pos_vector)
+                pos_vector_vis = self._replace_dyn(pos_vector_vis)
+                pos_vector_vis = lambdify(self._v, pos_vector_vis, modules="jax", cse=True, docstring_limit=2)
+                self.run["FK_vis_uncompiled"] = pos_vector
+                # store compiled/jitted visualization function
+                self._precompile_fn(pos_vector_vis, self.default_inputs, "FK_vis", skip_export=True)
+
+        else: 
+            # no sites defined -> visualization FK is same as body-only FK
             self.run["FK_vis_uncompiled"] = self.run["FK_uncompiled"]
             self.run["FK_vis"] = self.run["FK"]
 

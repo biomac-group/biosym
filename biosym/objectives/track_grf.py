@@ -40,7 +40,7 @@ class Objective(BaseObjective):
             grf_mean_df = grf_df.filter(like="_mean")
             grf_var_df = grf_df.filter(like="_var")
         else:
-            _, gait_grfs = segment_gait_averages(n_points=self.n_nodes)
+            _, gait_grfs, _ = segment_gait_averages(n_points=self.n_nodes)
             grf_mean_df = gait_grfs.filter(like="_mean")
             grf_var_df = gait_grfs.filter(like="_var")
 
