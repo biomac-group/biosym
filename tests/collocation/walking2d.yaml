@@ -2,7 +2,7 @@ collocation:
   name: script2d_torque_driven
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
-    model: tests/models/gait2d_torque/gait2d_torque.yaml
+    model: tests/models/gait2d/gait2d.yaml
     nnodes: 100
     discretization:
       type: euler
@@ -14,7 +14,7 @@ collocation:
     output:
       file: "~/.biosym/walking2d.pkl"
     tol: 1e-2
-    max_iter: 1000
+    max_iter: 5000
     dtype: float32 # float64 still makes problems
 
   objectives:

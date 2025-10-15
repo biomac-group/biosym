@@ -257,6 +257,7 @@ class Collocation:
             cl=cl,
             cu=cu,
         )
+
         self.nlp.add_option("mu_strategy", "adaptive")
         self.nlp.add_option("tol", float(self.settings["settings"].get("tol", 1e-5)))
         self.nlp.add_option(
