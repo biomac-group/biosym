@@ -261,9 +261,21 @@ class Collocation:
         )
         self.nlp.add_option("mu_strategy", "adaptive")
         self.nlp.add_option("tol", float(self.settings["settings"].get("tol", 1e-5)))
+        for option in ["acceptable_tol", 
+                       "acceptable_constr_viol_tol",
+                       "acceptable_dual_inf_tol"]:
+            if option in self.settings["settings"]:
+                self.nlp.add_option(
+                    option,
+                    float(self.settings["settings"].get(option, 1e-5)),
+                )
         self.nlp.add_option(
             "constr_viol_tol",
-            float(self.settings["settings"].get("constr_viol_tol", 1e-3)),
+            float(self.settings["settings"].get("constr_viol_tol", 1)),
+        )
+        self.nlp.add_option(
+            "dual_inf_tol",
+            float(self.settings["settings"].get("dual_inf_tol", 1)),
         )
         self.nlp.add_option("print_level", 5)
         self.nlp.add_option("max_iter", self.settings["settings"].get("max_iter", 1000))
