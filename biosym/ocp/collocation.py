@@ -241,8 +241,8 @@ class Collocation:
             self.objective,
             self.constraints,
             self.initial_guess_states,
-            lb,
             ub,
+            lb,
             globals=ig_globals,
         )
         cl = np.zeros(m)
