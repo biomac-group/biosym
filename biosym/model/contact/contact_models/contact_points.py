@@ -183,8 +183,8 @@ class ContactPoints(BaseContact):
 
             d = 0.5 * ((pos_vector[-1][1] ** 2 + self.p_cy_0[i] ** 2) ** 0.5 - pos_vector[-1][1])
             F_cy = (
-                self.k[i] * d * (1 - self.b[i] * vel_vector[-1][1]) - 1e-4 * pos_vector[-1][1]
-            )  # small value to "point towards ground"
+                self.k[i] * d * (1 - self.b[i] * vel_vector[-1][1]) - pos_vector[-1][1]
+            )  # small value to "point towards ground": -1 N/m 
             F_cx = -self.mu[i] * F_cy * vel_vector[-1][0] / (vel_vector[-1][0] ** 2 + self.v_cx_0[i] ** 2) ** 0.5
             F_cz = -self.mu[i] * F_cy * vel_vector[-1][2] / (vel_vector[-1][2] ** 2 + self.v_cx_0[i] ** 2) ** 0.5
             # Get F and M in the global frame

@@ -21,6 +21,8 @@ os.makedirs((_cachedir), exist_ok=True)
 # jax.config.update("jax_enable_x64", True)
 
 import cyipopt
+import jax
+jax.config.update('jax_enable_x64', True)
 import jax.numpy as jnp
 import yaml
 
@@ -590,10 +592,6 @@ def process_collocation_settings(model, settings):
 
     settings["nnodes"] = settings["settings"]["nnodes"]
 
-    # Dtype handling
-    dtype = settings["settings"].get("dtype", "float32")
-    settings["dtype"] = jnp.float64 if dtype.endswith("float64") else jnp.float32
-    settings["int_dtype"] = jnp.int64 if dtype.endswith("float64") else jnp.int32
 
     # Nnodes handling
     if (
@@ -732,7 +730,7 @@ def process_collocation_settings(model, settings):
                 .states.model.at[
                     0, model.speeds["idx"] : model.speeds["idx"] + model.speeds["n"]
                 ]
-                .set(jnp.zeros(model.speeds["n"], dtype=settings["dtype"])),
+                .set(jnp.zeros(model.speeds["n"], dtype=float)+(1e-8 if section=="max" else -1e-8)),
             )
             settings["bounds"][section] = settings["bounds"][section].replace_vector(
                 "states",
@@ -741,7 +739,7 @@ def process_collocation_settings(model, settings):
                 .states.model.at[
                     0, model.accs["idx"] : model.accs["idx"] + model.accs["n"]
                 ]
-                .set(jnp.zeros(model.accs["n"], dtype=settings["dtype"])),
+                .set(jnp.zeros(model.accs["n"], dtype=float)),
             )
     elif not settings["discretization"]["args"]["adaptive_h"]:
         settings["bounds"]["min"] = settings["bounds"]["min"].replace_vector(
