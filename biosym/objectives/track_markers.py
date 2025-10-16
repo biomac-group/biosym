@@ -44,8 +44,6 @@ class Objective(BaseObjective):
         
         # Get averaged marker data (columns like CLAV_X_mean, ..., CLAV_X_var, ...)
         _, _, gait_marker_angles = segment_gait_averages(n_points=self.n_nodes,  treadmill_speed=treadmill_speed)
-        print(gait_marker_angles)
-        exit()  # Stops execution here
         markers_mean_df = gait_marker_angles.filter(like="_mean")
         markers_var_df = gait_marker_angles.filter(like="_var")
 

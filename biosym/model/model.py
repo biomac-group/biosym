@@ -744,9 +744,9 @@ class BiosymModel:
             pos_vector_marker = Matrix(pos_vector)
             pos_vector_marker = self._replace_dyn(pos_vector_marker)
             pos_vector_marker = lambdify(self._v, pos_vector_marker, modules="jax", cse=True, docstring_limit=2)
-            self.run["FK_marker_uncompiled"] = pos_vector
+            self.run["FK_marker_uncompiled"] = pos_vector_marker
             # store compiled/jitted visualization function
-            self._precompile_fn(pos_vector_marker, self.default_inputs, "FK_marker", skip_export=True)
+            pos_vector_marker = self._precompile_fn(pos_vector_marker, self.default_inputs, "FK_marker", skip_export=True)
             
             if (self.dicts.get("sites") is not None) and (self.dicts.get("markers") is None):
                 if hasattr(self, "sites") and self.sites:
@@ -761,9 +761,9 @@ class BiosymModel:
                 pos_vector_vis = Matrix(pos_vector)
                 pos_vector_vis = self._replace_dyn(pos_vector_vis)
                 pos_vector_vis = lambdify(self._v, pos_vector_vis, modules="jax", cse=True, docstring_limit=2)
-                self.run["FK_vis_uncompiled"] = pos_vector
+                self.run["FK_vis_uncompiled"] = pos_vector_vis
                 # store compiled/jitted visualization function
-                self._precompile_fn(pos_vector_vis, self.default_inputs, "FK_vis", skip_export=True)
+                pos_vector_vis = self._precompile_fn(pos_vector_vis, self.default_inputs, "FK_vis", skip_export=True)
 
         else: 
             # no sites defined -> visualization FK is same as body-only FK

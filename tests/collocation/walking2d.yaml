@@ -14,7 +14,7 @@ collocation:
     output:
       file: "~/.biosym/walking2d.pkl"
     tol: 1e-2
-    max_iter: 2000
+    max_iter: 5000
     dtype: float32 # float64 still makes problems
 
   objectives:
@@ -30,11 +30,11 @@ collocation:
     #     presegmented: true # if true, file is expected to contain mean/var columns
     #     presegmented_file: "../biosym/example_data/gait_avg_joint_angles.mot"
     #     exclude: ['q_pelvis_tx', 'q_pelvis_ty', 'q_pelvis_tilt'] # Exclude joints from tracking
-    # - name: track_grf
-    #   weight: 1
-    #   args:
-    #     presegmented: false # if true, file is expected to contain mean/var columns
-    #     presegmented_file: ""
+    - name: track_grf
+      weight: 1
+      args:
+        presegmented: false # if true, file is expected to contain mean/var columns
+        presegmented_file: ""
     - name: track_markers
       weight: 1
       args:
