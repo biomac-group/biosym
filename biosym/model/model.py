@@ -566,7 +566,9 @@ class BiosymModel:
                 parent_frame if parent_frame is not None else self.ground_frame,
             )
             force_body = (child_frame, force_vector)
+            force_parent_body = (parent_frame, -force_vector)
             self.loads.append(force_body)
+            self.loads.append(force_parent_body)
 
         # Add external forces - double check if this is correct
         # We are using body.origin to apply the force, but it could also be applied to the mass center or an arbitrary point - that is tbd
