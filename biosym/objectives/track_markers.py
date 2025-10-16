@@ -188,8 +188,8 @@ def objfun(states_list, globals_dict, settings, info):
     var_Z = jnp.clip(jnp.where(jnp.isfinite(var_Z), var_Z, 1.0), eps, jnp.inf)
 
     # Weighted squared error per axis
-    err_X = (sim_X - exp_X) ** 2 / var_X
-    err_Y = (sim_Y - exp_Y) ** 2 / var_Y
-    err_Z = (sim_Z - exp_Z) ** 2 / var_Z
+    err_X = (sim_X - exp_X) ** 2 #/ var_X
+    err_Y = (sim_Y - exp_Y) ** 2 #/ var_Y
+    err_Z = (sim_Z - exp_Z) ** 2 #/ var_Z
 
     return jnp.mean(err_X) + jnp.mean(err_Y) + jnp.mean(err_Z)

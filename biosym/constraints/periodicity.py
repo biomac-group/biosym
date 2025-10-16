@@ -118,14 +118,14 @@ def jacobian_per(states_list, _, dims, id_symmetry, nnodes_dur, settings):
     :param info: Information about the constraint function.
     :return: The Jacobian of the constraint function.
     """
-    r = jnp.tile(jnp.arange(len(dims), dtype=settings["int_dtype"]), 2)
+    r = jnp.tile(jnp.arange(len(dims), dtype=int), 2)
     c = jnp.concatenate(
         (
-            jnp.array(dims, dtype=settings["int_dtype"]),
+            jnp.array(dims, dtype=int),
             id_symmetry[dims] + states_list[0].states.size() * (nnodes_dur - 1),
         )
     )
-    d = jnp.concatenate((jnp.ones(len(dims), dtype=settings["dtype"]), -jnp.ones(len(dims), dtype=settings["dtype"])))
+    d = jnp.concatenate((jnp.ones(len(dims), dtype=float), -jnp.ones(len(dims), dtype=float)))
     return r, c, d
 
 
