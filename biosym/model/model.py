@@ -733,15 +733,14 @@ class BiosymModel:
         # Visualization FK: append site positions (use pre-built SymPy Points)
         if self.dicts.get("markers") is not None:
             # Marker Visualization FK: append markerpositions (use pre-built SymPy Points)
-            if self.dicts.get("markers") is not None:
-                if hasattr(self, "markers") and self.markers:
-                    for marker_pt in self.markers.values():
-                        pos_vector.append(
-                            [
-                                marker_pt.pos_from(self.origin).dot(frame_dim)
-                                for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
-                            ]
-                        )
+            if hasattr(self, "markers") and self.markers:
+                for marker_pt in self.markers.values():
+                    pos_vector.append(
+                        [
+                            marker_pt.pos_from(self.origin).dot(frame_dim)
+                            for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
+                        ]
+                    )
                 
             pos_vector_marker = Matrix(pos_vector)
             pos_vector_marker = self._replace_dyn(pos_vector_marker)
@@ -750,15 +749,15 @@ class BiosymModel:
             # store compiled/jitted visualization function
             pos_vector_marker = self._precompile_fn(pos_vector_marker, self.default_inputs, "FK_marker", skip_export=True)
             
-            if (self.dicts.get("sites") is not None) and (self.dicts.get("markers") is None):
-                if hasattr(self, "sites") and self.sites:
-                    for site_pt in self.sites.values():
-                        pos_vector.append(
-                            [
-                                site_pt.pos_from(self.origin).dot(frame_dim)
-                                for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
-                            ]
-                        )
+        if self.dicts.get("sites") is not None:
+            if hasattr(self, "sites") and self.sites:
+                for site_pt in self.sites.values():
+                    pos_vector.append(
+                        [
+                            site_pt.pos_from(self.origin).dot(frame_dim)
+                            for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
+                        ]
+                    )
 
                 pos_vector_vis = Matrix(pos_vector)
                 pos_vector_vis = self._replace_dyn(pos_vector_vis)

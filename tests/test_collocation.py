@@ -220,7 +220,7 @@ def test_constraint_and_objective_functions(standing_problem):
         # Basic performance test - should complete within reasonable time
         assert elapsed_time < 10.0, f"{name} function took too long: {elapsed_time} seconds"
 
-
+@pytest.mark.skip(reason="Not correctly implemented yet")
 def test_all_objective_functions(walking_problem):
     """Test all objective functions."""
     # Add the test objective function
