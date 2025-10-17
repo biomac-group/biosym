@@ -27,14 +27,6 @@ Available Examples
     * Performance comparison between batched and non-batched simulations
 
 
-Running Examples
-----------------
-
-.. code-block:: bash
-
-    python interacting_with_models.py
-    python gait2d.py
-
 Model Files
 -----------
 
