@@ -20,11 +20,12 @@ Available Examples
     * State vector organization and manipulation
     * Model functions
 
-Model Configuration Files
---------------------------
+**batching.py**
+    Demonstration of batching capabilities in biosym:
+    
+    * How to use batched operations for model simulations
+    * Performance comparison between batched and non-batched simulations
 
-* **standing2d.yaml** - 2D standing optimal control configuration
-* **walking2d.yaml** - 2D walking optimal control configuration
 
 Running Examples
 ----------------
@@ -33,11 +34,6 @@ Running Examples
 
     python interacting_with_models.py
     python gait2d.py
-
-Dependencies
-------------
-
-Required: numpy, matplotlib, jax, sympy, biosym
 
 Model Files
 -----------
