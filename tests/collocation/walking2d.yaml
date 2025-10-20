@@ -13,16 +13,10 @@ collocation:
         adaptive_h: false
     output:
       file: "~/.biosym/walking2d.pkl"
-<<<<<<< HEAD
-    tol: 1e-2
-    max_iter: 5000
-    dtype: float32 # float64 still makes problems
-=======
     tol: 3e-3
     acceptable_dual_inf_tol: 1e-2
     constr_viol_tol: 1e-4
     max_iter: 10000
->>>>>>> d43e436be6cff691808a9c898c4240f866318f6b
 
   objectives:
     - name: torque_term
