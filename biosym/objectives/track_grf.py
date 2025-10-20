@@ -27,9 +27,6 @@ class Objective(BaseObjective):
         self.n_grfs = self.model.ext_forces["n"]
         self.norm_factor = self.n_nodes * self.n_grfs
 
-        if "file" not in kwargs:
-            raise ValueError("TrackGRFSObjective requires 'file' in args from YAML.")
-
         # read grf file from yaml either as pre-segmented mean/var or raw data
         preseg_file_path = kwargs.get("presegmented_file", None)
         preseg = bool(kwargs.get("presegmented"))

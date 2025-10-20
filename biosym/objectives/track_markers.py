@@ -30,12 +30,8 @@ class Objective(BaseObjective):
 
         eps = 1e-8  # avoid division by zero
 
-        
         # If YAML has `2d: true`, treat Z as zero in expected data
         self.movement_2d = bool(kwargs.get("2d", True))
-
-        if "file" not in kwargs:
-            raise ValueError("TrackMarkersObjective requires 'file' in args from YAML.")
         
         # Treadmill speed must be provided explicitly now (no longer pulled from model/settings bounds)
         treadmill_speed = kwargs.get("treadmill_speed", None)

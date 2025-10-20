@@ -28,9 +28,6 @@ class Objective(BaseObjective):
 
         eps = 1e-8  # avoid division by zero
 
-        if "file" not in kwargs:
-            raise ValueError("TrackAnglesObjective requires 'file' in args from YAML.")
-
         # read grf file from yaml either as pre-segmented mean/var or raw data
         preseg_file_path = kwargs.get("presegmented_file", None)
         preseg = bool(kwargs.get("presegmented"))

@@ -9,45 +9,42 @@ import warnings
 
 from biosym.utils import read_mot, read_trc
 
+# Default location of example data relative to the repo root
+# This file lives at biosym/biosym/utils/segment_gait_cycles.py
+# parents[2] should be the repo root containing the example_data folder
+DATA_DIR = (Path(__file__).resolve().parents[2] / "example_data").resolve()
+
 
 def read_tracking_objective_files(
-    yaml_path: str | Path = "tests/collocation/walking2d.yaml",
-):
+    data_dir: str | Path | None = None,
+    ik_file: str | Path = "ik_data.mot",
+    grf_file: str | Path = "grf_data.mot",
+    trc_file: str | Path = "marker_data.trc",
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]:
     """
-    Read IK, GRF and TRC files referenced in the collocation YAML.
-    Returns (ik_df|None, grf_df|None, trc_df|None). Missing entries return None.
+    Load IK (.mot), GRF (.mot) and TRC (.trc) directly from example_data.
+    Paths can be absolute or relative to data_dir (default: DATA_DIR).
+    Missing files yield None with a warning.
     """
-    p = Path(yaml_path)
-    if not p.exists():
-        raise FileNotFoundError(f"Collocation YAML not found: {p}")
+    base = Path(data_dir).resolve() if data_dir is not None else DATA_DIR
 
-    with p.open("r") as f:
-        cfg = yaml.safe_load(f) or {}
+    ik_path = base / ik_file
+    grf_path = base / grf_file
+    trc_path = base / trc_file
 
-    coll = cfg.get("collocation", cfg)
-    objectives = coll.get("objectives", [])
+    ik_df = read_mot(str(ik_path)) if ik_path.exists() else None
+    grf_df = read_mot(str(grf_path)) if grf_path.exists() else None
+    trc_df = read_trc(str(trc_path)) if trc_path.exists() else None
 
-    ik_path = None
-    grf_path = None
-    trc_path = None
-    for obj in objectives:
-        name = obj.get("name", "")
-        args = obj.get("args", {}) or {}
-        fileval = args.get("file", None)
-        if not fileval:
-            continue
-        path = Path(fileval)
-        if name == "track_angles":
-            ik_path = path
-        elif name == "track_grf":
-            grf_path = path
-        elif name == "track_markers":
-            trc_path = path
+    if ik_df is None:
+        warnings.warn(f"IK file not found: {ik_path}", RuntimeWarning)
+    if grf_df is None:
+        warnings.warn(f"GRF file not found: {grf_path}", RuntimeWarning)
+    if trc_df is None:
+        warnings.warn(f"TRC file not found: {trc_path}", RuntimeWarning)
 
-    ik_df = read_mot(str(ik_path)) if (ik_path and ik_path.exists()) else None
-    grf_df = read_mot(str(grf_path)) if (grf_path and grf_path.exists()) else None
-    trc_df = read_trc(str(trc_path)) if (trc_path and trc_path.exists()) else None
     return ik_df, grf_df, trc_df
+
 
 # %% Segement gait cycles based on heel strike
 def find_heel_strikes(vgrf, force_increase=300, time_points=10):
@@ -494,9 +491,7 @@ def segment_gait_averages(
     tuple[pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]
         (averaged_joint_angles, averaged_grfs, averaged_markers)
     """
-    ik_df, grf_df, trc_df = read_tracking_objective_files(
-        yaml_path="tests/collocation/walking2d.yaml"
-    )
+    ik_df, grf_df, trc_df = read_tracking_objective_files()
 
 
     # Heel strikes (only if GRF available)
@@ -546,9 +541,7 @@ def segment_gait_averages(
 # Plot averaged joint angles with variance
 if __name__ == "__main__":
     
-    ik_df, grf_df, trc_df = read_tracking_objective_files(
-        yaml_path="tests/collocation/walking2d.yaml"
-    )
+    ik_df, grf_df, trc_df = read_tracking_objective_files()
 
     # find right certical grf forces
     right_vgrf = grf_df["ground_force_vy"].values
