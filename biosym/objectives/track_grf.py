@@ -27,9 +27,6 @@ class Objective(BaseObjective):
         self.n_grfs = self.model.ext_forces["n"]
         self.norm_factor = self.n_nodes * self.n_grfs
 
-        if "file" not in kwargs:
-            raise ValueError("TrackGRFSObjective requires 'file' in args from YAML.")
-
         # read grf file from yaml either as pre-segmented mean/var or raw data
         preseg_file_path = kwargs.get("presegmented_file", None)
         preseg = bool(kwargs.get("presegmented"))
@@ -40,7 +37,7 @@ class Objective(BaseObjective):
             grf_mean_df = grf_df.filter(like="_mean")
             grf_var_df = grf_df.filter(like="_var")
         else:
-            _, gait_grfs = segment_gait_averages(n_points=self.n_nodes)
+            _, gait_grfs, _ = segment_gait_averages(n_points=self.n_nodes)
             grf_mean_df = gait_grfs.filter(like="_mean")
             grf_var_df = gait_grfs.filter(like="_var")
 

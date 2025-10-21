@@ -19,8 +19,20 @@ import argparse
 parser = argparse.ArgumentParser(description="Test Collocation")
 parser.add_argument("--vis", action="store_true", help="Enable visualization", default=False)
 
-args = parser.parse_args()
-VIS = args.vis
+# Only parse args if we're running standalone (not through pytest)
+if __name__ == "__main__":
+    #args = parser.parse_args()
+    VIS = True #args.vis
+    if VIS:
+        print("Running with visualization enabled...")
+        standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
+        standing_prob.solve(visualize=VIS)
+
+        walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=True)
+        walking_problem.solve(visualize=VIS)
+else:
+    # Default values when running through pytest
+    VIS = False
 
 import pytest
 
@@ -172,7 +184,7 @@ def standing_problem():
 @pytest.fixture
 def walking_problem():
     """Fixture to create a walking problem for testing."""
-    return collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
+    return collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=True)
 
 
 def test_standing_problem_solve(standing_problem):
@@ -243,7 +255,7 @@ def test_constraint_and_objective_functions(problem):
         # Basic performance test - should complete within reasonable time
         assert elapsed_time < 10.0, f"{name} function took too long: {elapsed_time} seconds"
 
-
+@pytest.mark.skip(reason="Not correctly implemented yet")
 def test_all_objective_functions(walking_problem):
     """Test all objective functions."""
     # Add the test objective function

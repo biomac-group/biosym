@@ -28,20 +28,17 @@ class Objective(BaseObjective):
 
         eps = 1e-8  # avoid division by zero
 
-        if "file" not in kwargs:
-            raise ValueError("TrackAnglesObjective requires 'file' in args from YAML.")
-
         # read grf file from yaml either as pre-segmented mean/var or raw data
         preseg_file_path = kwargs.get("presegmented_file", None)
         preseg = bool(kwargs.get("presegmented"))
 
         if preseg:
-            print("Using pre-segmented GRF data from", preseg_file_path)
+            print("Using pre-segmented joint angle data from", preseg_file_path)
             gait_joint_angles = read_mot(preseg_file_path)
             q_mean_df = gait_joint_angles.filter(like="_mean")
             q_var_df = gait_joint_angles.filter(like="_var")
         else:
-            gait_joint_angles, _ = segment_gait_averages(n_points=self.n_nodes)
+            gait_joint_angles, _, _ = segment_gait_averages(n_points=self.n_nodes)
             q_mean_df = gait_joint_angles.filter(like="_mean")
             q_var_df = gait_joint_angles.filter(like="_var")
 

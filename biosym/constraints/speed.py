@@ -98,11 +98,11 @@ def jacobian(states_list, globals_dict, settings, info):
     :param info: Information about the constraint function.
     :return: The Jacobian of the constraint function.
     """
-    r = jnp.zeros((info["nnz"],), dtype=settings["int_dtype"])
+    r = jnp.zeros((info["nnz"],), dtype=int)
     c = (
-        jnp.arange(info["nnz"], dtype=settings["int_dtype"]) * states_list[0].states.size() + info["speed_var_idx"] - 1
+        jnp.arange(info["nnz"], dtype=int) * states_list[0].states.size() + info["speed_var_idx"] - 1
     )  # The -1 seems pretty wrong, but we keep it here
     c = c.at[-1].set(settings.get("nnodes_dur") * states_list[0].states.size()) + 1
-    d = -jnp.ones((info["nnz"],), dtype=jnp.float32) / (settings.get("nnodes_dur") - 1)
+    d = -jnp.ones((info["nnz"],), dtype=float) / (settings.get("nnodes_dur") - 1)
     d = d.at[-1].set(1.0)  # The last entry corresponds to the total duration constraint
     return r, c, d
