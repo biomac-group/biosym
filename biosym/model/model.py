@@ -741,12 +741,13 @@ class BiosymModel:
                     ]
                 )
 
-            pos_vector_marker = Matrix(pos_vector_markers)
-            pos_vector_marker = self._replace_dyn(pos_vector_marker)
-            pos_vector_marker = lambdify(self._v, pos_vector_marker, modules="jax", cse=True, docstring_limit=2)
-            self.run["FK_marker_uncompiled"] = pos_vector_marker
+
+            pos_vector_marker_ = Matrix(pos_vector_markers)
+            pos_vector_marker_ = self._replace_dyn(pos_vector_marker_)
+            pos_vector_marker_ = lambdify(self._v, pos_vector_marker_, modules="jax", cse=True, docstring_limit=2)
+            self.run["FK_marker_uncompiled"] = pos_vector_marker_
             # store compiled/jitted visualization function
-            pos_vector_marker = self._precompile_fn(pos_vector_marker, self.default_inputs, "FK_marker", skip_export=True)
+            pos_vector_marker_ = self._precompile_fn(pos_vector_marker_, self.default_inputs, "FK_marker", skip_export=True)
 
         # Visualization FK: bodies + markers + sites (when available)
         pos_vector_sites: list[list] = []
