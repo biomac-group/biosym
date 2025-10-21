@@ -6,17 +6,17 @@ from matplotlib import animation
 
 
 def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
-    """Extract joints (bodies), sites, and experimental markers (if provided).
+    """Extract joints (bodies), simulated markers, sites, and experimental markers.
 
-    This uses model.run["FK_vis"] for joints and sites, and relies on
-    the provided markers_exp (e.g., from objectives) for expected markers.
-    If FK_vis contains bodies + markers + sites (legacy), only bodies and
-    the last n_sites rows are used. If it contains only bodies + sites, the
-    split still works. Simulated markers (model.run["FK_vis"]) are not
-    drawn here; they can be added later if needed.
+    - Bodies and sites are taken from model.run["FK_vis"] (bodies first; if sites exist,
+      they are the last n_sites rows; markers may be present in the middle but we don't rely on it).
+    - Simulated markers are taken from model.run["FK_marker"] when available; otherwise,
+      we fall back to slicing them out of FK_vis between bodies and sites.
+    - Experimental markers (markers_exp) are optional and, when provided, are shaped as (N, 3*n_markers).
 
-    Returns a dict with the same keys the rest of this module expects,
-    where 'anim_markers' actually contains site positions for plotting.
+    Returns a dict. For backward-compatibility with the rest of this module:
+    - 'anim_markers' contains SIMULATED MARKER positions over time.
+    - 'site0' contains site positions of the first frame (used for drawing segments to sites).
     """
     n_frames = len(state_sequence)
     n_bodies = len(model.dicts.get("bodies", []) or [])
@@ -24,10 +24,12 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
     n_markers = len(model.dicts.get("markers", []) or [])
 
     fk_vis = model.run.get("FK_vis")
+    fk_marker = model.run.get("FK_marker")
     if fk_vis is None:
         raise RuntimeError("model.run['FK_vis'] not available; cannot extract visualization FK data.")
 
     joint_frames = []
+    marker_frames = []
     site_frames = []
     for i in range(n_frames):
         arr = fk_vis(state_sequence[i].states, state_sequence[i].constants)
@@ -35,36 +37,63 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
         joints = arr[:n_bodies, :] if n_bodies > 0 else arr
         # Sites as last n_sites rows (robust to presence/absence of markers in arr)
         sites = None
-        if n_sites > 0:
-            if arr.shape[0] >= n_bodies + n_sites:
-                sites = arr[-n_sites:, :]
+        if n_sites > 0 and arr.shape[0] >= n_bodies + n_sites:
+            sites = arr[-n_sites:, :]
         joint_frames.append(joints)
         if sites is not None:
             site_frames.append(sites)
+        # Markers: prefer dedicated FK_marker; else slice from FK_vis if present
+        markers = None
+        if n_markers > 0:
+            if fk_marker is not None:
+                m_arr = fk_marker(state_sequence[i].states, state_sequence[i].constants)
+                m_arr = np.asarray(m_arr)
+                if m_arr.ndim == 1 and m_arr.size == 3 * n_markers:
+                    m_arr = m_arr.reshape(n_markers, 3)
+                markers = m_arr
+            elif arr.shape[0] >= n_bodies + n_markers:
+                markers = arr[n_bodies : n_bodies + n_markers, :]
+        if markers is not None:
+            marker_frames.append(markers)
 
     anim_joint_positions = np.asarray(joint_frames)
     anim_site_positions = np.asarray(site_frames) if site_frames else None
+    anim_marker_positions = np.asarray(marker_frames) if marker_frames else None
 
     anim_exp_markers = None
+    me = None
     if markers_exp is not None and n_markers > 0:
         me = np.asarray(markers_exp)
-        # Align lengths if mismatch
-        if me.shape[0] != n_frames:
-            nmin = min(me.shape[0], n_frames)
-            anim_joint_positions = anim_joint_positions[:nmin]
-            if anim_site_positions is not None:
-                anim_site_positions = anim_site_positions[:nmin]
-            me = me[:nmin]
         exp_X = me[:, 0:n_markers]
         exp_Y = me[:, n_markers:2 * n_markers] if me.shape[1] >= 2 * n_markers else np.zeros_like(exp_X)
         exp_Z = me[:, 2 * n_markers:3 * n_markers] if me.shape[1] >= 3 * n_markers else np.zeros_like(exp_X)
         anim_exp_markers = np.stack([exp_X, exp_Y, exp_Z], axis=2)
 
+    # Harmonize frame counts across all arrays to avoid shape mismatches
+    counts = [anim_joint_positions.shape[0]]
+    if anim_site_positions is not None:
+        counts.append(anim_site_positions.shape[0])
+    if anim_marker_positions is not None:
+        counts.append(anim_marker_positions.shape[0])
+    if anim_exp_markers is not None:
+        counts.append(anim_exp_markers.shape[0])
+    nmin = min(counts) if counts else n_frames
+    if anim_joint_positions.shape[0] != nmin:
+        anim_joint_positions = anim_joint_positions[:nmin]
+    if anim_site_positions is not None and anim_site_positions.shape[0] != nmin:
+        anim_site_positions = anim_site_positions[:nmin]
+    if anim_marker_positions is not None and anim_marker_positions.shape[0] != nmin:
+        anim_marker_positions = anim_marker_positions[:nmin]
+    if anim_exp_markers is not None and anim_exp_markers.shape[0] != nmin:
+        anim_exp_markers = anim_exp_markers[:nmin]
+
     return {
         "joint0": anim_joint_positions[0],
+        "marker0": anim_marker_positions[0] if anim_marker_positions is not None else None,
         "site0": anim_site_positions[0] if anim_site_positions is not None else None,
         "anim_joints": anim_joint_positions,
-        "anim_markers": anim_site_positions,  # Note: sites
+        "anim_markers": anim_marker_positions,  # SIM markers over time
+        "anim_sites": anim_site_positions,      # site positions over time (optional)
         "anim_exp": anim_exp_markers,
         "n_bodies": n_bodies,
         "n_markers": n_markers,
@@ -205,7 +234,7 @@ def _draw_initial_frame(
     case_,
     non_zero_axes,
     joint0,
-    site0,
+    markers0,
     exp0,
     plot_markers,
     plot_expected,
@@ -247,12 +276,12 @@ def _draw_initial_frame(
         joints_art.append(l)
 
     site_artists = []
-    if plot_markers and site0 is not None:
-        for i in range(site0.shape[0]):
+    if plot_markers and markers0 is not None:
+        for i in range(markers0.shape[0]):
             if case_ == "2D":
                 (s,) = ax.plot(
-                    site0[i, non_zero_axes[0]],
-                    site0[i, non_zero_axes[1]],
+                    markers0[i, non_zero_axes[0]],
+                    markers0[i, non_zero_axes[1]],
                     c="r",
                     marker="o",
                     linestyle="None",
@@ -260,9 +289,9 @@ def _draw_initial_frame(
                 )
             else:
                 (s,) = ax.plot(
-                    [site0[i, 0]],
-                    [site0[i, 1]],
-                    [site0[i, 2]],
+                    [markers0[i, 0]],
+                    [markers0[i, 1]],
+                    [markers0[i, 2]],
                     c="r",
                     marker="o",
                     linestyle="None",
@@ -365,7 +394,7 @@ def _add_segments(ax, case_, non_zero_axes, joint0, site0, connections):
     return segs, np.array(drawn_connections)
 
 
-def _create_update_func(anim_joints, anim_markers, anim_exp, joints_art, site_artists, exp_artists, segments, connections, case_, non_zero_axes, dt, ax, model, hascontact, contact_plot_objects):
+def _create_update_func(anim_joints, anim_markers, anim_sites, anim_exp, joints_art, site_artists, exp_artists, segments, connections, case_, non_zero_axes, dt, ax, model, hascontact, contact_plot_objects):
     """Return a Matplotlib FuncAnimation update callback."""
     ispaused = False
     speed_multiplier = 1.0
@@ -426,12 +455,13 @@ def _create_update_func(anim_joints, anim_markers, anim_exp, joints_art, site_ar
             if cidx < n_bodies_local:
                 b = anim_joints[f][cidx]
             else:
-                if anim_markers is None:
+                # child refers to a site index offset by n_bodies
+                if anim_sites is None:
                     continue
                 sidx = cidx - n_bodies_local
-                if sidx < 0 or sidx >= anim_markers.shape[1]:
+                if sidx < 0 or (anim_sites is not None and sidx >= anim_sites.shape[1]):
                     continue
-                b = anim_markers[f][sidx]
+                b = anim_sites[f][sidx]
             if case_ == "2D":
                 segments[i].set_data([[a[non_zero_axes[0]], b[non_zero_axes[0]]], [a[non_zero_axes[1]], b[non_zero_axes[1]]]])
             else:
@@ -567,15 +597,17 @@ def plot_stick_figure(
         markers_exp = _auto_markers_from_objective(objective)
     data = _extract_fk_vis_data(model, state_sequence, markers_exp if plot_expected else None)
     joint_positions = data["joint0"]
-    site_positions = data["site0"] if plot_markers else None
+    marker_positions = data.get("marker0") if plot_markers else None
+    site_positions = data.get("site0")  # used to draw segments to sites (if any)
     anim_joint_positions = data["anim_joints"]
-    anim_site_positions = data["anim_markers"] if plot_markers else None
+    anim_marker_positions = data.get("anim_markers") if plot_markers else None
+    anim_site_positions = data.get("anim_sites")  # used for segment updates
     anim_exp_markers = data["anim_exp"] if plot_expected else None
     n_markers = data["n_markers"]
     n_bodies = data["n_bodies"]
     n_frames = data["n_frames"]
 
-    fig, ax, case_, non_zero_axes = _setup_axes(joint_positions, site_positions, None, n_frames)
+    fig, ax, case_, non_zero_axes = _setup_axes(joint_positions, marker_positions, None, n_frames)
 
     # Prepare expected markers first frame (standing) for limit computation
     exp0 = None
@@ -585,8 +617,18 @@ def plot_stick_figure(
     # Compute and set limits
     # Allow user override of padding; enlarge default for standing (single frame)
     user_pad = kwargs.get("pad_ratio", 0.05 if n_frames == 1 else 0.05)
-    limits = _compute_limits(case_, non_zero_axes, anim_joint_positions, anim_site_positions, anim_exp_markers,
-                              joint_positions, site_positions, exp0, pad_ratio=user_pad)
+    # Use anim_marker_positions/marker_positions for limits alongside joints/exp
+    limits = _compute_limits(
+        case_,
+        non_zero_axes,
+        anim_joint_positions,
+        anim_marker_positions,
+        anim_exp_markers,
+        joint_positions,
+        marker_positions,
+        exp0,
+        pad_ratio=user_pad,
+    )
     if case_ == "2D":
         ax.set_xlim(limits[0], limits[1])
         ax.set_ylim(limits[2], limits[3])
@@ -604,7 +646,7 @@ def plot_stick_figure(
         case_,
         non_zero_axes,
         joint_positions,
-        site_positions,
+        marker_positions,
         exp0_for_draw,
         plot_markers,
         plot_expected,
@@ -638,6 +680,7 @@ def plot_stick_figure(
 
     update = _create_update_func(
         anim_joint_positions,
+        anim_marker_positions,
         anim_site_positions,
         anim_exp_markers,
         joints,
