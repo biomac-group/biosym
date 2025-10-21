@@ -174,8 +174,8 @@ class BiosymModel:
         """
 
         all_sites = parser.get_sites()
-        markers = [s for s in all_sites if s.get("name") != "torso"]
-        sites = [s for s in all_sites if s.get("name") == "torso"]
+        markers = [s for s in all_sites if not s.get("name").startswith("vis_")]
+        sites = [s for s in all_sites if s.get("name").startswith("vis_")]
 
         self.dicts = {
             "bodies": parser.get_bodies(),
