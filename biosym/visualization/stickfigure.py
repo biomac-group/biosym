@@ -40,10 +40,6 @@ def _extract_fk_marker_data(model, state_sequence, markers_exp=None):
 
     fk_marker = model.run["FK_marker"]
     # Check if the model has a contact model
-    hascontact = hasattr(model, "gc_model") and model.gc_model is not None
-    
-    # Check if the model has an actuator model (muscles)
-    hasmuscles = hasattr(model, "actuator_model") and model.actuator_model is not None and hasattr(model.actuator_model, "plot")
 
     joint_frames = []
     site_frames = []
@@ -565,8 +561,12 @@ def plot_stick_figure(
             pass  # keep provided dt if globals lacks `dur`
     n_frames = len(state_sequence)
 
-    # Contact model? (Used in updates)
+    fk_marker = model.run["FK_marker"]
+    # Check if the model has a contact model
     hascontact = hasattr(model, "gc_model") and model.gc_model is not None
+    
+    # Check if the model has an actuator model (muscles)
+    hasmuscles = hasattr(model, "actuator_model") and model.actuator_model is not None and hasattr(model.actuator_model, "plot")
 
     # Auto-discover experimental markers from objectives if not provided
     markers_exp = kwargs.get("markers_exp", None)
@@ -641,7 +641,7 @@ def plot_stick_figure(
     
     if hasmuscles:
         muscle_plot_objects = model.actuator_model.plot(
-            states, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
+            state_sequence, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
         )
     else:
         muscle_plot_objects = None
@@ -679,28 +679,11 @@ def plot_stick_figure(
     # Only add legend for multi-frame animations to avoid clutter in standing
     if n_frames > 1:
         handles, labels = ax.get_legend_handles_labels()
+        ispaused, speed_multiplier = False, 1.0
         if labels:
             ax.legend(loc="best")
 
 
-        def on_key_press(event):
-            nonlocal ispaused, speed_multiplier
-            if event.key == " ":  # Spacebar toggles pause
-                ispaused = not ispaused
-            elif event.key == "up":  # Up arrow increases speed
-                speed_multiplier = min(speed_multiplier * 1.2, 10.0)  # Max 10x speed
-                speed_text.set_text(
-                    f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed"
-                )
-                fig.canvas.draw_idle()
-            elif event.key == "down":  # Down arrow decreases speed
-                speed_multiplier = max(speed_multiplier / 1.2, 0.1)  # Min 0.1x speed
-                speed_text.set_text(
-                    f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed"
-                )
-                fig.canvas.draw_idle()
-
-        fig.canvas.mpl_connect("key_press_event", on_key_press)
 
         global pauseframes_total
         pauseframes_total = 0
