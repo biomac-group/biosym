@@ -142,7 +142,7 @@ def derivativetest(problem, x, eps=1e-3):
 @pytest.fixture
 def standing_problem():
     """Fixture to create a standing problem for testing."""
-    return collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
+    return collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
 
 
 @pytest.fixture

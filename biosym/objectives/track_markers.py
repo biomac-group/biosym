@@ -101,7 +101,7 @@ class Objective(BaseObjective):
             "force_2d": self.movement_2d,
             "eps": eps,
             # Provide FK function and layout info so objfun can compute sim markers
-            "fk_marker": self.model.run.get("FK_marker"),
+            "fk_marker": self.model.run.get("FK_vis"),
             "n_bodies": len(self.model.dicts.get("bodies", [])),
             "n_markers": self.n_markers,
         }

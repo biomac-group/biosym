@@ -5,51 +5,42 @@ import numpy as np
 from matplotlib import animation
 
 
-def _extract_fk_marker_data(model, state_sequence, markers_exp=None):
-    """Extract joint, site, and expected marker (experimental) positions.
+def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
+    """Extract joints (bodies), sites, and experimental markers (if provided).
 
-    Parameters
-    ----------
-    model : BiosymModel
-        Model providing `run["FK_marker"]` returning stacked (bodies [+ markers]) xyz rows.
-    state_sequence : list
-        Sequence of per-node state wrappers (as used in collocation) each
-        exposing `.states` and `.constants` attributes.
-    markers_exp : array-like, optional
-        Experimental marker expectations shaped (N, 3*n_markers) with ordering
-        [X | Y | Z] per site in model site order. If provided, will be split
-        into (N, n_markers, 3).
+    This uses model.run["FK_vis"] for joints and sites, and relies on
+    the provided markers_exp (e.g., from objectives) for expected markers.
+    If FK_vis contains bodies + markers + sites (legacy), only bodies and
+    the last n_sites rows are used. If it contains only bodies + sites, the
+    split still works. Simulated markers (model.run["FK_vis"]) are not
+    drawn here; they can be added later if needed.
 
-    Returns
-    -------
-    dict
-        {
-          'joint0': (n_bodies, 3) first frame,
-          'site0': (n_markers, 3) or None,
-          'anim_joints': (N, n_bodies, 3),
-          'anim_markers': (N, n_markers, 3) or None,
-          'anim_exp': (N, n_markers, 3) or None,
-          'n_bodies': int,
-          'n_markers': int,
-          'n_frames': int
-        }
+    Returns a dict with the same keys the rest of this module expects,
+    where 'anim_markers' actually contains site positions for plotting.
     """
     n_frames = len(state_sequence)
-    n_bodies = len(model.dicts.get("bodies", []))
-    n_markers = len(model.dicts.get("markers", [])) if model.dicts.get("markers") is not None else 0
+    n_bodies = len(model.dicts.get("bodies", []) or [])
+    n_sites = len(model.dicts.get("sites", []) or [])
+    n_markers = len(model.dicts.get("markers", []) or [])
 
-    fk_marker = model.run["FK_marker"]
+    fk_vis = model.run.get("FK_vis")
+    if fk_vis is None:
+        raise RuntimeError("model.run['FK_vis'] not available; cannot extract visualization FK data.")
 
     joint_frames = []
     site_frames = []
     for i in range(n_frames):
-        jp_all = fk_marker(state_sequence[i].states, state_sequence[i].constants)
-        # Split
-        joints = jp_all[:n_bodies, :] if n_bodies > 0 else jp_all
-        markers = jp_all[n_bodies:n_bodies + n_markers, :] if n_markers > 0 else None
+        arr = fk_vis(state_sequence[i].states, state_sequence[i].constants)
+        # Bodies first
+        joints = arr[:n_bodies, :] if n_bodies > 0 else arr
+        # Sites as last n_sites rows (robust to presence/absence of markers in arr)
+        sites = None
+        if n_sites > 0:
+            if arr.shape[0] >= n_bodies + n_sites:
+                sites = arr[-n_sites:, :]
         joint_frames.append(joints)
-        if markers is not None:
-            site_frames.append(markers)
+        if sites is not None:
+            site_frames.append(sites)
 
     anim_joint_positions = np.asarray(joint_frames)
     anim_site_positions = np.asarray(site_frames) if site_frames else None
@@ -57,14 +48,13 @@ def _extract_fk_marker_data(model, state_sequence, markers_exp=None):
     anim_exp_markers = None
     if markers_exp is not None and n_markers > 0:
         me = np.asarray(markers_exp)
-        # Clamp length if mismatch
+        # Align lengths if mismatch
         if me.shape[0] != n_frames:
             nmin = min(me.shape[0], n_frames)
             anim_joint_positions = anim_joint_positions[:nmin]
             if anim_site_positions is not None:
                 anim_site_positions = anim_site_positions[:nmin]
             me = me[:nmin]
-            n_frames = nmin  # local shadow but we don't reuse outside extraction
         exp_X = me[:, 0:n_markers]
         exp_Y = me[:, n_markers:2 * n_markers] if me.shape[1] >= 2 * n_markers else np.zeros_like(exp_X)
         exp_Z = me[:, 2 * n_markers:3 * n_markers] if me.shape[1] >= 3 * n_markers else np.zeros_like(exp_X)
@@ -74,7 +64,7 @@ def _extract_fk_marker_data(model, state_sequence, markers_exp=None):
         "joint0": anim_joint_positions[0],
         "site0": anim_site_positions[0] if anim_site_positions is not None else None,
         "anim_joints": anim_joint_positions,
-        "anim_markers": anim_site_positions,
+        "anim_markers": anim_site_positions,  # Note: sites
         "anim_exp": anim_exp_markers,
         "n_bodies": n_bodies,
         "n_markers": n_markers,
@@ -155,7 +145,7 @@ def _setup_axes(joint0,exp0, r, n_frames):
     return fig, ax, case_, non_zero_axes
 
 
-def _compute_limits(case_, non_zero_axes, anim_joints, anim_markers, anim_exp, joint0, site0, exp0, pad_ratio: float = 0.05):
+def _compute_limits(case_, non_zero_axes, anim_joints, anim_sites, anim_exp, joint0, site0, exp0, pad_ratio: float = 0.05):
     """Compute axis limits given available position arrays.
 
     Parameters
@@ -164,18 +154,21 @@ def _compute_limits(case_, non_zero_axes, anim_joints, anim_markers, anim_exp, j
         '2D' or '3D'.
     non_zero_axes : list[int]
         Axes retained in 2D mode.
-    anim_joints, anim_markers, anim_exp : np.ndarray or None
+    anim_joints, anim_sites, anim_exp : np.ndarray or None
         Full trajectory arrays (N, items, 3) when animated; may be None.
+        Note: ``anim_sites`` refers to simulated site positions (formerly
+        referred to as "markers" in this module).
     joint0, site0, exp0 : np.ndarray or None
-        Single-frame arrays for standing case.
+        Single-frame arrays for standing case. ``site0`` corresponds to the
+        first-frame site positions.
     pad_ratio : float, default 0.05
         Fractional padding applied to each axis range. (For standing we may
         pass a larger value from the caller.)
     """
     if anim_joints.shape[0] > 1:  # animation
         pos_list = [anim_joints]
-        if anim_markers is not None:
-            pos_list.append(anim_markers)
+        if anim_sites is not None:
+            pos_list.append(anim_sites)
         if anim_exp is not None:
             pos_list.append(anim_exp)
         all_pos = np.concatenate(pos_list, axis=1)  # (N, M, 3)
@@ -196,8 +189,8 @@ def _compute_limits(case_, non_zero_axes, anim_joints, anim_markers, anim_exp, j
         # X axis index: first displayed axis in 2D, or 0 in 3D
         x_idx = non_zero_axes[0] if case_ == "2D" else 0
         y_idx = non_zero_axes[1] if case_ == "2D" else 0
-        min_[x_idx] -= 2*pad_ratio
-        max_[x_idx] += 2*pad_ratio
+        min_[x_idx] -= 5*pad_ratio
+        max_[x_idx] += 5*pad_ratio
         # Y
         min_[y_idx] -= 5*pad_ratio
         max_[y_idx] += 5*pad_ratio
@@ -533,7 +526,7 @@ def plot_stick_figure(
     - Standing (n_nodes == 1): still plots expected markers if provided.
     - Walking (n_nodes > 1): creates an interactive animation with pause &
       speed controls (space / up / down keys).
-    - markers are not states; they are derived via FK_marker appended rows.
+    - markers are not states; they are derived via FK_vis appended rows.
     - Function preserves previous external signature except for new optional
       flags enabling selective plotting.
 
@@ -572,7 +565,7 @@ def plot_stick_figure(
             if prob is not None and hasattr(prob, "objective"):
                 objective = prob.objective
         markers_exp = _auto_markers_from_objective(objective)
-    data = _extract_fk_marker_data(model, state_sequence, markers_exp if plot_expected else None)
+    data = _extract_fk_vis_data(model, state_sequence, markers_exp if plot_expected else None)
     joint_positions = data["joint0"]
     site_positions = data["site0"] if plot_markers else None
     anim_joint_positions = data["anim_joints"]
