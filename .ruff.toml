@@ -113,7 +113,6 @@ ignore = [
     "W293", # blank line contains whitespace
     # Module level import not at top 
     "E402",
-    "E403"
 ]
 
 

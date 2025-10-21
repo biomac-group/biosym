@@ -11,11 +11,13 @@ import jax.numpy as jnp
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import argparse
+
 
 
 # Parse arguments first, before pytest can interfere
-#parser = argparse.ArgumentParser(description="Test Collocation")
-#parser.add_argument("--vis", action="store_true", help="Enable visualization", default=False)
+parser = argparse.ArgumentParser(description="Test Collocation")
+parser.add_argument("--vis", action="store_true", help="Enable visualization", default=False)
 
 # Only parse args if we're running standalone (not through pytest)
 if __name__ == "__main__":
@@ -33,6 +35,7 @@ else:
     VIS = False
 
 import pytest
+
 if not VIS:
     matplotlib.use("Agg")  # Set non-interactive backend before importing pyplot
 
@@ -68,18 +71,18 @@ class TestObjectiveFunction:
         return lambda _x, _y: 0
 
 
-def derivativetest(problem, x, eps=1e-3):
+def derivativetest(problem, x, eps=1e-5):
     """Test the derivative of the objective function.
     
     :param problem: The collocation problem instance.
     :param x: The input state vector.
     :return: The derivative of the objective function.
     """
-    assert isinstance(x, np.ndarray), "Input x must be a numpy array."
+    assert isinstance(x, np.ndarray) or isinstance(x, jnp.ndarray), f"Input x must be a numpy array, got {type(x)}"
     x = np.array(x, dtype=np.float64)
     jac_jax_0 = problem.problem.jacobian(x)
-    grad_jax = problem.problem.gradient(x)
     jacstruct = problem.problem.jacobianstructure()
+    grad_jax = problem.problem.gradient(x)
     jac_jax = np.zeros((len(x), problem.constraints.ncon))
     # import matplotlib.pyplot as plt
     # print(problem.constraints.c_start)
@@ -87,7 +90,13 @@ def derivativetest(problem, x, eps=1e-3):
     # plt.show()
     # print(max(jacstruct[0]), max(jacstruct[1]))
     # print(jac_jax.shape)
-    jac_jax[jacstruct[1], jacstruct[0]] = jac_jax_0
+    try:
+        jac_jax[jacstruct[1], jacstruct[0]] = jac_jax_0
+    except: 
+        print("NVAR", len(x), "NCON", problem.constraints.ncon, "NVAR in jac", jacstruct[1].max(), "NCON in jac",  jacstruct[0].max())
+        raise ValueError("Jacobian too large")
+
+
     jac_num = np.zeros_like(jac_jax)
     grad_num = np.zeros_like(grad_jax)
     x0 = x.copy()
@@ -116,8 +125,25 @@ def derivativetest(problem, x, eps=1e-3):
     if not jnp.allclose(jac_jax, jac_num, atol=1e-4):
         # Print the index of the first mismatch
         first_mismatch_index = np.unravel_index(np.argmax(np.abs(jac_jax - jac_num), axis=None), jac_jax.shape)
+        # Find the constraint and variable names
+        for i,num in enumerate(problem.constraints.c_start):
+            if first_mismatch_index[1] < num:
+                break
+        con = problem.constraints._constraints[i-1]
+        if first_mismatch_index[0] >= len(x) - 2:
+            var = "globals"
+        else:
+            var = first_mismatch_index[0] % (len(problem.model.state_vector)
+                                             + problem.model.contact_model.get_n_states() 
+                                             + problem.model.actuator_model.get_n_states())
+            if var < len(problem.model.state_vector):
+                var = problem.model.state_vector[var]
+            elif var < len(problem.model.state_vector) + problem.model.contact_model.get_n_states():
+                var = problem.model.contact_model.state_vector[var - len(problem.model.state_vector)]
+            else:
+                var = problem.model.actuator_model.state_vector[var - len(problem.model.state_vector) - problem.model.contact_model.get_n_states()]
         print(
-            f"Max deviation in Jacobian: {jac_jax[first_mismatch_index], jac_num[first_mismatch_index]} at index {first_mismatch_index}"
+            f"Max deviation in Jacobian (jax|num): {jac_jax[first_mismatch_index], jac_num[first_mismatch_index]} at index {first_mismatch_index} ({con}, var: {var})"
         )
     if not jnp.allclose(grad_jax, grad_num, atol=1e-4):
         # Print the index of the first mismatch
@@ -196,21 +222,30 @@ def test_walking_problem_solve(walking_problem):
     assert info["status"] in [0, 1], "Solver did not converge"
 
 
-def test_constraint_and_objective_functions(standing_problem):
+def test_constraint_and_objective_functions(problem):
     """Test the constraints and objective function evaluations."""
     functions_to_test = [
-        (standing_problem.constraints.confun, "constraints"),
-        (standing_problem.constraints.jacobian, "jacobian"),
-        (standing_problem.objective.objfun, "objectives"),
-        (standing_problem.objective.gradfun, "gradients"),
+        (problem.constraints.confun, "constraints"),
+        (problem.constraints.jacobian, "jacobian"),
+        (problem.objective.objfun, "objectives"),
+        (problem.objective.gradfun, "gradients"),
     ]
 
     for function, name in functions_to_test:
         print(f"Testing {name} function...")
 
-        start_time = time.time()
-        result = function(standing_problem.initial_guess_states, None)
-        elapsed_time = time.time() - start_time
+        if len(problem.initial_guess_states) > 1:
+            result = function(problem.initial_guess_states, problem.initial_guess_globals)
+            start_time = time.time()
+            for _ in range(10):
+                result = function(problem.initial_guess_states, problem.initial_guess_globals)
+            elapsed_time = time.time() - start_time
+        else:
+            result = function(problem.initial_guess_states, None)
+            start_time = time.time()
+            for _ in range(10):
+                result = function(problem.initial_guess_states, None)
+            elapsed_time = time.time() - start_time
 
         print(f"{function.__name__} evaluated in {elapsed_time} seconds")
 
@@ -261,14 +296,13 @@ if __name__ == "__main__":
         else:
             print("Running in test mode (no visualization)...")
             # Create problems for testing
-            standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
-            walking_prob = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
-
             # Run individual tests
             print("Testing standing problem...")
+            standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
             test_standing_problem_solve(standing_prob)
 
             print("Testing walking problem...")
+            walking_prob = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=False)
             test_walking_problem_solve(walking_prob)
 
             print("Testing constraint and objective functions...")

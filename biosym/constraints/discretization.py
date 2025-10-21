@@ -35,6 +35,9 @@ class Constraint(BaseConstraint):
 
         self.adaptive_h = settings["discretization"]["args"].get("adaptive_h", False)
 
+        self.sections, self.section_constraints = find_dependents(model)
+
+
     def _get_info(self):
         """
         Get information about the dynamics constraint.
@@ -50,6 +53,8 @@ class Constraint(BaseConstraint):
             "nvar": self.n_var,
             "adaptive_h": self.adaptive_h,
             "mode": self.args.get("mode", "backward"),
+            "sections": self.sections,
+            "ncons_per_node": 2 * self.n_var + self.section_constraints
         }
 
     def get_confun(self):
@@ -76,7 +81,7 @@ class Constraint(BaseConstraint):
 
         :return: The number of constraints.
         """
-        return self.n_var * (self.settings.get("nnodes_dur") - 1) * 2  # *2: for qd and qdd
+        return (self.settings.get("nnodes_dur") - 1) * (self.n_var * 2 + self.section_constraints) # *2: for qd and qdd
 
     def get_nnz(self):
         """
@@ -106,6 +111,29 @@ def confun_at_node(states_list, next_states_list, globals_dict, settings, info, 
         if info["mode"] == "backward"
         else states_list.states.model[info["nvar"] : 3 * info["nvar"]]
     )
+    
+    # Contact model
+    sec_ = info['sections']
+    for section in ['contact_model', 'actuator_model']:
+        if section in sec_:
+            if len(sec_[section]['states']) > 0:
+                if section == 'contact_model':
+                    q_ic = states_list.states.gc_model[sec_[section]['states']]
+                    q_ic_next = next_states_list.states.gc_model[sec_[section]['states']]
+                    q_id = (
+                            next_states_list.states.gc_model[sec_[section]['derivatives']]
+                            if info["mode"] == "backward"
+                            else states_list.states.gc_model[sec_[section]['derivatives']])
+                else:
+                    q_ic = states_list.states.actuator_model[sec_[section]['states']]
+                    q_ic_next = next_states_list.states.actuator_model[sec_[section]['states']]
+                    q_id = (
+                            next_states_list.states.actuator_model[sec_[section]['derivatives']]
+                            if info["mode"] == "backward"
+                            else states_list.states.actuator_model[sec_[section]['derivatives']])
+                qd_i0 = (q_ic_next - q_ic) / h
+                qd_0 = jnp.concatenate((qd_0, qd_i0))
+                qd_states = jnp.concatenate((qd_states, q_id))
     return qd_0 - qd_states
 
 
@@ -144,7 +172,41 @@ def jacobian_at_node(states_list, next_states_list, globals_dict, settings, info
     else:
         c4 = jnp.ones(info["nvar"] * 2, dtype=int)
 
-    return jnp.concatenate((r, r, r, r)), jnp.concatenate((c1, c2, c3, c4)), jnp.concatenate((d1, d2, d3, d4))
+    r, c, d = jnp.concatenate((r, r, r, r)), jnp.concatenate((c1, c2, c3, c4)), jnp.concatenate((d1, d2, d3, d4))
+
+    sec_ = info['sections']
+    for section in ['contact_model', 'actuator_model']:
+        if section in sec_:
+            if len(sec_[section]['states']) > 0:
+                if section == 'contact_model':
+                    q_ic = states_list.states.gc_model[sec_[section]['states']]
+                    q_ic_next = next_states_list.states.gc_model[sec_[section]['states']]
+                    n_curr = 0
+                else:
+                    q_ic = states_list.states.actuator_model[sec_[section]['states']]
+                    q_ic_next = next_states_list.states.actuator_model[sec_[section]['states']]
+                    n_curr = states_list.states.gc_model.size
+                l_0 = len(sec_[section]['states'])
+                n_model = states_list.states.model.size
+                d1 = -jnp.ones(l_0) / h  # df/dq_i
+                d2 = jnp.ones(l_0) / h  # df/dq_i_next
+                d3 = -jnp.ones(l_0 )  # df/dqd_states
+                d4 = -(q_ic_next - q_ic) / (h**2)  # df/dh
+
+                ri = jnp.arange(l_0, dtype=int) + info["nvar"] * 2
+
+                c1 = n_model + n_curr + sec_[section]['states']
+                c2 = n_model + n_curr + sec_[section]['states'] + states_list.states.size()
+                c3 = n_model + n_curr + sec_[section]['derivatives'] + (states_list.states.size() if info["mode"] == "backward" else 0)
+                if info["adaptive_h"]:
+                    c4 = (
+                        jnp.ones(l_0, dtype=int) * states_list.states.size() - 1
+                    )  # adaptive step size, h is always the last variable
+                else:
+                    c4 = jnp.ones(l_0, dtype=int)
+
+                r, c, d = jnp.concatenate((r, ri, ri, ri, ri)), jnp.concatenate((c, c1, c2, c3, c4)), jnp.concatenate((d, d1, d2, d3, d4))
+    return r, c, d
 
 
 # @partial(jax.grad, argnums=(1, 2))
@@ -169,11 +231,10 @@ def confun_q(states_list, globals_dict, settings, info):
     else:
         h = jnp.ones(nnodes - 1) * globals_dict.dur / (nnodes - 1)  # Constant step size
     nvar = info["nvar"]
-
     def body_fun(n, carry):
         data_out = carry
         cons = confun_at_node(states_list[n], states_list[n + 1], globals_dict, settings, info, h[n])
-        data_out = jax.lax.dynamic_update_slice(data_out, cons, (2 * n * nvar,))
+        data_out = jax.lax.dynamic_update_slice(data_out, cons, (n*info['ncons_per_node'],))
         return data_out
 
     data_out = jax.lax.fori_loop(0, nnodes - 1, body_fun, (data_out))
@@ -210,14 +271,25 @@ def jacobian_q(states_list, globals_dict, settings, info):
         rows_out, cols_out, data_out = carry
         state_ = states_list[n]
         r, c, d = jacobian_at_node(state_, states_list[n + 1], globals_dict, settings, info, h[n])
-        r = r + n * nvar * 2  # Adjust row indices for the current node
+        r = r + n * info['ncons_per_node'] # Adjust row indices for the current node
         c = c + n * states_list[n].states.size()
 
+        # Divide by number of nodes and set the indices to the globals column
         if not info["adaptive_h"]:
-            d = d.at[-nvar * 2 :].multiply(1 / (nnodes - 1))
-            c = c.at[-nvar * 2 :].set(settings.get("nnodes_dur") * states_list[n].states.size())
-
-        start = n * 8 * nvar  # Calculate where to insert this block
+            d = d.at[6*nvar:8*nvar].multiply(1 / (nnodes - 1))
+            c = c.at[6*nvar:8*nvar].set(settings.get("nnodes_dur") * states_list[n].states.size())
+            sec_ = info['sections']
+            for section in ['contact_model', 'actuator_model']:
+                if section in sec_:
+                    if section == 'actuator_model':
+                        extra = len(sec_['contact_model']['states']) if 'contact_model' in sec_ else 0
+                        this = len(sec_['actuator_model']['states'])
+                    else:
+                        extra = 0
+                        this = len(sec_['contact_model']['states'])
+                    d = d.at[8*nvar+4*extra+3*this:8*nvar+4*extra+4*this].multiply(1 / (nnodes - 1))
+                    c = c.at[8*nvar+4*extra+3*this:8*nvar+4*extra+4*this].set(settings.get("nnodes_dur") * states_list[n].states.size())
+        start = n * 4 * info['ncons_per_node']  # Calculate where to insert this block
 
         rows_out = jax.lax.dynamic_update_slice(rows_out, r, (start,))
         cols_out = jax.lax.dynamic_update_slice(cols_out, c, (start,))
@@ -227,3 +299,33 @@ def jacobian_q(states_list, globals_dict, settings, info):
 
     rows_out, cols_out, data_out = jax.lax.fori_loop(0, nnodes - 1, body_fun, (rows_out, cols_out, data_out))
     return rows_out, cols_out, data_out
+
+
+def find_dependents(model):
+    results = {}
+    n_constraints = 0
+
+    for section in ['contact_model', 'actuator_model']:
+        curr_model = getattr(model, section)
+        if curr_model.get_n_states() > 1:
+            state_vector = curr_model.state_vector
+
+            states = []
+            derivatives = []
+
+            # Build a map from base names to their indices
+            for i, name in enumerate(state_vector):
+                if (name + '_dot') in state_vector:
+                    states.append(i)
+                    derivatives.append(state_vector.index(name+'_dot'))
+                    if (name + '_ddot') in state_vector:
+                        states.append(state_vector.index(name+'_dot'))
+                        derivatives.append(state_vector.index(name+'_ddot'))
+
+
+            results[section] = {
+                'states': jnp.array(states),
+                'derivatives': jnp.array(derivatives)
+            }
+            n_constraints += len(states)
+    return results, n_constraints

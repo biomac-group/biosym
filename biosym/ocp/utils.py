@@ -66,9 +66,10 @@ def x_to_states_dict(x, states_dict, globals_dict=None):
     # 4) Split x: first N*d entries for states, rest for globals
     flat_states = x[: N * d].reshape((N, d))
     rest = x[N * d :]
-
     if globals_dict is not None:
-        new_globals = Globals(dur=x[-2], speed=x[-1]) if len(rest) == 2 else 1
+        new_globals = Globals(dur=x[-2], speed=x[-1]) if len(rest) == 2 else 71101
+        if len(rest) != 2:
+            raise ValueError(f"Expected 2 global parameters (dur, speed), got {len(rest)}")
     else:
         new_globals = None
 

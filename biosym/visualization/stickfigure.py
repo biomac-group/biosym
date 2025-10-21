@@ -39,6 +39,11 @@ def _extract_fk_marker_data(model, state_sequence, markers_exp=None):
     n_markers = len(model.dicts.get("markers", [])) if model.dicts.get("markers") is not None else 0
 
     fk_marker = model.run["FK_marker"]
+    # Check if the model has a contact model
+    hascontact = hasattr(model, "gc_model") and model.gc_model is not None
+    
+    # Check if the model has an actuator model (muscles)
+    hasmuscles = hasattr(model, "actuator_model") and model.actuator_model is not None and hasattr(model.actuator_model, "plot")
 
     joint_frames = []
     site_frames = []
@@ -628,9 +633,18 @@ def plot_stick_figure(
     plot_objects = None
     if hascontact:
         # Initialize and retain plot objects for contact model so update phase can reuse them.
-        plot_objects = model.gc_model.plot(
+        contact_plot_objects = model.gc_model.plot(
             state_sequence, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
         )
+    else:
+        contact_plot_objects = None
+    
+    if hasmuscles:
+        muscle_plot_objects = model.actuator_model.plot(
+            states, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
+        )
+    else:
+        muscle_plot_objects = None
 
     # Set axis labels
     ax.set_xlabel("X-axis [m]")
@@ -668,13 +682,126 @@ def plot_stick_figure(
         if labels:
             ax.legend(loc="best")
 
-    ani = animation.FuncAnimation(
-        fig, update, frames=np.arange(n_frames), interval=50, blit=False
-    )
-    plt.show()
-    # Attach contact plot objects for use inside update via closure if needed
-    if hascontact:
-        # Monkey-patch attribute onto animation for potential external use/debugging
-        ani._contact_plot_objects = plot_objects  # noqa: SLF001 (intentional internal attribute)
-        ani._contact_state_sequence = state_sequence
-    return ani
+
+        def on_key_press(event):
+            nonlocal ispaused, speed_multiplier
+            if event.key == " ":  # Spacebar toggles pause
+                ispaused = not ispaused
+            elif event.key == "up":  # Up arrow increases speed
+                speed_multiplier = min(speed_multiplier * 1.2, 10.0)  # Max 10x speed
+                speed_text.set_text(
+                    f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed"
+                )
+                fig.canvas.draw_idle()
+            elif event.key == "down":  # Down arrow decreases speed
+                speed_multiplier = max(speed_multiplier / 1.2, 0.1)  # Min 0.1x speed
+                speed_text.set_text(
+                    f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed"
+                )
+                fig.canvas.draw_idle()
+
+        fig.canvas.mpl_connect("key_press_event", on_key_press)
+
+        global pauseframes_total
+        pauseframes_total = 0
+        current_frame = 0
+        last_update_time = 0
+
+        def update(frame_input):
+            nonlocal current_frame, last_update_time
+            global pauseframes_total
+
+            import time
+
+            current_time = time.time()
+
+            if ispaused:
+                last_update_time = current_time
+                return []  # No update if paused
+
+            # Calculate frame based on speed multiplier
+            if last_update_time == 0:
+                last_update_time = current_time
+
+            time_elapsed = current_time - last_update_time
+            frames_to_advance = int(time_elapsed * speed_multiplier / dt)
+
+            if frames_to_advance >= 1:
+                current_frame = (current_frame + frames_to_advance) % n_frames
+                last_update_time = current_time
+
+            frame = current_frame
+
+            for i, joint in enumerate(model.positions):
+                if case_ == "2D":
+                    joints[i].set_data(
+                        [
+                            [anim_joint_positions[frame][i, non_zero_axes[0]]],
+                            [anim_joint_positions[frame][i, non_zero_axes[1]]],
+                        ]
+                    )
+                else:
+                    joints[i].set_data(
+                        [
+                            [anim_joint_positions[frame][i, 0]],
+                            [anim_joint_positions[frame][i, 1]],
+                        ]
+                    )
+                    joints[i].set_3d_properties(anim_joint_positions[frame][i, 2])
+            for i, connection in enumerate(connections):
+                if case_ == "2D":
+                    segments[i].set_data(
+                        [
+                            [
+                                anim_joint_positions[frame][connection][
+                                    :, non_zero_axes[0]
+                                ]
+                            ],
+                            [
+                                anim_joint_positions[frame][connection][
+                                    :, non_zero_axes[1]
+                                ]
+                            ],
+                        ]
+                    )
+                else:
+                    pos_a = anim_joint_positions[frame][connection][0]
+                    pos_b = anim_joint_positions[frame][connection][1]
+                    segments[i].set_data([pos_a[0], pos_b[0]], [pos_a[1], pos_b[1]])
+                    segments[i].set_3d_properties([pos_a[2], pos_b[2]])
+            ax.set_title(f"T = {frame * dt:.2f} s")
+            if hascontact:
+                model.gc_model.plot(
+                    states,
+                    model,
+                    mode="update",
+                    ax=ax,
+                    case=case_,
+                    non_zero_axes=non_zero_axes,
+                    frame=frame,
+                    plot_objects=contact_plot_objects,
+                )
+            
+            if hasmuscles:
+                model.actuator_model.plot(
+                    states,
+                    model,
+                    mode="update",
+                    ax=ax,
+                    case=case_,
+                    non_zero_axes=non_zero_axes,
+                    frame=frame,
+                    plot_objects=muscle_plot_objects,
+                )
+
+                return ax.collections
+
+        ani = animation.FuncAnimation(
+            fig,
+            update,
+            frames=np.arange(n_frames),
+            interval=50,
+            blit=False,  # 50ms = 20 FPS for smooth animation
+        )
+        plt.show()
+        return ani
