@@ -20,7 +20,7 @@
         <inertial pos="0 0.5 0" mass="1" fullinertia="1 1 1 0 0 0"></inertial>
         <joint axis="0 0 1" name="hinge2" pos="0 0 0" type="hinge"/>
         <geom fromto="0 0 0 0 0 0.6" name="cpole2" rgba="0 0.7 0.7 1" size="0.045 0.3" type="capsule"/>
-        <site name="tip" pos="0 1 0" size="0.01 0.01"/>
+        <site name="vis_tip" pos="0 1 0" size="0.01 0.01"/>
         <!-- To plot the end of the body, we can set it in an .xml file OR create a massless body with an extra joint (This will make computation slower) -->
         <!-- Here, we see an issue: the body cannot be exactly "massless", because that will cause NaNs in the forward simulation, so i've set it to 1e-12 -->
         <!-- TODO: parse the "site" as the tip of the pole-->
