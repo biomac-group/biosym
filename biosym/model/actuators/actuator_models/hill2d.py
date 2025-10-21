@@ -678,7 +678,6 @@ class Hill2d(BaseActuator):
                             muscle_path[:, non_zero_axes[1]],
                             color=muscle_color,
                             linewidth=line_width,
-                            label=f'{self.names[i]}',
                             solid_capstyle='round'
                         )
                     else:
@@ -688,7 +687,6 @@ class Hill2d(BaseActuator):
                             muscle_path[:, 2],
                             color=muscle_color,
                             linewidth=line_width,
-                            label=f'{self.names[i]}',
                             solid_capstyle='round'
                         )
                 
