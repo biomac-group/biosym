@@ -13,7 +13,6 @@ if VIS:
 else:
     os.environ.setdefault("MPLBACKEND", "Agg")
 
-# Apply backend early
 import matplotlib
 
 import sys

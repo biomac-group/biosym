@@ -195,15 +195,13 @@ def _compute_limits(case_, non_zero_axes, anim_joints, anim_markers, anim_exp, j
         d = np.zeros_like(min_)
         # X axis index: first displayed axis in 2D, or 0 in 3D
         x_idx = non_zero_axes[0] if case_ == "2D" else 0
-        span_x = max_[x_idx] - min_[x_idx]
-        # If degenerate, give a small default span to make limits markerible
-        if not np.isfinite(span_x) or span_x == 0:
-            span_x = 0.1
-        d[x_idx] = np.abs(span_x * pad_ratio)
-        min_[x_idx] -= d[x_idx]
-        max_[x_idx] += d[x_idx]
-        # Y (and Z) unchanged
-  
+        y_idx = non_zero_axes[1] if case_ == "2D" else 0
+        min_[x_idx] -= 2*pad_ratio
+        max_[x_idx] += 2*pad_ratio
+        # Y
+        min_[y_idx] -= 5*pad_ratio
+        max_[y_idx] += 5*pad_ratio
+
     if case_ == "2D":
         return (min_[non_zero_axes[0]], max_[non_zero_axes[0]], min_[non_zero_axes[1]], max_[non_zero_axes[1]])
     return (min_[0], max_[0], min_[1], max_[1], min_[2], max_[2])
@@ -593,7 +591,7 @@ def plot_stick_figure(
 
     # Compute and set limits
     # Allow user override of padding; enlarge default for standing (single frame)
-    user_pad = kwargs.get("pad_ratio", 1 if n_frames == 1 else 0.05)
+    user_pad = kwargs.get("pad_ratio", 0.05 if n_frames == 1 else 0.05)
     limits = _compute_limits(case_, non_zero_axes, anim_joint_positions, anim_site_positions, anim_exp_markers,
                               joint_positions, site_positions, exp0, pad_ratio=user_pad)
     if case_ == "2D":
