@@ -713,6 +713,7 @@ class BiosymModel:
         """
         self.positions = [body for body in self.body_origins.keys()]
         pos_vector = []
+        pos_vector_markers = []
         for _, point in self.body_origins.items():
             pos_vector.append(
                 [
@@ -730,44 +731,50 @@ class BiosymModel:
         self.run["FK_uncompiled"] = pos_vector_
         pos_vector_ = self._precompile_fn(pos_vector_, self.default_inputs, "FK")
 
-        # Visualization FK: append site positions (use pre-built SymPy Points)
+        # Visualization FK: gather markers (if any)
         if self.dicts.get("markers") is not None:
-            # Marker Visualization FK: append markerpositions (use pre-built SymPy Points)
-            if hasattr(self, "markers") and self.markers:
-                for marker_pt in self.markers.values():
-                    pos_vector.append(
-                        [
-                            marker_pt.pos_from(self.origin).dot(frame_dim)
-                            for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
-                        ]
-                    )
-                
-            pos_vector_marker = Matrix(pos_vector)
+            for marker_pt in self.markers.values():
+                pos_vector_markers.append(
+                    [
+                        marker_pt.pos_from(self.origin).dot(frame_dim)
+                        for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
+                    ]
+                )
+
+            pos_vector_marker = Matrix(pos_vector_markers)
             pos_vector_marker = self._replace_dyn(pos_vector_marker)
             pos_vector_marker = lambdify(self._v, pos_vector_marker, modules="jax", cse=True, docstring_limit=2)
             self.run["FK_marker_uncompiled"] = pos_vector_marker
             # store compiled/jitted visualization function
             pos_vector_marker = self._precompile_fn(pos_vector_marker, self.default_inputs, "FK_marker", skip_export=True)
-            
+
+        # Visualization FK: bodies + markers + sites (when available)
+        pos_vector_sites: list[list] = []
         if self.dicts.get("sites") is not None:
-            if hasattr(self, "sites") and self.sites:
-                for site_pt in self.sites.values():
-                    pos_vector.append(
-                        [
-                            site_pt.pos_from(self.origin).dot(frame_dim)
-                            for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
-                        ]
-                    )
+            for site_pt in self.sites.values():
+                pos_vector_sites.append(
+                    [
+                        site_pt.pos_from(self.origin).dot(frame_dim)
+                        for frame_dim in (self.ground_frame.x, self.ground_frame.y, self.ground_frame.z)
+                    ]
+                )
 
-                pos_vector_vis = Matrix(pos_vector)
-                pos_vector_vis = self._replace_dyn(pos_vector_vis)
-                pos_vector_vis = lambdify(self._v, pos_vector_vis, modules="jax", cse=True, docstring_limit=2)
-                self.run["FK_vis_uncompiled"] = pos_vector_vis
-                # store compiled/jitted visualization function
-                pos_vector_vis = self._precompile_fn(pos_vector_vis, self.default_inputs, "FK_vis", skip_export=True)
+        # Assemble visualization rows: start from bodies, then markers, then sites
+        pos_vector_vis_rows = list(pos_vector)  # bodies
+        if pos_vector_markers:
+            pos_vector_vis_rows.extend(pos_vector_markers)
+        if pos_vector_sites:
+            pos_vector_vis_rows.extend(pos_vector_sites)
 
-        else: 
-            # no sites defined -> visualization FK is same as body-only FK
+        if len(pos_vector_vis_rows) > len(pos_vector):
+            pos_vector_vis = Matrix(pos_vector_vis_rows)
+            pos_vector_vis = self._replace_dyn(pos_vector_vis)
+            pos_vector_vis = lambdify(self._v, pos_vector_vis, modules="jax", cse=True, docstring_limit=2)
+            self.run["FK_vis_uncompiled"] = pos_vector_vis
+            # store compiled/jitted visualization function
+            pos_vector_vis = self._precompile_fn(pos_vector_vis, self.default_inputs, "FK_vis", skip_export=True)
+        else:
+            # No additional rows beyond bodies; fall back to body-only FK
             self.run["FK_vis_uncompiled"] = self.run["FK_uncompiled"]
             self.run["FK_vis"] = self.run["FK"]
 
