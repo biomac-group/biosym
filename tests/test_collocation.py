@@ -23,13 +23,6 @@ parser.add_argument("--vis", action="store_true", help="Enable visualization", d
 if __name__ == "__main__":
     #args = parser.parse_args()
     VIS = True #args.vis
-    if VIS:
-        print("Running with visualization enabled...")
-        standing_prob = collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
-        standing_prob.solve(visualize=VIS)
-
-        walking_problem = collocation.Collocation("tests/collocation/walking2d.yaml", force_rebuild=True)
-        walking_problem.solve(visualize=VIS)
 else:
     # Default values when running through pytest
     VIS = False
@@ -291,7 +284,7 @@ if __name__ == "__main__":
     print(f"Visualization mode: {'ON' if VIS else 'OFF'}")
 
     try:
-        if VIS:
+        if not VIS:
             pass
         else:
             print("Running in test mode (no visualization)...")
