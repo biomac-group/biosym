@@ -12,14 +12,14 @@ collocation:
       weight: 400
     output:
       file: "~/.biosym/standing2d.pkl"
-    tol: 5e-4
+    tol: 1e-6
 
   objectives:
     - name: effort_term
     #- name: torque_term
       weight: 1
       args:
-        exponent: 2 # Somehow this works best
+        exponent: 4 # Somehow this works best
 
 
 
@@ -28,7 +28,7 @@ collocation:
     - name: dynamics
       weight: "1/BW"
     - name: actuators
-      weight: 1
+      weight: "1/BW"
     - name: ground_contact
       weight: "1/BW"
 

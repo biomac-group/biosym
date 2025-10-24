@@ -3,7 +3,7 @@ collocation:
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
     model: tests/models/gait2d/gait2d.yaml
-    nnodes: 100
+    nnodes: 50
     discretization:
       type: euler
       args:
@@ -13,42 +13,20 @@ collocation:
         adaptive_h: false
     output:
       file: "~/.biosym/walking2d.pkl"
-    tol: 3e-3
-    acceptable_dual_inf_tol: 1e-2
+    tol: 5e-4
+    acceptable_dual_inf_tol: 1e-3
     constr_viol_tol: 1e-4
-    max_iter: 10000
+    max_iter: 3000
 
   objectives:
-    - name: torque_term
-      weight: 1e-2
+    - name: effort_term
+      weight: 1e5
       args:
         exponent: 3
-    - name: jerk_term
-      weight: 1e-2
-    # - name: track_angles
-    #   weight: 1
-    #   args:
-    #     presegmented: true # if true, file is expected to contain mean/var columns
-    #     presegmented_file: "../biosym/example_data/gait_avg_joint_angles.mot"
-    #     exclude: ['q_pelvis_tx', 'q_pelvis_ty', 'q_pelvis_tilt'] # Exclude joints from tracking
-    - name: track_grf
-      weight: 1
-      args:
-        presegmented: false # if true, file is expected to contain mean/var columns
-        presegmented_file: ""
-    - name: track_markers
-      weight: 1e2
-      args:
-        2d: true # If true, Z components in expected data are set to zero
-        treadmill_speed: 1.3 # specify treadmill speed here (m/s)
-        presegmented: false # if true, file is expected to contain mean/var columns
-        presegmented_file: ""
-        
-
 
   constraints:
     - name: dynamics
-      weight: "1/BW"
+      weight: 1
     - name: ground_contact
       weight: "1/BW"
     - name: actuators
@@ -56,7 +34,7 @@ collocation:
     - name: periodicity
       weight: 1
       args:
-        symmetry: false
+        symmetry: true
         exclude: [0] # Exclude the first dimension --> pelvis_tx # Todo - that should be cross-check with the speed idx
 
   initial_guess:
@@ -65,9 +43,9 @@ collocation:
 
   bounds:
     from_model: true
-    start_at_origin: false
-    dur: 1.05
-    speed: [0.1,1.5]
+    start_at_origin: true
+    dur: [0.8,1.2]
+    speed: 1.3
 
 
   
