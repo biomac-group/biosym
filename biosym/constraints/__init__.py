@@ -3,6 +3,7 @@ __all__ = [
     "adaptive_h",
     "discretization",
     "dynamics",
+    "dynamics_unified",
     "ground_contact",
     "periodicity",
     "speed",
