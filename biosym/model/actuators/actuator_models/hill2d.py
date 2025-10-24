@@ -461,7 +461,7 @@ class Hill2d(BaseActuator):
             a_min = (states.actuator_model[:-1, self.idx['a']]) * jnp.exp(
                 -h / self.muscle_constants['Tdeact'].T
             )  # Exponential decay to 0
-            c2 = jnp.where(a > a_max, a_max - a, 0) + jnp.where(a < a_min, a - a_min, 0)
+            c2 = (a-a_max)*0
             c1 = jnp.concatenate((c1, c2.reshape(-1)), axis=0)
         else:
             pass
@@ -476,7 +476,7 @@ class Hill2d(BaseActuator):
             F_max = self.muscle_constants["fmax"]
             c1 = (F_see - F_ce - F_pee) / F_max  # Normalized to F_max
             c1 = c1.T.reshape(-1)  # shape (n_actuators,)
-            return c1
+            return c1 
         c_fun = jax.jit(jax.vmap(jax.jacobian(c1, argnums=0), in_axes=(0, None), out_axes=0))
         jac = c_fun(states[:settings.get("nnodes")], constants)
 
@@ -523,7 +523,7 @@ class Hill2d(BaseActuator):
             a_min = (current_state.actuator_model[self.idx['a']]) * jnp.exp(
                 -h / self.muscle_constants['Tdeact'].T
             )  # Exponential decay to 0
-            c2 = jnp.where(a > a_max, a_max - a, 0) + jnp.where(a < a_min, a - a_min, 0)
+            c2 = (a)*0
             # Debug: check if constraints are active            
             return c2.T.reshape(-1) # shape (n_actuators*(nnodes-1),)
 
