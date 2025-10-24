@@ -375,7 +375,19 @@ def _add_segments(ax, case_, non_zero_axes, joint0, site0, connections):
     return segs, np.array(drawn_connections)
 
 
-def _create_update_func(anim_joints, anim_markers, anim_exp, joints_art, site_artists, exp_artists, segments, connections, case_, non_zero_axes, dt, ax, model, hascontact, contact_plot_objects):
+def _create_update_func(anim_joints, 
+                        anim_markers, 
+                        anim_exp, 
+                        joints_art, 
+                        site_artists, 
+                        exp_artists, 
+                        segments, 
+                        connections,
+                        case_, 
+                        non_zero_axes, 
+                        dt, ax, model,
+                        hascontact, contact_plot_objects, 
+                        hasmuscles, muscle_plot_objects):
     """Return a Matplotlib FuncAnimation update callback."""
     ispaused = False
     speed_multiplier = 1.0
@@ -412,14 +424,19 @@ def _create_update_func(anim_joints, anim_markers, anim_exp, joints_art, site_ar
         now = time.time()
         if last_update_time == 0:
             last_update_time = now
-        # Pause logic
-        # (We just skip advancement if paused)
-        # Compute frames to advance
-        elapsed = now - last_update_time
-        frames_to_advance = int(elapsed * speed_multiplier / dt)
-        if frames_to_advance >= 1:
-            current_frame = (current_frame + frames_to_advance) % n_frames
+        
+        # Pause logic - only advance if not paused
+        if not ispaused:
+            # Compute frames to advance
+            elapsed = now - last_update_time
+            frames_to_advance = int(elapsed * speed_multiplier / dt)
+            if frames_to_advance >= 1:
+                current_frame = (current_frame + frames_to_advance) % n_frames
+                last_update_time = now
+        else:
+            # When paused, update last_update_time to prevent frame jumps when unpausing
             last_update_time = now
+            
         f = current_frame
         # Joints
         for i in range(anim_joints.shape[1]):
@@ -481,6 +498,17 @@ def _create_update_func(anim_joints, anim_markers, anim_exp, joints_art, site_ar
                     frame=f,
                     plot_objects=contact_plot_objects,
                 )
+        if hasmuscles:
+            model.actuator_model.plot(
+                False,
+                model,
+                mode="update",
+                ax=ax,
+                case=case_,
+                non_zero_axes=non_zero_axes,
+                frame=f,
+                plot_objects=muscle_plot_objects,
+            )
         return []
 
     return update
@@ -659,27 +687,30 @@ def plot_stick_figure(
         plt.tight_layout()
         plt.show()
 
-    update = _create_update_func(
-        anim_joint_positions,
-        anim_site_positions,
-        anim_exp_markers,
-        joints,
-        site_artists,
-        exp_site_artists,
-        segments,
-        connections,
-        case_,
-        non_zero_axes,
-        dt,
-        ax,
-        model,
-        hascontact,
-        plot_objects,
-    )
-    # Only add legend for multi-frame animations to avoid clutter in standing
     if n_frames > 1:
+        update = _create_update_func(
+            anim_joint_positions,
+            anim_site_positions,
+            anim_exp_markers,
+            joints,
+            site_artists,
+            exp_site_artists,
+            segments,
+            connections,
+            case_,
+            non_zero_axes,
+            dt,
+            ax,
+            model,
+            hascontact,
+            contact_plot_objects,
+            hasmuscles,
+            muscle_plot_objects
+        )
+        # Only add legend for multi-frame animations to avoid clutter in standing
         handles, labels = ax.get_legend_handles_labels()
-        ispaused, speed_multiplier = False, 1.0
+
+
         if labels:
             ax.legend(loc="best")
 
@@ -689,95 +720,6 @@ def plot_stick_figure(
         pauseframes_total = 0
         current_frame = 0
         last_update_time = 0
-
-        def update(frame_input):
-            nonlocal current_frame, last_update_time
-            global pauseframes_total
-
-            import time
-
-            current_time = time.time()
-
-            if ispaused:
-                last_update_time = current_time
-                return []  # No update if paused
-
-            # Calculate frame based on speed multiplier
-            if last_update_time == 0:
-                last_update_time = current_time
-
-            time_elapsed = current_time - last_update_time
-            frames_to_advance = int(time_elapsed * speed_multiplier / dt)
-
-            if frames_to_advance >= 1:
-                current_frame = (current_frame + frames_to_advance) % n_frames
-                last_update_time = current_time
-
-            frame = current_frame
-
-            for i, joint in enumerate(model.positions):
-                if case_ == "2D":
-                    joints[i].set_data(
-                        [
-                            [anim_joint_positions[frame][i, non_zero_axes[0]]],
-                            [anim_joint_positions[frame][i, non_zero_axes[1]]],
-                        ]
-                    )
-                else:
-                    joints[i].set_data(
-                        [
-                            [anim_joint_positions[frame][i, 0]],
-                            [anim_joint_positions[frame][i, 1]],
-                        ]
-                    )
-                    joints[i].set_3d_properties(anim_joint_positions[frame][i, 2])
-            for i, connection in enumerate(connections):
-                if case_ == "2D":
-                    segments[i].set_data(
-                        [
-                            [
-                                anim_joint_positions[frame][connection][
-                                    :, non_zero_axes[0]
-                                ]
-                            ],
-                            [
-                                anim_joint_positions[frame][connection][
-                                    :, non_zero_axes[1]
-                                ]
-                            ],
-                        ]
-                    )
-                else:
-                    pos_a = anim_joint_positions[frame][connection][0]
-                    pos_b = anim_joint_positions[frame][connection][1]
-                    segments[i].set_data([pos_a[0], pos_b[0]], [pos_a[1], pos_b[1]])
-                    segments[i].set_3d_properties([pos_a[2], pos_b[2]])
-            ax.set_title(f"T = {frame * dt:.2f} s")
-            if hascontact:
-                model.gc_model.plot(
-                    states,
-                    model,
-                    mode="update",
-                    ax=ax,
-                    case=case_,
-                    non_zero_axes=non_zero_axes,
-                    frame=frame,
-                    plot_objects=contact_plot_objects,
-                )
-            
-            if hasmuscles:
-                model.actuator_model.plot(
-                    states,
-                    model,
-                    mode="update",
-                    ax=ax,
-                    case=case_,
-                    non_zero_axes=non_zero_axes,
-                    frame=frame,
-                    plot_objects=muscle_plot_objects,
-                )
-
-                return ax.collections
 
         ani = animation.FuncAnimation(
             fig,
