@@ -148,6 +148,24 @@ class BaseContact(ABC):
         The returned list should have length equal to get_n_constants().
         Constant names are used for identification in optimization and analysis.
         """
+    
+    def get_n_constraints(self, *args, **kwargs):
+        """
+        Get the number of constraints imposed by the contact model.
+        
+        Returns
+        -------
+        int
+            Number of constraints that the contact model adds to the system.
+            
+        Notes
+        -----
+        Contact models may impose constraints on the system dynamics,
+        such as non-penetration conditions or friction limits.
+        The default implementation returns 0, but subclasses can override
+        this method to specify the actual number of constraints.
+        """
+        return 0
 
     @abstractmethod
     def process_eom(self):

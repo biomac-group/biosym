@@ -2,7 +2,7 @@ collocation:
   name: script2d_torque_driven
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
-    model: tests/models/gait2d_torque/gait2d_torque.yaml
+    model: tests/models/gait2d/gait2d.yaml
     nnodes: 50
     discretization:
       type: euler
@@ -16,19 +16,19 @@ collocation:
     tol: 1e-5
     acceptable_dual_inf_tol: 1e-2
     constr_viol_tol: 1e-4
-    max_iter: 10000
+    max_iter: 3000
 
   objectives:
-    - name: torque_term
-      weight: 1e-2
+    - name: effort_term
+      weight: 1e3
       args:
         exponent: 3
     - name: jerk_term
-      weight: 1e-2
+      weight: 0
 
   constraints:
     - name: dynamics
-      weight: "1/BW" # <-- Constraints are scaled so that they are in the same magnitude
+      weight: 1 # <-- Constraints are scaled so that they are in the same magnitude
     - name: ground_contact
       weight: "1/BW" # <-- 1/BW means that the constraint violation is scaled by body weight
     - name: actuators
