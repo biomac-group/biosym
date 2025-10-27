@@ -30,7 +30,7 @@ class Constraint(BaseConstraint):
         if args.get("symmetry", False):
             self.id_symmetry = jnp.array(get_symmetry_indices(self.model))
         else:
-            self.id_symmetry = jnp.arange(model.n_states)
+            self.id_symmetry = jnp.arange(self.settings["nvpn"])
 
         self.adaptive_h = settings.get("adaptive_h", False)
 
