@@ -15,8 +15,9 @@ collocation:
       file: "~/.biosym/walking2d.pkl"
     tol: 5e-4
     acceptable_dual_inf_tol: 1e-3
+    acceptable_tol: 1e-3
     constr_viol_tol: 1e-4
-    max_iter: 3000
+    max_iter: 6000
 
   objectives:
     - name: effort_term
