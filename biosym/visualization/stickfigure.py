@@ -34,14 +34,10 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
     for i in range(n_frames):
         arr = fk_vis(state_sequence[i].states, state_sequence[i].constants)
         # Bodies first
-        joints = arr[:n_bodies, :] if n_bodies > 0 else arr
+        joints = arr[:n_bodies+n_sites, :] if n_bodies > 0 else arr
         # Sites as last n_sites rows (robust to presence/absence of markers in arr)
-        sites = None
-        if n_sites > 0 and arr.shape[0] >= n_bodies + n_sites:
-            sites = arr[-n_sites:, :]
         joint_frames.append(joints)
-        if sites is not None:
-            site_frames.append(sites)
+
         # Markers: prefer dedicated FK_marker; else slice from FK_vis if present
         markers = None
         if n_markers > 0:
@@ -99,7 +95,6 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
         "n_markers": n_markers,
         "n_frames": anim_joint_positions.shape[0],
     }
-
 
 def _auto_markers_from_objective(obj):
     """Try to extract experimental markers from a tracking objective.
@@ -173,7 +168,6 @@ def _setup_axes(joint0,exp0, r, n_frames):
     # Limits computed later in main to include all frames (need full arrays) -> done outside
     return fig, ax, case_, non_zero_axes
 
-
 def _compute_limits(case_, non_zero_axes, anim_joints, anim_sites, anim_exp, joint0, site0, exp0, pad_ratio: float = 0.05):
     """Compute axis limits given available position arrays.
 
@@ -201,8 +195,8 @@ def _compute_limits(case_, non_zero_axes, anim_joints, anim_sites, anim_exp, joi
         if anim_exp is not None:
             pos_list.append(anim_exp)
         all_pos = np.concatenate(pos_list, axis=1)  # (N, M, 3)
-        min_ = np.min(all_pos, axis=(0, 1))
-        max_ = np.max(all_pos, axis=(0, 1))
+        min_ = np.min(all_pos, axis=(0, 1)) - pad_ratio
+        max_ = np.max(all_pos, axis=(0, 1)) + pad_ratio
     else:  # standing
         stack = [joint0]
         if site0 is not None:
@@ -218,11 +212,11 @@ def _compute_limits(case_, non_zero_axes, anim_joints, anim_sites, anim_exp, joi
         # X axis index: first displayed axis in 2D, or 0 in 3D
         x_idx = non_zero_axes[0] if case_ == "2D" else 0
         y_idx = non_zero_axes[1] if case_ == "2D" else 0
-        min_[x_idx] -= 5*pad_ratio
-        max_[x_idx] += 5*pad_ratio
+        min_[x_idx] -= pad_ratio
+        max_[x_idx] += pad_ratio
         # Y
-        min_[y_idx] -= 5*pad_ratio
-        max_[y_idx] += 5*pad_ratio
+        min_[y_idx] -= pad_ratio
+        max_[y_idx] += pad_ratio
 
     if case_ == "2D":
         return (min_[non_zero_axes[0]], max_[non_zero_axes[0]], min_[non_zero_axes[1]], max_[non_zero_axes[1]])
@@ -327,6 +321,7 @@ def _draw_initial_frame(
                 g.set_label("exp markers")
             exp_artists.append(g)
     return joints_art, site_artists, exp_artists
+
 
 
 def _gather_connections(model, n_bodies):
@@ -648,19 +643,9 @@ def plot_stick_figure(
 
     # Compute and set limits
     # Allow user override of padding; enlarge default for standing (single frame)
-    user_pad = kwargs.get("pad_ratio", 0.05 if n_frames == 1 else 0.05)
-    # Use anim_marker_positions/marker_positions for limits alongside joints/exp
-    limits = _compute_limits(
-        case_,
-        non_zero_axes,
-        anim_joint_positions,
-        anim_marker_positions,
-        anim_exp_markers,
-        joint_positions,
-        marker_positions,
-        exp0,
-        pad_ratio=user_pad,
-    )
+    user_pad = kwargs.get("pad_ratio", 1 if n_frames == 1 else 0.2)
+    limits = _compute_limits(case_, non_zero_axes, anim_joint_positions, anim_site_positions, anim_exp_markers,
+                              joint_positions, site_positions, exp0, pad_ratio=user_pad)
     if case_ == "2D":
         ax.set_xlim(limits[0], limits[1])
         ax.set_ylim(limits[2], limits[3])
