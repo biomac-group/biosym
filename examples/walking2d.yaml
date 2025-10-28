@@ -16,7 +16,7 @@ collocation:
     tol: 1e-5
     acceptable_dual_inf_tol: 1e-2
     constr_viol_tol: 1e-4
-    max_iter: 3000
+    max_iter: 5000
 
   objectives:
     - name: effort_term
