@@ -126,6 +126,23 @@ class States:
             return x[index] if isinstance(x, jnp.ndarray) else x
 
         return jax.tree_util.tree_map(slice_fn, self)
+    
+    def __len__(self):
+        """
+        Get the number of time steps in the trajectory.
+        
+        Returns
+        -------
+        int
+            Number of time steps, determined by the first dimension of state arrays.
+            Returns 1 for single-timestep data.
+            
+        Notes
+        -----
+        Based on the shape of the model field, which is assumed to be the primary
+        state variable defining trajectory length.
+        """
+        return self.model.shape[0] if self.model.ndim > 1 else 1
 
 
 @dataclass

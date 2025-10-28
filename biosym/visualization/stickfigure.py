@@ -34,14 +34,10 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
     for i in range(n_frames):
         arr = fk_vis(state_sequence[i].states, state_sequence[i].constants)
         # Bodies first
-        joints = arr[:n_bodies, :] if n_bodies > 0 else arr
+        joints = arr[:n_bodies+n_sites, :] if n_bodies > 0 else arr
         # Sites as last n_sites rows (robust to presence/absence of markers in arr)
-        sites = None
-        if n_sites > 0 and arr.shape[0] >= n_bodies + n_sites:
-            sites = arr[-n_sites:, :]
         joint_frames.append(joints)
-        if sites is not None:
-            site_frames.append(sites)
+
         # Markers: prefer dedicated FK_marker; else slice from FK_vis if present
         markers = None
         if n_markers > 0:
@@ -99,7 +95,6 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
         "n_markers": n_markers,
         "n_frames": anim_joint_positions.shape[0],
     }
-
 
 def _auto_markers_from_objective(obj):
     """Try to extract experimental markers from a tracking objective.
@@ -173,7 +168,6 @@ def _setup_axes(joint0,exp0, r, n_frames):
     # Limits computed later in main to include all frames (need full arrays) -> done outside
     return fig, ax, case_, non_zero_axes
 
-
 def _compute_limits(case_, non_zero_axes, anim_joints, anim_sites, anim_exp, joint0, site0, exp0, pad_ratio: float = 0.05):
     """Compute axis limits given available position arrays.
 
@@ -201,8 +195,8 @@ def _compute_limits(case_, non_zero_axes, anim_joints, anim_sites, anim_exp, joi
         if anim_exp is not None:
             pos_list.append(anim_exp)
         all_pos = np.concatenate(pos_list, axis=1)  # (N, M, 3)
-        min_ = np.min(all_pos, axis=(0, 1))
-        max_ = np.max(all_pos, axis=(0, 1))
+        min_ = np.min(all_pos, axis=(0, 1)) - pad_ratio
+        max_ = np.max(all_pos, axis=(0, 1)) + pad_ratio
     else:  # standing
         stack = [joint0]
         if site0 is not None:
@@ -218,11 +212,11 @@ def _compute_limits(case_, non_zero_axes, anim_joints, anim_sites, anim_exp, joi
         # X axis index: first displayed axis in 2D, or 0 in 3D
         x_idx = non_zero_axes[0] if case_ == "2D" else 0
         y_idx = non_zero_axes[1] if case_ == "2D" else 0
-        min_[x_idx] -= 5*pad_ratio
-        max_[x_idx] += 5*pad_ratio
+        min_[x_idx] -= pad_ratio
+        max_[x_idx] += pad_ratio
         # Y
-        min_[y_idx] -= 5*pad_ratio
-        max_[y_idx] += 5*pad_ratio
+        min_[y_idx] -= pad_ratio
+        max_[y_idx] += pad_ratio
 
     if case_ == "2D":
         return (min_[non_zero_axes[0]], max_[non_zero_axes[0]], min_[non_zero_axes[1]], max_[non_zero_axes[1]])
@@ -329,6 +323,7 @@ def _draw_initial_frame(
     return joints_art, site_artists, exp_artists
 
 
+
 def _gather_connections(model, n_bodies):
     """Return body-to-body connection index pairs from topology tree."""
     connections = []
@@ -394,7 +389,19 @@ def _add_segments(ax, case_, non_zero_axes, joint0, site0, connections):
     return segs, np.array(drawn_connections)
 
 
-def _create_update_func(anim_joints, anim_markers, anim_sites, anim_exp, joints_art, site_artists, exp_artists, segments, connections, case_, non_zero_axes, dt, ax, model, hascontact, contact_plot_objects):
+def _create_update_func(anim_joints, 
+                        anim_markers, 
+                        anim_exp, 
+                        joints_art, 
+                        site_artists, 
+                        exp_artists, 
+                        segments, 
+                        connections,
+                        case_, 
+                        non_zero_axes, 
+                        dt, ax, model,
+                        hascontact, contact_plot_objects, 
+                        hasmuscles, muscle_plot_objects):
     """Return a Matplotlib FuncAnimation update callback."""
     ispaused = False
     speed_multiplier = 1.0
@@ -431,14 +438,19 @@ def _create_update_func(anim_joints, anim_markers, anim_sites, anim_exp, joints_
         now = time.time()
         if last_update_time == 0:
             last_update_time = now
-        # Pause logic
-        # (We just skip advancement if paused)
-        # Compute frames to advance
-        elapsed = now - last_update_time
-        frames_to_advance = int(elapsed * speed_multiplier / dt)
-        if frames_to_advance >= 1:
-            current_frame = (current_frame + frames_to_advance) % n_frames
+        
+        # Pause logic - only advance if not paused
+        if not ispaused:
+            # Compute frames to advance
+            elapsed = now - last_update_time
+            frames_to_advance = int(elapsed * speed_multiplier / dt)
+            if frames_to_advance >= 1:
+                current_frame = (current_frame + frames_to_advance) % n_frames
+                last_update_time = now
+        else:
+            # When paused, update last_update_time to prevent frame jumps when unpausing
             last_update_time = now
+            
         f = current_frame
         # Joints
         for i in range(anim_joints.shape[1]):
@@ -501,6 +513,17 @@ def _create_update_func(anim_joints, anim_markers, anim_sites, anim_exp, joints_
                     frame=f,
                     plot_objects=contact_plot_objects,
                 )
+        if hasmuscles:
+            model.actuator_model.plot(
+                False,
+                model,
+                mode="update",
+                ax=ax,
+                case=case_,
+                non_zero_axes=non_zero_axes,
+                frame=f,
+                plot_objects=muscle_plot_objects,
+            )
         return []
 
     return update
@@ -581,8 +604,12 @@ def plot_stick_figure(
             pass  # keep provided dt if globals lacks `dur`
     n_frames = len(state_sequence)
 
-    # Contact model? (Used in updates)
+    fk_marker = model.run["FK_marker"]
+    # Check if the model has a contact model
     hascontact = hasattr(model, "gc_model") and model.gc_model is not None
+    
+    # Check if the model has an actuator model (muscles)
+    hasmuscles = hasattr(model, "actuator_model") and model.actuator_model is not None and hasattr(model.actuator_model, "plot")
 
     # Auto-discover experimental markers from objectives if not provided
     markers_exp = kwargs.get("markers_exp", None)
@@ -616,19 +643,9 @@ def plot_stick_figure(
 
     # Compute and set limits
     # Allow user override of padding; enlarge default for standing (single frame)
-    user_pad = kwargs.get("pad_ratio", 0.05 if n_frames == 1 else 0.05)
-    # Use anim_marker_positions/marker_positions for limits alongside joints/exp
-    limits = _compute_limits(
-        case_,
-        non_zero_axes,
-        anim_joint_positions,
-        anim_marker_positions,
-        anim_exp_markers,
-        joint_positions,
-        marker_positions,
-        exp0,
-        pad_ratio=user_pad,
-    )
+    user_pad = kwargs.get("pad_ratio", 1 if n_frames == 1 else 0.2)
+    limits = _compute_limits(case_, non_zero_axes, anim_joint_positions, anim_site_positions, anim_exp_markers,
+                              joint_positions, site_positions, exp0, pad_ratio=user_pad)
     if case_ == "2D":
         ax.set_xlim(limits[0], limits[1])
         ax.set_ylim(limits[2], limits[3])
@@ -661,9 +678,18 @@ def plot_stick_figure(
     plot_objects = None
     if hascontact:
         # Initialize and retain plot objects for contact model so update phase can reuse them.
-        plot_objects = model.gc_model.plot(
+        contact_plot_objects = model.gc_model.plot(
             state_sequence, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
         )
+    else:
+        contact_plot_objects = None
+    
+    if hasmuscles:
+        muscle_plot_objects = model.actuator_model.plot(
+            state_sequence, model, mode="init", ax=ax, case=case_, non_zero_axes=non_zero_axes
+        )
+    else:
+        muscle_plot_objects = None
 
     # Set axis labels
     ax.set_xlabel("X-axis [m]")
@@ -678,37 +704,46 @@ def plot_stick_figure(
         plt.tight_layout()
         plt.show()
 
-    update = _create_update_func(
-        anim_joint_positions,
-        anim_marker_positions,
-        anim_site_positions,
-        anim_exp_markers,
-        joints,
-        site_artists,
-        exp_site_artists,
-        segments,
-        connections,
-        case_,
-        non_zero_axes,
-        dt,
-        ax,
-        model,
-        hascontact,
-        plot_objects,
-    )
-    # Only add legend for multi-frame animations to avoid clutter in standing
     if n_frames > 1:
+        update = _create_update_func(
+            anim_joint_positions,
+            anim_site_positions,
+            anim_exp_markers,
+            joints,
+            site_artists,
+            exp_site_artists,
+            segments,
+            connections,
+            case_,
+            non_zero_axes,
+            dt,
+            ax,
+            model,
+            hascontact,
+            contact_plot_objects,
+            hasmuscles,
+            muscle_plot_objects
+        )
+        # Only add legend for multi-frame animations to avoid clutter in standing
         handles, labels = ax.get_legend_handles_labels()
+
+
         if labels:
             ax.legend(loc="best")
 
-    ani = animation.FuncAnimation(
-        fig, update, frames=np.arange(n_frames), interval=50, blit=False
-    )
-    plt.show()
-    # Attach contact plot objects for use inside update via closure if needed
-    if hascontact:
-        # Monkey-patch attribute onto animation for potential external use/debugging
-        ani._contact_plot_objects = plot_objects  # noqa: SLF001 (intentional internal attribute)
-        ani._contact_state_sequence = state_sequence
-    return ani
+
+
+        global pauseframes_total
+        pauseframes_total = 0
+        current_frame = 0
+        last_update_time = 0
+
+        ani = animation.FuncAnimation(
+            fig,
+            update,
+            frames=np.arange(n_frames),
+            interval=50,
+            blit=False,  # 50ms = 20 FPS for smooth animation
+        )
+        plt.show()
+        return ani

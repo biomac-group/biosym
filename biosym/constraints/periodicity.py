@@ -20,17 +20,17 @@ class Constraint(BaseConstraint):
         self.model = model
         self.settings = settings.copy()
         self.args = args
-        self.settings["nvpn"] = len(model.state_vector)
+        self.settings["nvpn"] = len(model.default_inputs.states.flatten())
         self.nvar = settings.get("nvar")
 
         # We exclude certain dimensions from the periodicity constraint
         self.exclude_dims = self.args.get("exclude", [])
-        self.dims = jnp.array([i for i in range(self.model.n_states) if i not in self.exclude_dims])
+        self.dims = jnp.array([i for i in range(self.settings['nvpn']) if i not in self.exclude_dims])
 
         if args.get("symmetry", False):
-            self.id_symmetry = jnp.array(get_symmetry_indices(self.model.state_vector))
+            self.id_symmetry = jnp.array(get_symmetry_indices(self.model))
         else:
-            self.id_symmetry = jnp.arange(model.n_states)
+            self.id_symmetry = jnp.arange(self.settings["nvpn"])
 
         self.adaptive_h = settings.get("adaptive_h", False)
 
@@ -129,10 +129,14 @@ def jacobian_per(states_list, _, dims, id_symmetry, nnodes_dur, settings):
     return r, c, d
 
 
-def get_symmetry_indices(names):
+def get_symmetry_indices(model):
     index_map = {}
     used = set()
-
+    names = model.state_vector 
+    if model.contact_model.get_n_states() > 0:
+        names = names + model.contact_model.state_vector
+    if model.actuator_model.get_n_states() > 0:
+        names = names + model.actuator_model.state_vector
     for i, name in enumerate(names):
         if i in used:
             continue

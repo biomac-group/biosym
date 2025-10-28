@@ -53,6 +53,7 @@ class Constraints:
         # Initialize constraints and jacobian building
         self.constraint_functions = []
         self.jacobian_functions = []
+        self._constraints = []
         self.required_variables = {"states": [], "constants": [], "calculated": []}
         self.weights = []
         self.c_start, self.nnz_start = [0], [0]  # First constraint starts at 0
@@ -135,16 +136,21 @@ class Constraints:
         self.nnz_start.append(info["nnz"])
         self.constraint_functions.append(constraint.get_confun())
         self.jacobian_functions.append(constraint.get_jacobian())
+        self._constraints.append(constraint)
+
         if isinstance(weight, (int, float)):
             self.weights.append(float(weight))
         elif isinstance(weight, str):
+            try:
+                self.weights.append(float(weight))
+            except:
+                pass
             if weight == "1/BW":
                 self.weights.append(1 / jnp.sum(jnp.array([body["mass"] for body in self.model.dicts["bodies"]])))
             else:
                 raise ValueError(f"Weight '{weight}' is not a valid number or setting. Valid settings are: '1/BW'.")
-            print(weight)
         else:
-            raise ValueError("Weight must be a number or a string referring to a setting.")
+            raise ValueError("Weight must be a number or a string referring to a setting.") 
 
         # Update required variables
         if info["required_variables"]:

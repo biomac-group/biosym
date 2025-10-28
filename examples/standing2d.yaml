@@ -2,7 +2,7 @@ collocation:
   name: script2d_torque_driven
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
-    model: tests/models/gait2d_torque/gait2d_torque.yaml
+    model: tests/models/gait2d/gait2d.yaml
     #model: tests/models/pendulum.xml
     nnodes: 1
     discretization:
@@ -14,10 +14,10 @@ collocation:
     tol: 5e-4
 
   objectives:
-    - name: torque_term
-      weight: 1
+    - name: effort_term
+      weight: 100
       args:
-        exponent: 11 # Somehow this works best
+        exponent: 5 # Somehow this works best
 
   constraints:
     - name: dynamics

@@ -73,7 +73,7 @@ class Constraint(BaseConstraint):
 
         :return: The number of constraints.
         """
-        return self.nf * self.settings.get("nnodes")
+        return self.nf * self.settings.get("nnodes") + self.model.actuators.get_n_constraints(self.model, self.settings)
 
     def get_nnz(self):
         """
@@ -81,8 +81,13 @@ class Constraint(BaseConstraint):
 
         :return: The number of non-zero entries.
         """
-        return self.get_n_constraints() * self.settings.get("nvpn")
-
+        if self.model.actuators.get_n_constraints(self.model, self.settings) > 0:
+            return (
+                self.model.actuators.get_nnz(self.model, self.settings)
+                + self.nf * self.settings.get("nvpn") * self.settings.get("nnodes")
+            )
+        else:   
+            return self.nf * self.settings.get("nvpn") * self.settings.get("nnodes")
 
 def confun(model, states_list, globals_dict, settings, info):
     """
@@ -100,25 +105,16 @@ def confun(model, states_list, globals_dict, settings, info):
     data_out = jnp.empty((info["ncons"],), dtype=float)
     nnodes = settings.get("nnodes")
     ncons = info["ncons_pernode"]
+    model.run["actuator_model"](states_list.states, states_list.constants)  # Test full function
 
-    def body_fun(n, carry):
-        data_out = carry
-        state_ = states_list[n]
-        forces_act = model.run["actuator_model"](
-            state_.states, state_.constants
-        )  # Get ground contact forces and moments
-        # Find forces and moments in the model
-        forces_model = state_.states.model[model.forces["idx"] : model.forces["idx"] + model.forces["n"]]
+    forces_act = model.run["actuator_model"](states_list.states, states_list.constants)[:nnodes]  # Get ground contact forces and moments
+    forces_model = states_list.states.model[:nnodes, model.forces["idx"] : model.forces["idx"] + model.forces["n"]]
+    data_out = (forces_act - forces_model).flatten().squeeze()
 
-        val = forces_act - forces_model
-
-        start = n * ncons
-        data_out = jax.lax.dynamic_update_slice(data_out, val, (start,))
-        return data_out
-
-    data_out = jax.lax.fori_loop(0, nnodes, body_fun, data_out)
+    if model.actuator_model.get_n_constraints(model, settings) > 0:
+        c_act = model.actuator_model.constraints((states_list.states, globals_dict), states_list.constants, model, settings)
+        data_out = jnp.concatenate((data_out, c_act.flatten().squeeze()), axis=0)
     return data_out
-
 
 def jacobian(model, states_list, globals_dict, settings, info):
     """
@@ -136,53 +132,57 @@ def jacobian(model, states_list, globals_dict, settings, info):
     nvpn_model = settings.get("nvpn_model")
     nact = settings.get("nact")
     nnodes = settings.get("nnodes")
+    nnodes_dur = settings.get("nnodes_dur")
     ncons = info["ncons_pernode"]
-    rows_out = jnp.empty((nnz,), dtype=int)
-    cols_out = jnp.empty((nnz,), dtype=int)
-    data_out = jnp.empty((nnz,), dtype=float)
 
-    block_size = ncons * nvpn
+    # Vectorized computation for all nodes at once
+    jac_all = jax.vmap(model.run["actuator_model_jacobian"], in_axes=(0, None))(
+        states_list[:nnodes].states, states_list.constants
+    )
 
-    def body_fun(n, carry):
-        rows_out, cols_out, data_out = carry
-        state_ = states_list[n]
-        jac = model.run["actuator_model_jacobian"](state_.states, state_.constants)
+    # Extract model and actuator jacobians
+    jac_model_all = jac_all.model  # Shape: (nnodes, ncons, nvpn_model)
+    jac_actuators_all = jac_all.actuator_model  # Shape: (nnodes, ncons, nact)
 
-        jac_model = jac.model
-        jac_actuators = jac.actuator_model
+    # Add -1 to the forces and moments in the model jacobian
+    forces_rows = jnp.arange(info["n_forces"])
+    forces_cols = model.forces["idx"] + jnp.arange(info["n_forces"])
+    jac_model_all = jac_model_all.at[..., forces_rows, forces_cols].add(-1)
 
-        # Jacobian block for the model
-        row_block = n * ncons + jnp.arange(ncons)
-        col_block = state_.states.size() * n + jnp.arange(nvpn_model)
+    # Create node indices for all blocks
+    node_indices = jnp.arange(nnodes)
 
-        rows_block = jnp.repeat(row_block, nvpn_model)  # Shape: (ncons * nvpn,)
-        cols_block = jnp.tile(col_block, ncons)  # Shape: (ncons * nvpn,)
+    # Model jacobian blocks
+    row_blocks_model = node_indices[:, None] * ncons + jnp.arange(ncons)[None, :]
+    col_blocks_model = node_indices[:, None] * states_list[0].states.size() + jnp.arange(nvpn_model)[None, :]
+    
+    rows_model = jnp.repeat(row_blocks_model, nvpn_model, axis=1)
+    cols_model = jnp.tile(col_blocks_model, (1, ncons))
+    data_model = jac_model_all.reshape(nnodes, -1)
 
-        # Add -1 to the forces and moments in the model
-        # Forces
-        rows = jnp.arange(info["n_forces"])
-        depth = model.forces["idx"] + jnp.arange(info["n_forces"])
-        jac_model = jac_model.at[rows, depth].add(-1)  # Subtract 1 from the forces and moments in the model
-        data_block = jac_model.flatten()  # Flatten the block
+    # Actuator jacobian blocks
+    row_blocks_act = node_indices[:, None] * ncons + jnp.arange(ncons)[None, :]
+    col_blocks_act = (node_indices[:, None] + 1) * states_list[0].states.size() - nact + jnp.arange(nact)[None, :]
+    
+    rows_act = jnp.repeat(row_blocks_act, nact, axis=1)
+    cols_act = jnp.tile(col_blocks_act, (1, ncons))
+    data_act = jac_actuators_all.reshape(nnodes, -1)
 
-        start = n * block_size  # Calculate where to insert this block
-        rows_out = jax.lax.dynamic_update_slice(rows_out, rows_block, (start,))
-        cols_out = jax.lax.dynamic_update_slice(cols_out, cols_block, (start,))
-        data_out = jax.lax.dynamic_update_slice(data_out, data_block, (start,))
+    # Concatenate model and actuator parts
+    rows_out = jnp.concatenate([rows_model.flatten(), rows_act.flatten()])
+    cols_out = jnp.concatenate([cols_model.flatten(), cols_act.flatten()])
+    data_out = jnp.concatenate([data_model.flatten(), data_act.flatten()])
 
-        row_block_act = n * ncons + jnp.arange(ncons)
-        col_block_act = state_.states.size() * (n + 1) - nact + jnp.arange(nact)
-        data_block = jac_actuators.flatten()  # Flatten the block
 
-        row_block_act = jnp.repeat(row_block_act, nact)  # Shape: (ncons * nvpn,)
-        col_block_act = jnp.tile(col_block_act, ncons)  # Shape: (ncons * nvpn,)
+    # Get actuator constraints jacobian if applicable
+    if model.actuator_model.get_n_constraints(model, settings) > 0:
+        rows_act_con, cols_act_con, data_act_con = model.actuator_model.jacobian(
+            (states_list.states, globals_dict), states_list.constants, model, settings
+        )
+        rows_act_con = rows_act_con + (info.get('ncons_pernode')*settings.get('nnodes')) # Shift row indices to avoid overlap
+        rows_out = jnp.concatenate([rows_out, rows_act_con], axis=0)
+        cols_out = jnp.concatenate([cols_out, cols_act_con], axis=0)
+        data_out = jnp.concatenate([data_out, data_act_con], axis=0)
 
-        start = (n + 1) * block_size - nact * ncons  # Calculate where to insert this block
-        rows_out = jax.lax.dynamic_update_slice(rows_out, row_block_act, (start,))
-        cols_out = jax.lax.dynamic_update_slice(cols_out, col_block_act, (start,))
-        data_out = jax.lax.dynamic_update_slice(data_out, data_block, (start,))
-
-        return (rows_out, cols_out, data_out)
-
-    rows_out, cols_out, data_out = jax.lax.fori_loop(0, nnodes, body_fun, (rows_out, cols_out, data_out))
     return rows_out, cols_out, data_out
+
