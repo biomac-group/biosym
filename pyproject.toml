@@ -47,9 +47,7 @@ markers = [
 # Set matplotlib backend for testing
 addopts = "--tb=short"
 # You can also set env vars here if needed
-env = [
-    "MPLBACKEND=Agg",
-]
+# env = ["MPLBACKEND=Agg",]
 
 [tool.coverage.run]
 source = ["biosym"]

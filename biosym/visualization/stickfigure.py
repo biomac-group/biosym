@@ -467,12 +467,13 @@ def _create_update_func(anim_joints,
             if cidx < n_bodies_local:
                 b = anim_joints[f][cidx]
             else:
-                if anim_markers is None:
+                # child refers to a site index offset by n_bodies
+                if anim_sites is None:
                     continue
                 sidx = cidx - n_bodies_local
-                if sidx < 0 or sidx >= anim_markers.shape[1]:
+                if sidx < 0 or (anim_sites is not None and sidx >= anim_sites.shape[1]):
                     continue
-                b = anim_markers[f][sidx]
+                b = anim_sites[f][sidx]
             if case_ == "2D":
                 segments[i].set_data([[a[non_zero_axes[0]], b[non_zero_axes[0]]], [a[non_zero_axes[1]], b[non_zero_axes[1]]]])
             else:
@@ -578,7 +579,7 @@ def plot_stick_figure(
     - Standing (n_nodes == 1): still plots expected markers if provided.
     - Walking (n_nodes > 1): creates an interactive animation with pause &
       speed controls (space / up / down keys).
-    - markers are not states; they are derived via FK_marker appended rows.
+    - markers are not states; they are derived via FK_vis appended rows.
     - Function preserves previous external signature except for new optional
       flags enabling selective plotting.
 
@@ -623,15 +624,17 @@ def plot_stick_figure(
         markers_exp = _auto_markers_from_objective(objective)
     data = _extract_fk_vis_data(model, state_sequence, markers_exp if plot_expected else None)
     joint_positions = data["joint0"]
-    site_positions = data["site0"] if plot_markers else None
+    marker_positions = data.get("marker0") if plot_markers else None
+    site_positions = data.get("site0")  # used to draw segments to sites (if any)
     anim_joint_positions = data["anim_joints"]
-    anim_site_positions = data["anim_markers"] if plot_markers else None
+    anim_marker_positions = data.get("anim_markers") if plot_markers else None
+    anim_site_positions = data.get("anim_sites")  # used for segment updates
     anim_exp_markers = data["anim_exp"] if plot_expected else None
     n_markers = data["n_markers"]
     n_bodies = data["n_bodies"]
     n_frames = data["n_frames"]
 
-    fig, ax, case_, non_zero_axes = _setup_axes(joint_positions, site_positions, None, n_frames)
+    fig, ax, case_, non_zero_axes = _setup_axes(joint_positions, marker_positions, None, n_frames)
 
     # Prepare expected markers first frame (standing) for limit computation
     exp0 = None
@@ -660,7 +663,7 @@ def plot_stick_figure(
         case_,
         non_zero_axes,
         joint_positions,
-        site_positions,
+        marker_positions,
         exp0_for_draw,
         plot_markers,
         plot_expected,

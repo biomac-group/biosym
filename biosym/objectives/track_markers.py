@@ -101,7 +101,7 @@ class Objective(BaseObjective):
             "force_2d": self.movement_2d,
             "eps": eps,
             # Provide FK function and layout info so objfun can compute sim markers
-            "fk_marker": self.model.run.get("FK_marker"),
+            "fk_marker": self.model.run.get("FK_vis"),
             "n_bodies": len(self.model.dicts.get("bodies", [])),
             "n_markers": self.n_markers,
         }
@@ -163,7 +163,7 @@ def objfun(states_list, globals_dict, settings, info):
     # Map FK over time points
     pos_all = lax.map(lambda i: fk_step(i), jnp.arange(N, dtype=jnp.int32))
     # Keep only marker rows
-    markers_pos = pos_all[:, n_bodies : n_bodies + n_markers, :]  # (N, n_markers, 3)
+    markers_pos = pos_all[:,n_bodies : n_bodies + n_markers, :]  # (N, n_markers, 3)
     sim_X = markers_pos[:, :, 0]
     sim_Y = markers_pos[:, :, 1]
     sim_Z = markers_pos[:, :, 2]

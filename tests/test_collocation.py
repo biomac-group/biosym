@@ -1,37 +1,33 @@
 """Test collocation functionality."""
-#import argparse
+import os
+from jax import config as jax_config
+
+# Configure Matplotlib before tests import any plotting code.
+import os
+
+VIS = os.getenv("VIS", "0").lower() in ("1", "true", "yes")
+
+# Prefer Wayland on WSLg; fall back to X11; otherwise non-interactive.
+if VIS:
+    os.environ.setdefault("MPLBACKEND", "QtAgg")
+else:
+    os.environ.setdefault("MPLBACKEND", "Agg")
+
+import matplotlib
+
 import sys
 import time
 
 import biosym
 from biosym.ocp import collocation
-from biosym.ocp.utils import states_dict_to_x, x_to_states_dict
+from biosym.ocp.utils import *
 
 import jax.numpy as jnp
-import matplotlib
-import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
 
-
-# Parse arguments first, before pytest can interfere
-parser = argparse.ArgumentParser(description="Test Collocation")
-parser.add_argument("--vis", action="store_true", help="Enable visualization", default=False)
-
-# Only parse args if we're running standalone (not through pytest)
-if __name__ == "__main__":
-    #args = parser.parse_args()
-    VIS = True #args.vis
-else:
-    # Default values when running through pytest
-    VIS = False
-
 import pytest
-
-if not VIS:
-    matplotlib.use("Agg")  # Set non-interactive backend before importing pyplot
-
 
 class TestObjectiveFunction:
     """Test objective function for unit testing.
@@ -171,7 +167,7 @@ def derivativetest(problem, x, eps=1e-5):
 @pytest.fixture
 def standing_problem():
     """Fixture to create a standing problem for testing."""
-    return collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=False)
+    return collocation.Collocation("tests/collocation/standing2d.yaml", force_rebuild=True)
 
 
 @pytest.fixture
