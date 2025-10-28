@@ -9,7 +9,14 @@ VIS = os.getenv("VIS", "0").lower() in ("1", "true", "yes")
 
 # Prefer Wayland on WSLg; fall back to X11; otherwise non-interactive.
 if VIS:
-    os.environ.setdefault("MPLBACKEND", "QtAgg")
+    # Check if qtagg is available
+    try:
+        import matplotlib.backends.backend_qtagg  # noqa: F401
+        import matplotlib.pyplot as plt
+        os.environ.setdefault("MPLBACKEND", "QtAgg")
+        plt.figure().close()
+    except ImportError:
+        pass
 else:
     os.environ.setdefault("MPLBACKEND", "Agg")
 
@@ -210,9 +217,9 @@ def test_walking_problem_solve(walking_problem):
     assert hasattr(x.states, "h"), "Solution should have h attribute"
     assert info["status"] in [0, 1], "Solver did not converge"
 
-
-def test_constraint_and_objective_functions(problem):
+def test_constraint_and_objective_functions(walking_problem):
     """Test the constraints and objective function evaluations."""
+    problem = walking_problem
     functions_to_test = [
         (problem.constraints.confun, "constraints"),
         (problem.constraints.jacobian, "jacobian"),
