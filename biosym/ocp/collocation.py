@@ -22,7 +22,7 @@ os.makedirs((_cachedir), exist_ok=True)
 
 import cyipopt
 import jax
-jax.config.update('jax_enable_x64', True)
+jax.config.update('jax_enable_x64', False)
 import jax.numpy as jnp
 import yaml
 
@@ -79,6 +79,14 @@ class Collocation:
         self.objective = objfun.ObjectiveFunction(self.model, self.settings)
         self.make_initial_guess(self.settings.get("initial_guess", None))
         self.setup()
+        
+        # Auto-enable iteration logging if specified in settings after defining self.objective
+        if self.settings.get("enable_iteration_logging", False):
+            log_interval = self.settings.get("iteration_log_interval", 100)
+            launch_dashboard = self.settings.get("launch_dashboard", True)
+            dashboard_port = self.settings.get("dashboard_port", 8050)
+            self.enable_iteration_logging(log_interval=log_interval)
+        
         self._solved = False
 
     def _process_yaml(self, yaml_data, **kwargs):
@@ -282,6 +290,87 @@ class Collocation:
         self.nlp.add_option("max_iter", self.settings["settings"].get("max_iter", 1000))
         self.nlp.add_option("hessian_approximation", "limited-memory")
         self.nlp.add_option("print_timing_statistics", "yes")
+        # Initialize iteration logger (will be None unless enabled)
+        self.iteration_logger = None
+    
+    def enable_iteration_logging(self, log_interval: int = 100, launch_dashboard: bool = True, dashboard_port: int = 8050):
+        """
+        Enable logging of objective function values during optimization.
+        
+        This sets up an IterationLogger that will capture individual objective
+        values every `log_interval` iterations. Optionally launches a real-time
+        Dash visualization dashboard.
+        
+        Parameters
+        ----------
+        log_interval : int, optional
+            How frequently to log (e.g., 100 = every 100th iteration), by default 100
+        launch_dashboard : bool, optional
+            Whether to automatically launch the Dash visualization app, by default True
+        dashboard_port : int, optional
+            Port for the Dash server, by default 8050
+            
+        Examples
+        --------
+        >>> problem.enable_iteration_logging(log_interval=100)
+        >>> x, info = problem.solve()
+        >>> df = problem.iteration_logger.get_dataframe()
+        >>> print(df[['iteration', 'total_objective', 'track_markers']])
+        """
+        from biosym.objectives.iteration_logger import IterationLogger
+        
+        # Create the iteration logger
+        self.iteration_logger = IterationLogger(
+            objective_manager=self.objective,
+            problem=self.problem,
+            initial_guess_states=self.initial_guess_states,
+            iteration_interval=log_interval
+        )
+        
+        # Set it as the callback for the CyIpoptProblem
+        self.problem._iteration_callback = self.iteration_logger
+        
+        # Launch dashboard if requested
+        if launch_dashboard:
+            import socket
+            import subprocess
+            import threading
+            import time
+            from biosym.objectives.dash_logger import create_dashboard_app
+
+            # Helper to check if port is in use
+            def is_port_in_use(port: int) -> bool:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    return s.connect_ex(('localhost', port)) == 0
+
+            # Check port before launching, and kill if occupied
+            if is_port_in_use(dashboard_port):
+                print(f"\n⚠️  Warning: Dashboard port {dashboard_port} is already in use.")
+                print(f"   Attempting to kill the existing process to free the port...")
+                # This command is for Linux/macOS. It finds the PID using the port and kills it.
+                kill_command = f"kill -9 $(lsof -t -i:{dashboard_port})"
+                subprocess.run(
+                    kill_command, shell=True, check=True, capture_output=True
+                )
+                print(f"   Successfully killed process on port {dashboard_port}.")
+                # Give the OS a moment to release the port before the new server binds to it
+                time.sleep(1)
+            
+            # Create the Dash app
+            self._dash_app = create_dashboard_app(self.iteration_logger, port=dashboard_port)
+            
+            # Run it in a separate thread so it doesn't block optimization
+            def run_dash():
+                print(f"\n Starting real-time visualization dashboard at http://localhost:{dashboard_port}")
+                print("   Open this URL in your browser to see objective convergence")
+                self._dash_app.run(debug=False, port=dashboard_port, use_reloader=False)
+            
+            self._dash_thread = threading.Thread(target=run_dash, daemon=True)
+            self._dash_thread.start()
+            
+            # Give the server a moment to start
+            import time
+            time.sleep(2)
 
     def solve(self, visualize=False, **kwargs):
         """
@@ -415,6 +504,25 @@ class CyIpoptProblem:
         self.globals = globals
         self._init_jac = False
         self.jacobianstructure()
+        # Store current x for iteration callback access
+        self._current_x = None
+        # Iteration callback (will be set by enable_iteration_logging)
+        self._iteration_callback = None
+    
+    def intermediate(self, alg_mod, iter_count, obj_value, inf_pr, inf_du, mu,
+                    d_norm, regularization_size, alpha_du, alpha_pr, ls_trials):
+        """
+        IPOPT intermediate callback - called once per iteration.
+        
+        This method is called by IPOPT if present. It delegates to the
+        iteration_callback if one has been set via enable_iteration_logging().
+        """
+        if self._iteration_callback is not None:
+            return self._iteration_callback(
+                alg_mod, iter_count, obj_value, inf_pr, inf_du, mu,
+                d_norm, regularization_size, alpha_du, alpha_pr, ls_trials
+            )
+        return True  # Continue optimization
 
     def objective(self, x):
         """
@@ -430,6 +538,8 @@ class CyIpoptProblem:
         float
             Scalar objective function value to minimize.
         """
+        # Store current x for callback access
+        self._current_x = x
         x, globals = utils.x_to_states_dict(x, self.template, self.globals)
         return self.objs.objfun(x, globals)
 

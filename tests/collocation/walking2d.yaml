@@ -45,7 +45,7 @@ collocation:
   bounds:
     from_model: true
     start_at_origin: true
-    dur: [0.4,0.7]
+    dur: 0.5
     speed: 1.3
 
 
