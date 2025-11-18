@@ -4,6 +4,7 @@ collocation:
   settings:
     model: tests/models/gait2d/gait2d.yaml
     nnodes: 50
+    enable_logging: true
     discretization:
       type: euler
       args:
@@ -24,6 +25,8 @@ collocation:
       weight: 1e5
       args:
         exponent: 3
+    - name: jerk_term
+      weight: 1e-3
 
   constraints:
     - name: dynamics

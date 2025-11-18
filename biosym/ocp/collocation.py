@@ -81,11 +81,15 @@ class Collocation:
         self.setup()
         
         # Auto-enable iteration logging if specified in settings after defining self.objective
-        if self.settings.get("enable_iteration_logging", False):
-            log_interval = self.settings.get("iteration_log_interval", 100)
-            launch_dashboard = self.settings.get("launch_dashboard", True)
-            dashboard_port = self.settings.get("dashboard_port", 8050)
-            self.enable_iteration_logging(log_interval=log_interval)
+        if self.settings.get("settings", {}).get("enable_logging", False):
+            log_interval = self.settings.get("settings", {}).get("iteration_log_interval", 100)
+            launch_dashboard = self.settings.get("settings", {}).get("launch_dashboard", True)
+            dashboard_port = self.settings.get("settings", {}).get("dashboard_port", 8050)
+            self.enable_logging(
+                log_interval=log_interval,
+                launch_dashboard=launch_dashboard,
+                dashboard_port=dashboard_port
+            )
         
         self._solved = False
 
@@ -293,7 +297,7 @@ class Collocation:
         # Initialize iteration logger (will be None unless enabled)
         self.iteration_logger = None
     
-    def enable_iteration_logging(self, log_interval: int = 100, launch_dashboard: bool = True, dashboard_port: int = 8050):
+    def enable_logging(self, log_interval: int = 100, launch_dashboard: bool = True, dashboard_port: int = 8050):
         """
         Enable logging of objective function values during optimization.
         
@@ -312,7 +316,7 @@ class Collocation:
             
         Examples
         --------
-        >>> problem.enable_iteration_logging(log_interval=100)
+        >>> problem.enable_logging(log_interval=100)
         >>> x, info = problem.solve()
         >>> df = problem.iteration_logger.get_dataframe()
         >>> print(df[['iteration', 'total_objective', 'track_markers']])
@@ -345,7 +349,7 @@ class Collocation:
 
             # Check port before launching, and kill if occupied
             if is_port_in_use(dashboard_port):
-                print(f"\n⚠️  Warning: Dashboard port {dashboard_port} is already in use.")
+                print(f"\n Warning: Dashboard port {dashboard_port} is already in use.")
                 print(f"   Attempting to kill the existing process to free the port...")
                 # This command is for Linux/macOS. It finds the PID using the port and kills it.
                 kill_command = f"kill -9 $(lsof -t -i:{dashboard_port})"
@@ -354,7 +358,7 @@ class Collocation:
                 )
                 print(f"   Successfully killed process on port {dashboard_port}.")
                 # Give the OS a moment to release the port before the new server binds to it
-                time.sleep(1)
+                time.sleep(0.5)
             
             # Create the Dash app
             self._dash_app = create_dashboard_app(self.iteration_logger, port=dashboard_port)
@@ -369,8 +373,7 @@ class Collocation:
             self._dash_thread.start()
             
             # Give the server a moment to start
-            import time
-            time.sleep(2)
+            time.sleep(1)
 
     def solve(self, visualize=False, **kwargs):
         """
@@ -506,7 +509,7 @@ class CyIpoptProblem:
         self.jacobianstructure()
         # Store current x for iteration callback access
         self._current_x = None
-        # Iteration callback (will be set by enable_iteration_logging)
+        # Iteration callback (will be set by enable_logging)
         self._iteration_callback = None
     
     def intermediate(self, alg_mod, iter_count, obj_value, inf_pr, inf_du, mu,
@@ -515,7 +518,7 @@ class CyIpoptProblem:
         IPOPT intermediate callback - called once per iteration.
         
         This method is called by IPOPT if present. It delegates to the
-        iteration_callback if one has been set via enable_iteration_logging().
+        iteration_callback if one has been set via enable_logging().
         """
         if self._iteration_callback is not None:
             return self._iteration_callback(
