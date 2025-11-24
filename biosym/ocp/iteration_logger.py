@@ -59,6 +59,9 @@ class IterationLogger:
             info = obj_instance._get_info()
             name = info.get("name", f"Objective_{len(self.objective_names)}")
             self.objective_names.append(name)
+            
+        # Store latest state for visualization
+        self.latest_state = None
     
     def __call__(self, alg_mod, iter_count, obj_value, inf_pr, inf_du, mu,
                  d_norm, regularization_size, alpha_du, alpha_pr, ls_trials):
@@ -125,6 +128,9 @@ class IterationLogger:
         # Evaluate each objective at current x
         log_entry = {"iteration": iter_count}
         
+        # Store latest state
+        self.latest_state = states
+        
         for i, (obj_func, weight, name) in enumerate(
             zip(
                 self.objective_manager.objective_functions,
@@ -143,6 +149,30 @@ class IterationLogger:
                 log_entry[name] = np.nan
                 print(f"Warning: Failed to evaluate {name} at iteration {iter_count}: {e}")
         
+        # Log constraints if available
+        if hasattr(self.problem, 'cons'):
+            try:
+                cons_manager = self.problem.cons
+                # Evaluate all constraints (returns weighted vector)
+                c_vec = cons_manager.confun(states, globals_dict)
+                
+                # Iterate and slice to get individual constraint violations
+                for i, constraint in enumerate(cons_manager._constraints):
+                    start_idx = cons_manager.c_start[i]
+                    end_idx = cons_manager.c_start[i+1]
+                    
+                    # Extract values for this constraint
+                    # Convert to numpy array to ensure we can sum it
+                    c_values = np.array(c_vec[start_idx:end_idx])
+                    
+                    # Compute sum of absolute violations (L1 norm)
+                    violation = np.sum(np.abs(c_values))
+                    
+                    name = constraint._get_info().get("name", f"Constraint_{i}")
+                    log_entry[f"Constraint_{name}"] = violation
+            except Exception as e:
+                print(f"Warning: Failed to evaluate constraints at iteration {iter_count}: {e}")
+
         self.log_data.append(log_entry)
     
     def get_dataframe(self) -> pd.DataFrame:
