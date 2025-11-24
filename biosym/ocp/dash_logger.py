@@ -5,7 +5,7 @@ This module provides a Dash/Plotly-based web interface to visualize how individu
 objective terms evolve during IPOPT optimization.
 """
 
-from dash import Dash, html, dcc, Input, Output
+from dash import Dash, html, dcc, Input, Output, State, callback_context, no_update
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
@@ -73,18 +73,34 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
             n_intervals=0
         ),
         
-        html.Div(id='stats-div', style={'marginTop': 20, 'textAlign': 'center'})
+        html.Div(id='stats-div', style={'marginTop': 20, 'textAlign': 'center'}),
+        dcc.Store(id='last-update-iteration', data=0)
     ], style={'backgroundColor': '#111111', 'color': '#FFFFFF'})
-    
+
     @app.callback(
         [Output('objective-plot', 'figure'),
          Output('constraint-plot', 'figure'),
-         Output('stats-div', 'children')],
+         Output('stats-div', 'children'),
+         Output('last-update-iteration', 'data')],
         [Input('interval-component', 'n_intervals'),
-         Input('scale-selector', 'value')]
+         Input('scale-selector', 'value')],
+        [State('last-update-iteration', 'data')]
     )
-    def update_graph(n, scale_type):
-        """Update the plot with latest logged data."""
+    def update_graph(n, scale_type, last_update_iter):
+        """
+        Update the plot with latest logged data.
+        
+        This callback is triggered every 2 seconds by the interval, but it will
+        only redraw the plots if the iteration count has increased by at least
+        100 since the last update, or if the scale type has changed.
+        """
+        ctx = callback_context
+        
+        if not ctx.triggered:
+            raise no_update
+
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
         if iteration_logger is None or not iteration_logger.log_data:
             # Return empty plots if no data
             empty_fig = go.Figure()
@@ -95,7 +111,7 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
                 yaxis_type=scale_type,
                 template="plotly_dark"
             )
-            return empty_fig, empty_fig, "No data yet"
+            return empty_fig, empty_fig, "No data yet", no_update
         
         # Get data as DataFrame
         df = iteration_logger.get_dataframe()
@@ -109,7 +125,35 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
                 yaxis_type=scale_type,
                 template="plotly_dark"
             )
-            return empty_fig, empty_fig, "Empty log"
+            return empty_fig, empty_fig, "Empty log", no_update
+            
+        current_iter = df['iteration'].iloc[-1]
+        
+        # Determine if we should update
+        should_update = False
+        new_last_iter = no_update
+        
+        if trigger_id != 'interval-component':
+            # Always update on manual interaction (scale change)
+            should_update = True
+            # Do NOT update the last_update_iteration to preserve the 100-step interval rhythm
+        else:
+            # Interval trigger
+            if current_iter < last_update_iter:
+                # Optimization restarted
+                should_update = True
+                new_last_iter = current_iter
+            elif current_iter - last_update_iter >= 100:
+                # 100 iterations passed
+                should_update = True
+                new_last_iter = current_iter
+            elif last_update_iter == 0 and current_iter > 0:
+                # Ensure we show the first data point
+                should_update = True
+                new_last_iter = current_iter
+        
+        if not should_update:
+            raise no_update
         
         # Separate objective and constraint columns
         all_cols = [col for col in df.columns if col != 'iteration']
@@ -210,9 +254,10 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
             margin=dict(l=40, r=40, t=40, b=40)
         )
         
-        stats_text = f"I believe in you IPOPT!"
+        stats_text = f"Iteration: {df['iteration'].iloc[-1]}"
         
-        return fig_obj, fig_cons, stats_text
+        # Return the new iteration count to store it
+        return fig_obj, fig_cons, stats_text, new_last_iter
     
     return app
 
