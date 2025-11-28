@@ -240,6 +240,7 @@ $RECYCLE.BIN/
 .python-version
 
 # debug folder
+plans
 _debug
 notebooks/collocation_outputs.ipynb
 .github/copilot-instructions.md
@@ -250,3 +251,6 @@ notebooks/sympy_training.ipynb
 scripts/biosymmodel_checks.py
 scripts/trace_pipeline.py
 tests/test_markers_order.py
+example_data/P01
+example_data/P02
+tests/models/untracked
