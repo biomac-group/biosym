@@ -747,30 +747,3 @@ def plot_stick_figure(
         )
         plt.show()
         return ani
-    ani = animation.FuncAnimation(
-        fig, update, frames=np.arange(n_frames), interval=50, blit=False
-    )
-
-    try:
-        # Save the animation as a GIF using the 'pillow' writer
-        # Set save_kwargs={'duration': dt * 1000} for proper frame timing
-        ani.save(
-            "stick_figure_animation.gif", 
-            writer='pillow', 
-            fps=int(1 / dt),  # Frames per second for saving (derived from time step)
-            # Setting duration directly may be better if FPS calculation is tricky:
-            # save_kwargs={'duration': dt * 1000}
-        )
-        print("Animation successfully saved to 'stick_figure_animation.gif'")
-    except ValueError as e:
-        warnings.warn(f"Could not save animation: {e}. Ensure you have an appropriate writer (e.g., 'pillow') installed. The animation will still be displayed.")
-    except Exception as e:
-        warnings.warn(f"An unexpected error occurred during animation save: {e}. The animation will still be displayed.")
-
-    plt.show()
-    # Attach contact plot objects for use inside update via closure if needed
-    if hascontact:
-        # Monkey-patch attribute onto animation for potential external use/debugging
-        ani._contact_plot_objects = plot_objects  # noqa: SLF001 (intentional internal attribute)
-        ani._contact_state_sequence = state_sequence
-    return ani
