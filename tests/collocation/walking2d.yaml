@@ -4,7 +4,9 @@ collocation:
   settings:
     model: tests/models/gait2d/gait2d.yaml
     nnodes: 50
-    enable_logging: true
+    # Logging is disabled for gitlab runners - reenable when running yourself!
+    #enable_logging: true 
+    #logging_interval: 5
     discretization:
       type: euler
       args:
