@@ -97,7 +97,7 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
         ctx = callback_context
         
         if not ctx.triggered:
-            raise no_update
+            return no_update
 
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
@@ -153,7 +153,7 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
                 new_last_iter = current_iter
         
         if not should_update:
-            raise no_update
+            return no_update
         
         # Separate objective and constraint columns
         all_cols = [col for col in df.columns if col != 'iteration']

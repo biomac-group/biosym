@@ -143,11 +143,11 @@ class IterationLogger:
                 obj_value = obj_func(states, globals_dict)
                 # Store weighted value
                 log_entry[name] = weight * obj_value
-                print(f"Objective {name} has {log_entry[name]} value at iteration {iter_count}")
+                #print(f"Objective {name} has {log_entry[name]} value at iteration {iter_count}")
             except Exception as e:
                 # If evaluation fails, store NaN
                 log_entry[name] = np.nan
-                print(f"Warning: Failed to evaluate {name} at iteration {iter_count}: {e}")
+                #print(f"Warning: Failed to evaluate {name} at iteration {iter_count}: {e}")
         
         # Log constraints if available
         if hasattr(self.problem, 'cons'):
