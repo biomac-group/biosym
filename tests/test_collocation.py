@@ -33,40 +33,7 @@ from biosym.ocp.utils import *
 import jax.numpy as jnp
 import numpy as np
 import argparse
-
-
 import pytest
-
-class TestObjectiveFunction:
-    """Test objective function for unit testing.
-    
-    We only use it to test the integration of user-defined objective functions in the collocation framework.
-    """
-
-    def __init__(self, model, settings):
-        """Initialize the TestObjectiveFunction class with a model and settings.
-        
-        :param model: biosym model object representing the system to be controlled.
-        :param settings: Dictionary containing settings for the objective function.
-        """
-        self.model = model
-        self.settings = settings
-
-    def _get_info(self):
-        return {
-            "name": self.__class__.__name__,
-            "description": "Test objective function for unit testing.",
-            "required_variables": None,
-        }
-
-    def get_objfun(self):
-        """:return: The objective function."""
-        return lambda _x, _y: 0
-
-    def get_gradient(self):
-        """:return: The gradient of the objective function."""
-        return lambda _x, _y: 0
-
 
 def derivativetest(problem, x, eps=1e-5):
     """Test the derivative of the objective function.
