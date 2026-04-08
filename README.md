@@ -1,5 +1,7 @@
 # biosym
-[![CI](https://github.com/biomac-group/biosym/actions/workflows/test-and-lint.yml/badge.svg)](https://github.com/biomac-group/biosym/actions/workflows/test-and-lint.yml)
+[![Tests](https://github.com/biomac-group/biosym/actions/workflows/test.yml/badge.svg)](https://github.com/biomac-group/biosym/actions/workflows/test.yml)
+[![Lint](https://github.com/biomac-group/biosym/actions/workflows/lint.yml/badge.svg)](https://github.com/biomac-group/biosym/actions/workflows/lint.yml)
+[![Docs](https://readthedocs.org/projects/biosym/badge/?version=latest)](https://biosym.readthedocs.io/en/latest/)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)
 
