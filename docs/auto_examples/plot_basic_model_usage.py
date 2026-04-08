@@ -1,0 +1,276 @@
+"""
+Basic Model Loading and Usage
+==============================
+
+This example demonstrates how to load a BiosymModel and perform basic operations
+including forward kinematics, dynamics computations, and performance analysis.
+
+We'll use a simple pendulum model to illustrate the core functionality of the
+BiosymModel class.
+"""
+
+import numpy as np
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import time
+import timeit
+import sys
+import os
+
+# Add parent directory to path for importing biosym
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from biosym.model.model import load_model
+from biosym.utils import states
+
+###############################################################################
+# Load the Model
+# --------------
+# 
+# First, we load a simple pendulum model from an XML file. The load_model
+# function handles caching automatically, so subsequent loads will be faster.
+
+model_file = "../tests/models/pendulum.xml"
+print("Loading pendulum model...")
+start_time = time.time()
+model = load_model(model_file)
+load_time = time.time() - start_time
+
+print(f"Model loaded in {load_time:.3f} seconds")
+print(f"Model has {model.n_states} states and {model.n_constants} constants")
+
+###############################################################################
+# Explore Model Structure
+# ------------------------
+# 
+# Let's examine the structure of our loaded model to understand its components.
+
+print("\n--- Model Structure ---")
+print(f"Coordinates: {model.coordinates['names']}")
+print(f"Speeds: {model.speeds['names']}")
+print(f"Forces: {model.forces['names']}")
+
+print(f"\nBodies in the model:")
+for i, body in enumerate(model.dicts['bodies']):
+    mass = body['mass'][0] if isinstance(body['mass'], list) else body['mass']
+    print(f"  {i}: {body['name']} (mass: {mass:.3f} kg)")
+
+print(f"\nJoints in the model:")
+for i, joint in enumerate(model.dicts['joints']):
+    print(f"  {i}: {joint['name']} (type: {joint['type']})")
+
+###############################################################################
+# Set Up Initial Conditions
+# --------------------------
+# 
+# Before running any computations, we need to set up the state and constant
+# vectors. The model provides default values that we can use.
+
+# Initialize state vector (positions, velocities, accelerations, forces, etc.)
+states_dict = {
+    "states": {
+        "model": jnp.zeros(model.n_states),
+        "gc_model": jnp.zeros(0),        # Ground contact model states
+        "actuator_model": jnp.zeros(0),  # Actuator model states
+    },
+    "constants": {
+        "model": jnp.array(model.default_values[model.n_states:]),
+        "gc_model": jnp.zeros(0),
+        "actuator_model": jnp.zeros(0),
+    }
+}
+
+# Convert to proper dataclass format required by the model functions
+states_obj = states.dict_to_dataclass(states_dict)
+
+print(f"\nInitialized states vector with {len(states_obj.states.model)} elements")
+print(f"Initialized constants vector with {len(states_obj.constants.model)} elements")
+
+###############################################################################
+# Forward Kinematics Analysis
+# ----------------------------
+# 
+# Now let's compute the forward kinematics for different pendulum angles
+# to understand how the end-effector moves through space.
+
+print("\n--- Forward Kinematics Analysis ---")
+
+# Define a range of pendulum angles
+angles = np.linspace(-np.pi/2, np.pi/2, 50)
+positions = []
+velocities = []
+
+# Set a small angular velocity for velocity computations
+states_obj.states.model = states_obj.states.model.at[1].set(0.5)  # angular velocity in rad/s
+
+print("Computing forward kinematics for 50 different angles...")
+
+for angle in angles:
+    states_obj.states.model = states_obj.states.model.at[0].set(angle)  # Set pendulum angle
+    
+    # Compute forward kinematics (positions)
+    pos = model.run["FK"](states_obj.states, states_obj.constants)
+    positions.append(pos.flatten())
+    
+    # Compute velocity kinematics
+    vel = model.run["FK_dot"](states_obj.states, states_obj.constants)
+    velocities.append(vel.flatten())
+
+positions = np.array(positions)
+velocities = np.array(velocities)
+
+print(f"Forward kinematics computed for {len(angles)} configurations")
+print(f"Position output shape: {positions.shape}")
+
+###############################################################################
+# Dynamics Computations
+# ----------------------
+# 
+# Let's compute the equations of motion and examine the mass matrix and
+# forcing terms for our pendulum model.
+
+print("\n--- Dynamics Analysis ---")
+
+# Set initial conditions: 45 degrees with some angular velocity
+states_obj.states.model = states_obj.states.model.at[0].set(np.pi/4)    # 45 degrees
+states_obj.states.model = states_obj.states.model.at[1].set(1.0)        # 1 rad/s angular velocity
+
+# Compute equations of motion residual
+eom_residual = model.run["confun"](states_obj.states, states_obj.constants)
+print(f"EOM residual: {eom_residual}")
+
+# Compute mass matrix
+mass_matrix = model.run["mass_matrix"](states_obj.states, states_obj.constants)
+print(f"Mass matrix shape: {mass_matrix.shape}")
+print(f"Mass matrix:\n{mass_matrix}")
+
+# Compute forcing terms (Coriolis, centrifugal, gravity)
+forcing = model.run["forcing"](states_obj.states, states_obj.constants)
+print(f"Forcing terms: {forcing}")
+
+# Compute Jacobian for sensitivity analysis
+jacobian = model.run["jacobian"](states_obj.states, states_obj.constants)
+print(f"Jacobian shape: {jacobian.shape}")
+
+###############################################################################
+# Performance Benchmarking
+# -------------------------
+# 
+# One of the key advantages of BiosymModel is its use of JAX for high-performance
+# computations. Let's benchmark the different functions.
+
+print("\n--- Performance Benchmarking ---")
+
+# List of functions to benchmark
+functions_to_test = ["FK", "FK_dot", "confun", "mass_matrix", "forcing", "jacobian"]
+
+# Warm up all functions (JIT compilation happens on first call)
+print("Warming up functions (JIT compilation)...")
+for func_name in functions_to_test:
+    if func_name in model.run:
+        model.run[func_name](states_obj.states, states_obj.constants)
+
+# Now benchmark each function
+print("\nBenchmarking performance (1000 calls each):")
+n_runs = 1000
+
+for func_name in functions_to_test:
+    if func_name in model.run:
+        elapsed = timeit.timeit(
+            lambda f=func_name: model.run[f](states_obj.states, states_obj.constants), 
+            number=n_runs
+        )
+        avg_time_ms = elapsed / n_runs * 1000
+        print(f"{func_name:12}: {avg_time_ms:.4f} ms/call")
+
+###############################################################################
+# Visualize Results
+# -----------------
+# 
+# Finally, let's create some visualizations to understand the model behavior.
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+# Plot 1: Pendulum trajectory
+ax1 = axes[0, 0]
+ax1.plot(positions[:, 0], positions[:, 1], 'b-', linewidth=2, label='Trajectory')
+ax1.plot(positions[0, 0], positions[0, 1], 'go', markersize=8, label='Start')
+ax1.plot(positions[-1, 0], positions[-1, 1], 'ro', markersize=8, label='End')
+ax1.set_xlabel('X Position (m)')
+ax1.set_ylabel('Y Position (m)')
+ax1.set_title('Pendulum End-Effector Trajectory')
+ax1.grid(True)
+ax1.legend()
+ax1.set_aspect('equal')
+
+# Plot 2: Position vs angle
+ax2 = axes[0, 1]
+ax2.plot(angles * 180/np.pi, positions[:, 0], 'r-', label='X position')
+ax2.plot(angles * 180/np.pi, positions[:, 1], 'b-', label='Y position')
+ax2.set_xlabel('Angle (degrees)')
+ax2.set_ylabel('Position (m)')
+ax2.set_title('End-Effector Position vs Angle')
+ax2.grid(True)
+ax2.legend()
+
+# Plot 3: Velocity magnitude vs angle
+ax3 = axes[1, 0]
+vel_magnitude = np.linalg.norm(velocities, axis=1)
+ax3.plot(angles * 180/np.pi, vel_magnitude, 'g-', linewidth=2)
+ax3.set_xlabel('Angle (degrees)')
+ax3.set_ylabel('Velocity Magnitude (m/s)')
+ax3.set_title('End-Effector Velocity vs Angle')
+ax3.grid(True)
+
+# Plot 4: Phase portrait (position vs velocity)
+ax4 = axes[1, 1]
+# Create a simple phase portrait by varying initial conditions
+test_angles = np.linspace(-np.pi/3, np.pi/3, 20)
+test_velocities = np.linspace(-2, 2, 20)
+
+phase_positions = []
+phase_velocities = []
+
+for test_angle in test_angles:
+    for test_vel in test_velocities:
+        states_obj.states.model = states_obj.states.model.at[0].set(test_angle)
+        states_obj.states.model = states_obj.states.model.at[1].set(test_vel)
+        
+        # Get current position
+        pos = model.run["FK"](states_obj.states, states_obj.constants)
+        vel = model.run["FK_dot"](states_obj.states, states_obj.constants)
+        
+        phase_positions.append(pos[0, 0])  # X position
+        phase_velocities.append(vel[0, 0])  # X velocity
+
+ax4.scatter(phase_positions, phase_velocities, alpha=0.6, s=20)
+ax4.set_xlabel('X Position (m)')
+ax4.set_ylabel('X Velocity (m/s)')
+ax4.set_title('Phase Portrait (X-direction)')
+ax4.grid(True)
+
+plt.tight_layout()
+plt.show()
+
+###############################################################################
+# Summary
+# -------
+# 
+# This example demonstrated the core functionality of BiosymModel:
+# 
+# 1. **Model Loading**: Efficient loading with automatic caching
+# 2. **Structure Inspection**: Understanding model components and DOFs
+# 3. **Forward Kinematics**: Computing body positions and velocities
+# 4. **Dynamics**: Evaluating equations of motion, mass matrix, and forces
+# 5. **Performance**: High-speed computations with JAX compilation
+# 6. **Visualization**: Understanding model behavior through plots
+# 
+# The pendulum model used here is simple but demonstrates all the key concepts
+# that apply to more complex biomechanical models. The same workflow can be
+# used for multi-body human models, robots, or any other mechanical system.
+
+print("\n--- Summary ---")
+print(f"Successfully demonstrated BiosymModel with a {model.coordinates['n']}-DOF pendulum")
+print(f"Computed forward kinematics for {len(angles)} configurations")
+print(f"All functions are JIT-compiled for high performance")
+print("Model is ready for use in optimization, simulation, or analysis!")

@@ -136,7 +136,7 @@ class ContactPoints(BaseContact):
         self.b = [float(cps[cp]["b"]) for cp in cps]
         self.mu = [float(cps[cp]["mu"]) for cp in cps]
         self.p_cy_0 = [1e-3] * len(self.k)  # Transition region size for position
-        self.v_cx_0 = [1e-2] * len(self.k)  # Transition region size for velocity
+        self.v_cx_0 = [1e-1] * len(self.k)  # Transition region size for velocity
 
     def process_eom(self, model, **kwargs):
         """

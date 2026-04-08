@@ -1,0 +1,469 @@
+{
+ "_find_git_root": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  }
+ ],
+ "_git_root": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "collocation.Collocation": [
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp.collocation",
+   "name": "Collocation"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp.collocation",
+   "name": "Collocation"
+  }
+ ],
+ "current_dir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "end": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "end_": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "info": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "dict"
+  }
+ ],
+ "load_model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "load_model"
+  }
+ ],
+ "load_time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BiosymModel"
+  }
+ ],
+ "model.n_constants": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "model.n_states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "model_file": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "ocp": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp.collocation",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation"
+  }
+ ],
+ "ocp.solve": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp.collocation",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation.solve"
+  }
+ ],
+ "ocp_walking": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp.collocation",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation"
+  }
+ ],
+ "ocp_walking.solve": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp.collocation",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation.solve"
+  }
+ ],
+ "os.chdir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os",
+   "module_short": "os",
+   "name": "chdir"
+  }
+ ],
+ "os.getcwd": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os",
+   "module_short": "os",
+   "name": "getcwd"
+  }
+ ],
+ "os.path.abspath": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "abspath"
+  }
+ ],
+ "os.path.dirname": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "dirname"
+  }
+ ],
+ "os.path.isdir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "isdir"
+  }
+ ],
+ "os.path.join": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "join"
+  }
+ ],
+ "solution": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "tuple"
+  }
+ ],
+ "standing_yaml_config": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "start": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "start_": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "start_path": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "start_time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "sys.path": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "list"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sys",
+   "module_short": "sys",
+   "name": "path"
+  }
+ ],
+ "sys.path.insert": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sys.path",
+   "module_short": "sys.path",
+   "name": "insert"
+  }
+ ],
+ "time.time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "time",
+   "module_short": "time",
+   "name": "time"
+  }
+ ],
+ "walking_yaml_config": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "x": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "tuple"
+  }
+ ]
+}

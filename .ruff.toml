@@ -6,6 +6,15 @@ exclude = [
     "doc/build/*.py",
     "doc/temp/*.py",
     ".eggs/*.py",
+    ".venv",
+    "build",
+    "dist",
+    "docs/_build",
+    "docs/auto_examples",
+    "docs/modules/generated",
+    "htmlcov",
+    "notebooks",
+    "__pycache__",
 ]
 
 [lint]
@@ -102,8 +111,6 @@ ignore = [
     "PD013",
     # No Any annotations
     "ANN401",
-    # Self annotation
-    "ANN101",
     # To many arguments
     "PLR0913",
     # Class attribute shadows builtin

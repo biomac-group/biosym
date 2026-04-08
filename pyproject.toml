@@ -1,3 +1,11 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["biosym*"]
+exclude = ["docs*", "example_data*", "notebooks*", "htmlcov*", "tests*"]
+
 [project]
 name = "biosym"
 version = "0.1.0"
@@ -26,12 +34,14 @@ dependencies = [
 [project.optional-dependencies]
 docs = [
     "sphinx>=4.0",
+    "pydata-sphinx-theme",
     "sphinx-rtd-theme",
     "myst-parser",
     "sphinx-copybutton",
     "sphinx-automodapi",
     "numpydoc",
     "sphinx-gallery",
+    "recommonmark",
 ]
 
 [tool.poe.tasks]

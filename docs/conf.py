@@ -14,18 +14,18 @@ import os
 #
 import re
 import sys
+import tomllib as toml
 from datetime import datetime
 from pathlib import Path
 
-import toml
-
 HERE = Path(__file__)
+ON_RTD = os.environ.get("READTHEDOCS") == "True"
 
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parent.parent))
 
 
-URL = "https://github.com/mad-lab-fau/biosym"
+URL = "https://github.com/biomac-group/biosym"
 
 # -- Project information -----------------------------------------------------
 
@@ -63,8 +63,19 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     # "sphinx.ext.imgconverter",
-    "sphinx_gallery.gen_gallery",
     "recommonmark",
+]
+
+if not ON_RTD:
+    extensions.append("sphinx_gallery.gen_gallery")
+
+autodoc_mock_imports = [
+    "cyipopt",
+    "dash",
+    "dash_ag_grid",
+    "flax",
+    "flatbuffers",
+    "jax",
 ]
 
 # this is needed for some reason...
@@ -166,5 +177,5 @@ from sphinxext.githublink import make_linkcode_resolve
 
 linkcode_resolve = make_linkcode_resolve(
     "biosym",
-    "https://github.com/mad-lab-fau/biosym/blob/{revision}/{package}/{path}#L{lineno}",
+    "https://github.com/biomac-group/biosym/blob/{revision}/{package}/{path}#L{lineno}",
 )
