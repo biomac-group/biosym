@@ -77,12 +77,27 @@ if not ON_RTD:
 autodoc_mock_imports = []
 if ON_RTD:
     autodoc_mock_imports = [
+        "absl",
+        "absl.logging",
+        "cloudpickle",
         "cyipopt",
         "dash",
         "dash_ag_grid",
         "flax",
         "flatbuffers",
         "jax",
+        "jax.export",
+        "jax.numpy",
+        "matplotlib",
+        "matplotlib.pyplot",
+        "numpy",
+        "numpy.linalg",
+        "pandas",
+        "sympy",
+        "sympy.physics",
+        "sympy.physics.mechanics",
+        "tqdm",
+        "yaml",
     ]
 
 # this is needed for some reason...
