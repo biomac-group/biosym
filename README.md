@@ -5,7 +5,7 @@
 
 ## Installation:
 1. https://cyipopt.readthedocs.io/en/stable/install.html
-2. uv sync
+2. Run `uv sync`
 
 ## Usage
 
