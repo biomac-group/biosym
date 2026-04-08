@@ -130,11 +130,14 @@ os.chdir(current_dir)
 # sphinx_gallery_end_ignore
 from biosym.ocp import collocation
 
-ocp = collocation.Collocation(current_dir+"/examples/standing2d.yaml")
+ocp = collocation.Collocation(current_dir+"/examples/standing2d.yaml", force_rebuild=True)
 start_ = time.time()
-solution = ocp.solve()
+solution = ocp.solve(visualize=True)
 end_ = time.time()
 print(f"Optimization completed in {end_ - start_:.2f} seconds")
+
+for i, coordinate in enumerate(model.coordinates['names']):
+    print(f"{coordinate}: {solution[0][0].states.model[0,i]:.4f}")
 
 ###############################################################################
 # 2D Walking Configuration example
@@ -210,6 +213,6 @@ os.chdir(current_dir)
 ocp_walking = collocation.Collocation(current_dir+"/examples/walking2d.yaml")
 # The solve method returns x (the optimal solution) and info (ipopt information)
 start = time.time()
-x, info = ocp_walking.solve()
+x, info = ocp_walking.solve(visualize=True)
 end = time.time()
 print(f"Optimization completed in {end - start:.2f} seconds")

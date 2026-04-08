@@ -19,27 +19,6 @@
  ],
  "collocation.Collocation": [
   {
-   "is_class": true,
-   "is_explicit": false,
-   "module": "biosym.ocp.collocation",
-   "module_short": "biosym.ocp.collocation",
-   "name": "Collocation"
-  },
-  {
-   "is_class": true,
-   "is_explicit": false,
-   "module": "biosym.ocp",
-   "module_short": "biosym.ocp",
-   "name": "Collocation"
-  },
-  {
-   "is_class": true,
-   "is_explicit": false,
-   "module": "biosym",
-   "module_short": "biosym",
-   "name": "Collocation"
-  },
-  {
    "is_class": false,
    "is_explicit": false,
    "module": "biosym.ocp.collocation",
@@ -54,33 +33,6 @@
    "module": "builtins",
    "module_short": "builtins",
    "name": "str"
-  }
- ],
- "end": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "float"
-  }
- ],
- "end_": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "float"
-  }
- ],
- "info": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "dict"
   }
  ],
  "load_model": [
@@ -99,56 +51,6 @@
    "name": "load_model"
   }
  ],
- "load_time": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "float"
-  }
- ],
- "model": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.model.model",
-   "module_short": "biosym.model.model",
-   "name": "BiosymModel"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.model",
-   "module_short": "biosym.model",
-   "name": "BiosymModel"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym",
-   "module_short": "biosym",
-   "name": "BiosymModel"
-  }
- ],
- "model.n_constants": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "int"
-  }
- ],
- "model.n_states": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "int"
-  }
- ],
  "model_file": [
   {
    "is_class": false,
@@ -156,98 +58,6 @@
    "module": "builtins",
    "module_short": "builtins",
    "name": "str"
-  }
- ],
- "ocp": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.ocp.collocation",
-   "module_short": "biosym.ocp.collocation",
-   "name": "Collocation"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.ocp",
-   "module_short": "biosym.ocp",
-   "name": "Collocation"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym",
-   "module_short": "biosym",
-   "name": "Collocation"
-  }
- ],
- "ocp.solve": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.ocp.collocation",
-   "module_short": "biosym.ocp.collocation",
-   "name": "Collocation.solve"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.ocp",
-   "module_short": "biosym.ocp",
-   "name": "Collocation.solve"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym",
-   "module_short": "biosym",
-   "name": "Collocation.solve"
-  }
- ],
- "ocp_walking": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.ocp.collocation",
-   "module_short": "biosym.ocp.collocation",
-   "name": "Collocation"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.ocp",
-   "module_short": "biosym.ocp",
-   "name": "Collocation"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym",
-   "module_short": "biosym",
-   "name": "Collocation"
-  }
- ],
- "ocp_walking.solve": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.ocp.collocation",
-   "module_short": "biosym.ocp.collocation",
-   "name": "Collocation.solve"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym.ocp",
-   "module_short": "biosym.ocp",
-   "name": "Collocation.solve"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "biosym",
-   "module_short": "biosym",
-   "name": "Collocation.solve"
   }
  ],
  "os.chdir": [
@@ -346,42 +156,6 @@
    "name": "join"
   }
  ],
- "solution": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "tuple"
-  }
- ],
- "standing_yaml_config": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "str"
-  }
- ],
- "start": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "float"
-  }
- ],
- "start_": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "float"
-  }
- ],
  "start_path": [
   {
    "is_class": false,
@@ -446,24 +220,6 @@
    "module": "time",
    "module_short": "time",
    "name": "time"
-  }
- ],
- "walking_yaml_config": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "str"
-  }
- ],
- "x": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "tuple"
   }
  ]
 }

@@ -18,11 +18,15 @@ import tomllib as toml
 from datetime import datetime
 from pathlib import Path
 
-HERE = Path(__file__)
+CONF_FILE = Path(__file__).resolve()
+DOCS_DIR = CONF_FILE.parent
+ROOT_DIR = DOCS_DIR.parent
 ON_RTD = os.environ.get("READTHEDOCS") == "True"
+ON_GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
+USE_COMMITTED_GALLERY = ON_RTD or ON_GITHUB_ACTIONS or os.environ.get("BIOSYM_USE_COMMITTED_GALLERY") == "1"
 
-sys.path.insert(0, str(HERE.parent))
-sys.path.insert(0, str(HERE.parent.parent))
+sys.path.insert(0, str(DOCS_DIR))
+sys.path.insert(0, str(ROOT_DIR))
 
 
 URL = "https://github.com/biomac-group/biosym"
@@ -30,7 +34,8 @@ URL = "https://github.com/biomac-group/biosym"
 # -- Project information -----------------------------------------------------
 
 # Info from pyproject.toml config:
-info = toml.load("../pyproject.toml")["project"]
+with (ROOT_DIR / "pyproject.toml").open("rb") as pyproject_file:
+    info = toml.load(pyproject_file)["project"]
 
 project = info["name"]
 author = "biosym contributors"  # No authors field in project config
@@ -39,15 +44,14 @@ release = info["version"]
 copyright = f"2021 - {datetime.now().year}, MaD Lab, FAU"
 
 # -- Copy the README and Changelog and fix image path --------------------------------------
-HERE = Path(__file__).parent
-with (HERE.parent / "README.md").open() as f:
+with (ROOT_DIR / "README.md").open() as f:
     out = f.read()
-with (HERE / "README.md").open("w+") as f:
+with (DOCS_DIR / "README.md").open("w+") as f:
     f.write(out)
 
-with (HERE.parent / "CHANGELOG.md").open() as f:
+with (ROOT_DIR / "CHANGELOG.md").open() as f:
     out = f.read()
-with (HERE / "CHANGELOG.md").open("w+") as f:
+with (DOCS_DIR / "CHANGELOG.md").open("w+") as f:
     f.write(out)
 
 # -- General configuration ---------------------------------------------------
@@ -63,20 +67,20 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     # "sphinx.ext.imgconverter",
+    "sphinx_gallery.gen_gallery",
     "recommonmark",
 ]
 
-if not ON_RTD:
-    extensions.append("sphinx_gallery.gen_gallery")
-
-autodoc_mock_imports = [
-    "cyipopt",
-    "dash",
-    "dash_ag_grid",
-    "flax",
-    "flatbuffers",
-    "jax",
-]
+autodoc_mock_imports = []
+if ON_RTD:
+    autodoc_mock_imports = [
+        "cyipopt",
+        "dash",
+        "dash_ag_grid",
+        "flax",
+        "flatbuffers",
+        "jax",
+    ]
 
 # this is needed for some reason...
 # see https://github.com/numpy/numpydoc/issues/69
@@ -168,6 +172,7 @@ sphinx_gallery_conf = {
     "backreferences_dir": "modules/generated/backreferences",
     "doc_module": ("biosym",),
     "filename_pattern": re.escape(os.sep),
+    "plot_gallery": not USE_COMMITTED_GALLERY,
     "remove_config_comments": True,
     "show_memory": True,
 }
