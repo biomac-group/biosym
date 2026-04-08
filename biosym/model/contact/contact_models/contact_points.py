@@ -221,12 +221,21 @@ class ContactPoints(BaseContact):
 
     def get_cp_forces(self, states, constants, model):
         """
-        Returns the contact forces for all bodies in the global frame.
-        inputs:
-            - states: The state of the model
-            - model: The model object
-        outputs:
-            - contact_forces: The contact forces for all contact points in the global frame
+        Return contact forces for all contact points in the global frame.
+
+        Parameters
+        ----------
+        states : object
+            State container for the current model evaluation.
+        constants : object
+            Constant parameter container for the current model evaluation.
+        model : biosym.model.model.BiosymModel
+            Model instance used to evaluate the contact-force functions.
+
+        Returns
+        -------
+        jax.Array
+            Contact forces for all contact points in the global frame.
         """
         cp_forces = self.force_vector(*states.model, *constants.model)
         return cp_forces
@@ -244,12 +253,21 @@ class ContactPoints(BaseContact):
 
     def forward(self, states, constants, model):
         """
-        Returns the contact forces for all bodies in the global frame.
-        inputs:
-            - states: The state of the model
-            - model: The model object
-        outputs:
-            - contact_forces: The contact forces for all bodies in the global frame
+        Return aggregated contact forces and moments for all contact bodies.
+
+        Parameters
+        ----------
+        states : object
+            State container for the current model evaluation.
+        constants : object
+            Constant parameter container for the current model evaluation.
+        model : biosym.model.model.BiosymModel
+            Model instance used to evaluate the contact model.
+
+        Returns
+        -------
+        tuple[jax.Array, jax.Array]
+            Aggregated body forces and moments in the global frame.
         """
         moment_arms = self.get_cp_moment_arms(states, constants, model)
         cp_forces = self.get_cp_forces(states, constants, model)
@@ -273,13 +291,20 @@ class ContactPoints(BaseContact):
 
     def plot(self, states, model, mode, ax, **kwargs):
         """
-        Plots the contact points in the model.
-        For the contact points, a connection to its body is made.
-        For each contact point, a line is drawn to each other contact point on the same body.
-        inputs:
-            - states: The state of the model
-            - model: The model object
-            - mode: The mode of the plot "init" or "update"
+        Plot contact points, body connections, and optional force vectors.
+
+        Parameters
+        ----------
+        states : object
+            State container or list of state containers to visualize.
+        model : biosym.model.model.BiosymModel
+            Model instance used to compute contact-point positions.
+        mode : str
+            Plotting mode, either ``"init"`` or ``"update"``.
+        ax : matplotlib.axes.Axes
+            Axes object that receives the contact visualization.
+        **kwargs
+            Additional plotting options such as ``case`` and ``non_zero_axes``.
         """
         if "case" in kwargs:
             case = kwargs["case"]

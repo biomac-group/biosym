@@ -241,15 +241,12 @@ class BaseContact(ABC):
             
         Notes
         -----
-        Plotting modes:
-        - "init": Initialize the plot, set up axes, create line objects,
-          and save plotting parameters for efficient updates.
-        - "update": Update existing plot elements with new data without
-          recreating the entire visualization.
-          
-        Contact visualizations typically show:
-        - Contact point locations
-        - Ground reaction force vectors
-        - Contact penetration indicators
-        - Friction force directions
+                Plotting mode ``"init"`` initializes axes, creates artists, and stores
+                plotting state for later updates.
+
+                Plotting mode ``"update"`` refreshes the existing artists without
+                recreating the whole visualization.
+
+                Contact visualizations typically show contact point locations, ground
+                reaction force vectors, penetration indicators, and friction directions.
         """
