@@ -51,7 +51,7 @@ Examples use models from ``../tests/models/gait2d_torque/gait2d_torque.yaml``
   .. image:: /auto_examples/images/thumb/sphx_glr_batching_thumb.png
     :alt:
 
-  :ref:`sphx_glr_auto_examples_batching.py`
+  :doc:`/auto_examples/batching`
 
 .. raw:: html
 
@@ -68,7 +68,7 @@ Examples use models from ``../tests/models/gait2d_torque/gait2d_torque.yaml``
   .. image:: /auto_examples/images/thumb/sphx_glr_gait2d_thumb.png
     :alt:
 
-  :ref:`sphx_glr_auto_examples_gait2d.py`
+  :doc:`/auto_examples/gait2d`
 
 .. raw:: html
 
@@ -85,7 +85,7 @@ Examples use models from ``../tests/models/gait2d_torque/gait2d_torque.yaml``
   .. image:: /auto_examples/images/thumb/sphx_glr_interacting_with_models_thumb.png
     :alt:
 
-  :ref:`sphx_glr_auto_examples_interacting_with_models.py`
+  :doc:`/auto_examples/interacting_with_models`
 
 .. raw:: html
 

@@ -62,7 +62,7 @@ with (DOCS_DIR / "CHANGELOG.md").open("w+") as f:
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    "numpydoc",
+    "sphinx.ext.napoleon",
     # "sphinx.ext.linkcode",  # Temporarily disabled due to Constants.actuator_model issue
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
@@ -70,6 +70,9 @@ extensions = [
     "sphinx_gallery.gen_gallery",
     "recommonmark",
 ]
+
+if not ON_RTD:
+    extensions.append("numpydoc")
 
 autodoc_mock_imports = []
 if ON_RTD:
@@ -85,6 +88,8 @@ if ON_RTD:
 # this is needed for some reason...
 # see https://github.com/numpy/numpydoc/issues/69
 numpydoc_class_members_toctree = False
+napoleon_numpy_docstring = True
+napoleon_google_docstring = False
 
 # Taken from sklearn config
 # For maths, use mathjax by default and svg if NO_MATHJAX env variable is set
@@ -160,17 +165,26 @@ intersphinx_mapping = {
     **intersphinx_module_mapping,
 }
 
+gallery_reference_url = {
+    "biosym": None,
+    **{k: v[0] for k, v in intersphinx_module_mapping.items()},
+}
+gallery_doc_module = ("biosym",)
+
+if USE_COMMITTED_GALLERY:
+    # RTD and GitHub docs builds reuse committed gallery artefacts, so skip the
+    # post-build code-link embedding step that relies on writable dbm caches.
+    gallery_reference_url = {}
+    gallery_doc_module = ()
+
 # Sphinx Gallary
 sphinx_gallery_conf = {
     "examples_dirs": ["../examples"],
     "gallery_dirs": ["./auto_examples"],
-    "reference_url": {
-        "biosym": None,
-        **{k: v[0] for k, v in intersphinx_module_mapping.items()},
-    },
+    "reference_url": gallery_reference_url,
     # 'default_thumb_file': 'fig/logo.png',
     "backreferences_dir": "modules/generated/backreferences",
-    "doc_module": ("biosym",),
+    "doc_module": gallery_doc_module,
     "filename_pattern": re.escape(os.sep),
     "plot_gallery": not USE_COMMITTED_GALLERY,
     "remove_config_comments": True,
