@@ -13,9 +13,9 @@ collocation:
         adaptive_h: false
     output:
       file: "~/.biosym/walking2d.pkl"
-    tol: 1e-5
+    tol: 1e-3
     acceptable_dual_inf_tol: 1e-2
-    constr_viol_tol: 1e-4
+    constr_viol_tol: 1e-3
     max_iter: 5000
 
   objectives:
@@ -24,7 +24,7 @@ collocation:
       args:
         exponent: 3
     - name: jerk_term
-      weight: 0
+      weight: 2e-2
 
   constraints:
     - name: dynamics

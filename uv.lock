@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -80,7 +80,7 @@ wheels = [
 [[package]]
 name = "biosym"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "absl-py" },
     { name = "black", extra = ["jupyter"] },
@@ -104,6 +104,8 @@ dependencies = [
 docs = [
     { name = "myst-parser" },
     { name = "numpydoc" },
+    { name = "pydata-sphinx-theme" },
+    { name = "recommonmark" },
     { name = "sphinx" },
     { name = "sphinx-automodapi" },
     { name = "sphinx-copybutton" },
@@ -145,7 +147,9 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0.2" },
     { name = "numpydoc", marker = "extra == 'docs'" },
     { name = "pandas", specifier = ">=2.3.0" },
+    { name = "pydata-sphinx-theme", marker = "extra == 'docs'" },
     { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "recommonmark", marker = "extra == 'docs'" },
     { name = "ruff", specifier = ">=0.12.1" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=4.0" },
     { name = "sphinx-automodapi", marker = "extra == 'docs'" },
