@@ -35,12 +35,6 @@ This is a recreation of "gait2d", or 2D gait simulations in general
     from biosym.model.model import load_model
 
 
-
-
-
-
-
-
 .. GENERATED FROM PYTHON SOURCE LINES 53-59
 
 Load 2D Gait Model
@@ -63,31 +57,6 @@ sophisticated biomechanical systems.
 
     print(f"Model loaded in {load_time:.3f} seconds")
     print(f"Model has {model.n_states} states and {model.n_constants} constants")
-
-
-
-.. rst-class:: sphx-glr-script-out
-
-.. code-block:: pytb
-
-    Traceback (most recent call last):
-      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/examples/gait2d.py", line 63, in <module>
-        model = load_model(model_file, force_rebuild=True)
-      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/biosym/model/model.py", line 1054, in load_model
-        model_hash = BiosymModel(model_file, get_hash=True)._get_hash()
-                     ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
-      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/biosym/model/model.py", line 85, in __init__
-        self.actuators = actuator_parser.get(parser.get_actuators())
-                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
-      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/biosym/model/actuators/actuator_parser.py", line 77, in get
-        return general.GeneralMujoco(root.findall("motor"))
-               ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/biosym/model/actuators/actuator_models/general.py", line 247, in __init__
-        "min": jnp.zeros(self.n_actuators)*-1e4,
-               ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~
-    TypeError: unsupported operand type(s) for *: 'zeros' and 'float'
-
-
 
 
 .. GENERATED FROM PYTHON SOURCE LINES 70-81
@@ -262,10 +231,7 @@ optimization problem similarly to the standing example.
     end = time.time()
     print(f"Optimization completed in {end - start:.2f} seconds")
 
-
-.. rst-class:: sphx-glr-timing
-
-   **Total running time of the script:** (0 minutes 0.007 seconds)
+**Estimated memory usage:**  0 MB
 
 
 .. _sphx_glr_download_auto_examples_gait2d.py:

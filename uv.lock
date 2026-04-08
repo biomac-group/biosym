@@ -120,15 +120,27 @@ dev = [
     { name = "pytest-cov" },
 ]
 docs = [
+    { name = "absl-py" },
+    { name = "cloudpickle" },
+    { name = "dash" },
+    { name = "dash-ag-grid" },
+    { name = "flatbuffers" },
+    { name = "flax" },
+    { name = "jax" },
+    { name = "matplotlib" },
     { name = "myst-parser" },
+    { name = "numpy" },
     { name = "numpydoc" },
+    { name = "pandas" },
     { name = "pydata-sphinx-theme" },
+    { name = "pyyaml" },
     { name = "recommonmark" },
     { name = "sphinx" },
     { name = "sphinx-autodoc-typehints" },
     { name = "sphinx-gallery" },
     { name = "sphinx-rtd-theme" },
-    { name = "toml" },
+    { name = "sympy" },
+    { name = "tqdm" },
 ]
 
 [package.metadata]
@@ -168,15 +180,27 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.0.0" },
 ]
 docs = [
+    { name = "absl-py", specifier = ">=2.3.0" },
+    { name = "cloudpickle", specifier = ">=3.1.1" },
+    { name = "dash", specifier = ">=3.3.0" },
+    { name = "dash-ag-grid", specifier = ">=32.3.2" },
+    { name = "flatbuffers", specifier = ">=25.2.10" },
+    { name = "flax", specifier = ">=0.8.5" },
+    { name = "jax", specifier = ">=0.4.30" },
+    { name = "matplotlib", specifier = ">=3.9.4" },
     { name = "myst-parser", specifier = ">=4.0.1" },
+    { name = "numpy", specifier = ">=2.0.2" },
     { name = "numpydoc", specifier = ">=1.9.0" },
+    { name = "pandas", specifier = ">=2.3.0" },
     { name = "pydata-sphinx-theme", specifier = ">=0.16.1" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "recommonmark", specifier = ">=0.7.1" },
     { name = "sphinx", specifier = ">=8.2.3" },
     { name = "sphinx-autodoc-typehints", specifier = ">=3.2.0" },
     { name = "sphinx-gallery", specifier = ">=0.19.0" },
     { name = "sphinx-rtd-theme", specifier = ">=3.0.2" },
-    { name = "toml", specifier = ">=0.10.2" },
+    { name = "sympy", specifier = ">=1.14.0" },
+    { name = "tqdm", specifier = ">=4.67.1" },
 ]
 
 [[package]]
@@ -2232,15 +2256,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/69/ed/8f07e893132d5051d86a553e749d5c89b2a4776eb3a579b72ed61f8559ca/tokenize_rt-6.2.0.tar.gz", hash = "sha256:8439c042b330c553fdbe1758e4a05c0ed460dbbbb24a606f11f0dee75da4cad6", size = 5476, upload-time = "2025-05-23T23:48:00.035Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/33/f0/3fe8c6e69135a845f4106f2ff8b6805638d4e85c264e70114e8126689587/tokenize_rt-6.2.0-py2.py3-none-any.whl", hash = "sha256:a152bf4f249c847a66497a4a95f63376ed68ac6abf092a2f7cfb29d044ecff44", size = 6004, upload-time = "2025-05-23T23:47:58.812Z" },
-]
-
-[[package]]
-name = "toml"
-version = "0.10.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/be/ba/1f744cdc819428fc6b5084ec34d9b30660f6f9daaf70eead706e3203ec3c/toml-0.10.2.tar.gz", hash = "sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f", size = 22253, upload-time = "2020-11-01T01:40:22.204Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/6f/7120676b6d73228c96e17f1f794d8ab046fc910d781c8d151120c3f1569e/toml-0.10.2-py2.py3-none-any.whl", hash = "sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b", size = 16588, upload-time = "2020-11-01T01:40:20.672Z" },
 ]
 
 [[package]]
