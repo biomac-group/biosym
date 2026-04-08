@@ -25,7 +25,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parent.parent))
 
 
-URL = "https://github.com/mad-lab-fau/biosym"
+URL = "https://github.com/biomac-group/biosym"
 
 # -- Project information -----------------------------------------------------
 
