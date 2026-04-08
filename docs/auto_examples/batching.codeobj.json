@@ -1,0 +1,529 @@
+{
+ "_find_git_root": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  }
+ ],
+ "_git_root": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "batch_size": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "current_dir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "dynamics_fn": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  }
+ ],
+ "dynamics_output": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib._jax",
+   "module_short": "jaxlib._jax",
+   "name": "ArrayImpl"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib",
+   "module_short": "jaxlib",
+   "name": "ArrayImpl"
+  }
+ ],
+ "dynamics_output.shape": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib._jax",
+   "module_short": "jaxlib._jax",
+   "name": "ArrayImpl.shape"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib",
+   "module_short": "jaxlib",
+   "name": "ArrayImpl.shape"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax",
+   "module_short": "jax",
+   "name": "Array.shape"
+  }
+ ],
+ "dynamics_output_single": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib._jax",
+   "module_short": "jaxlib._jax",
+   "name": "ArrayImpl"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib",
+   "module_short": "jaxlib",
+   "name": "ArrayImpl"
+  }
+ ],
+ "end_time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "i": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "jax.devices": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax",
+   "module_short": "jax",
+   "name": "devices"
+  }
+ ],
+ "jax.vmap": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax",
+   "module_short": "jax",
+   "name": "vmap"
+  }
+ ],
+ "load_model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "load_model"
+  }
+ ],
+ "load_time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BiosymModel"
+  }
+ ],
+ "model.default_inputs": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "StatesDict"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "StatesDict"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "StatesDict"
+  }
+ ],
+ "model.n_constants": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "model.n_states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "model.run": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "dict"
+  }
+ ],
+ "model_file": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "os.chdir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os",
+   "module_short": "os",
+   "name": "chdir"
+  }
+ ],
+ "os.getcwd": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os",
+   "module_short": "os",
+   "name": "getcwd"
+  }
+ ],
+ "os.path.abspath": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "abspath"
+  }
+ ],
+ "os.path.dirname": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "dirname"
+  }
+ ],
+ "os.path.isdir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "isdir"
+  }
+ ],
+ "os.path.join": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "join"
+  }
+ ],
+ "start_path": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "start_time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "states.stack_dataclasses": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "stack_dataclasses"
+  }
+ ],
+ "states_": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "StatesDict"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "StatesDict"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "StatesDict"
+  }
+ ],
+ "states_.constants": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "States"
+  }
+ ],
+ "states_.states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "States"
+  }
+ ],
+ "states_dict_0": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "StatesDict"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "StatesDict"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "StatesDict"
+  }
+ ],
+ "sys.path": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "list"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sys",
+   "module_short": "sys",
+   "name": "path"
+  }
+ ],
+ "sys.path.insert": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sys.path",
+   "module_short": "sys.path",
+   "name": "insert"
+  }
+ ],
+ "time.time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "time",
+   "module_short": "time",
+   "name": "time"
+  }
+ ]
+}
