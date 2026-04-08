@@ -8,6 +8,7 @@
 
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
+notebooks/testing.ipynb
 
 # IPython
 profile_default/
@@ -239,4 +240,17 @@ $RECYCLE.BIN/
 .python-version
 
 # debug folder
+plans
 _debug
+notebooks/collocation_outputs.ipynb
+.github/copilot-instructions.md
+example_data/gait_averaged_markers.csv
+examples/sympy_example.py
+gait_averaged_markers.csv
+notebooks/sympy_training.ipynb
+scripts/biosymmodel_checks.py
+scripts/trace_pipeline.py
+tests/test_markers_order.py
+example_data/P01
+example_data/P02
+tests/models/untracked

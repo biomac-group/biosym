@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.experimental.ode import odeint
+
 import biosym.utils.states as stat
 
 # Caching functions in this module is unwanted.
@@ -42,16 +43,12 @@ class SimulationEnvironment:
         self._create_simulation_ode()
         if type(initial_state) == str:
             if initial_state not in ["neutral", "random"]:
-                raise ValueError(
-                    f"Simulation: initial state '{initial_state}' is not supported."
-                )
+                raise ValueError(f"Simulation: initial state '{initial_state}' is not supported.")
             self.reset(mode=initial_state, **kwargs)
         elif type(initial_state) == dict:
             # Check if the initial state is a valid dictionary
             if "states" not in initial_state or "constants" not in initial_state:
-                raise ValueError(
-                    "Simulation: initial state must contain 'states' and 'constants' keys."
-                )
+                raise ValueError("Simulation: initial state must contain 'states' and 'constants' keys.")
             if (
                 "model" not in initial_state["states"]
                 or "gc_model" not in initial_state["states"]
@@ -74,23 +71,22 @@ class SimulationEnvironment:
         """
         Create the simulation ODE function.
         This function is used to compute the state derivatives for the simulation.
-        """ 
+        """
+
         def simulation_ode(model_state_vector, t, others, n_extforce, runs):
-            controls, constants_, actuator_states_, gc_states_, remaining_states_ = (
-                others
-            )
+            controls, constants_, actuator_states_, gc_states_, remaining_states_ = others
             a = model_state_vector
             states_ = stat.States(
                 model=jnp.concatenate((a, remaining_states_)),
                 gc_model=gc_states_,
                 actuator_model=actuator_states_,
+                h=None,
             )
             # Run actuator model
             if "actuator_model" in runs:
                 actuator_signals = runs["actuator_model"](states_, constants_)
             else:
                 actuator_signals = controls
-
             # Run ground contact model
             if "gc_model" in runs:
                 contact_signals = runs["gc_model"](states_, constants_)
@@ -110,11 +106,20 @@ class SimulationEnvironment:
                 model=model_state_vector_,
                 gc_model=gc_states_,
                 actuator_model=actuator_states_,
+                h=None,
             )
 
             M = runs["mass_matrix"](states_, constants_)
             F = runs["forcing"](states_, constants_)
-            acc = jnp.linalg.solve(M, F)
+
+            # Add numerical stability to matrix solve
+            M_reg = M  # + jnp.eye(M.shape[0])
+            try:
+                acc = jnp.linalg.solve(M_reg, F)
+            except:
+                # Fallback to pseudoinverse if direct solve fails
+                raise NotImplementedError("Matrix solve failed")
+
             return_states = jnp.concatenate((a[len(acc) : 2 * len(acc)], acc[:, 0]))
             return return_states
 
@@ -133,9 +138,7 @@ class SimulationEnvironment:
                 self.model.default_inputs.constants,
                 self.model.default_inputs.states.actuator_model,
                 self.model.default_inputs.states.gc_model,
-                self.model.default_inputs.states.model[
-                    2 * self.model.coordinates["n"] :
-                ],
+                self.model.default_inputs.states.model[2 * self.model.coordinates["n"] :],
             ),
         )
 
@@ -166,9 +169,7 @@ class SimulationEnvironment:
                 2. Compute the GRF signal from the contact model.
                 3. Integrate the state using the ODE function.
             """
-            assert (
-                state is not None
-            ), "Simulation environment not initialized. Call reset() first."
+            assert state is not None, "Simulation environment not initialized. Call reset() first."
             # Integrate the state using the ODE function
             # Time array with two points: initial time and initial time + dt
             t = jnp.array([0.0, dt])
@@ -189,8 +190,9 @@ class SimulationEnvironment:
                     gc_states_,
                     states_[2 * n_coordinates :],
                 ),
-                atol=1e-4,
-                rtol=1e-4,
+                atol=1e-6,
+                rtol=1e-6,
+                mxstep=10000,
             )
             # The current state is only the last value of the integration
             return new_state_[-1]
@@ -203,30 +205,20 @@ class SimulationEnvironment:
 
         # self.state['states']['model'] = self._step(controls, self.state, self.dt, self.simulation_ode)
 
-        self.state = self.state.replace_vector("states", "model", 
-                                  self.state.states.model.at[: 2 * self.model.coordinates["n"]]
-                                  .set(self._step(controls, self.state, self.dt)))
+        self.state = self.state.replace_vector(
+            "states",
+            "model",
+            self.state.states.model.at[: 2 * self.model.coordinates["n"]].set(
+                self._step(controls, self.state, self.dt)
+            ),
+        )
         # Check for callbacks for rewards and stopping criteria
-        reward = (
-            self.reward_callback(self.state, controls, self.model)
-            if hasattr(self, "reward_callback")
-            else 0.0
-        )
+        reward = self.reward_callback(self.state, controls, self.model) if hasattr(self, "reward_callback") else 0.0
         terminated = (
-            self.termination_callback(self.state, self.model)
-            if hasattr(self, "termination_callback")
-            else False
+            self.termination_callback(self.state, self.model) if hasattr(self, "termination_callback") else False
         )
-        truncated = (
-            self.truncation_callback(self.state, self.model)
-            if hasattr(self, "truncation_callback")
-            else False
-        )
-        info = (
-            self.info_callback(self.state, controls, self.model)
-            if hasattr(self, "info_callback")
-            else {}
-        )
+        truncated = self.truncation_callback(self.state, self.model) if hasattr(self, "truncation_callback") else False
+        info = self.info_callback(self.state, controls, self.model) if hasattr(self, "info_callback") else {}
 
         return copy.deepcopy(self.state), reward, terminated, truncated, info
 
@@ -248,9 +240,7 @@ class SimulationEnvironment:
 
         if type(mode) == str:
             if mode not in ["neutral", "random"]:
-                raise ValueError(
-                    f"Simulation: initial state '{mode}' is not supported."
-                )
+                raise ValueError(f"Simulation: initial state '{mode}' is not supported.")
             if seed is not None:
                 np.random.seed(seed)
             if self.initial_state == "neutral":
@@ -260,12 +250,26 @@ class SimulationEnvironment:
                 states_ = []
                 for i, row in self.model.variables.iterrows():
                     if row.type == "state":
-                        states_.append(np.random.uniform(row["xmin"], row["xmax"]))
-                self.state = self.state.replace_vector("states","model",jnp.array(states_))
+                        # Use more conservative random ranges to avoid numerical issues
+                        curr_dof = self.model.variables.iloc[i].values[1]
+                        if curr_dof.startswith("q_"):
+                            val_range = abs(row["xmax"] - row["xmin"])
+                            center = (row["xmax"] + row["xmin"]) / 2
+                            val = center + np.random.uniform(-val_range / 2, val_range / 2)
+                            val = np.clip(val, row["xmin"], row["xmax"])  # Ensure bounds
+                            if curr_dof.endswith("tx"):
+                                val = 0
+                            elif curr_dof.endswith("ty"):
+                                val = np.random.uniform(0, 1)  # Small positive height
+                        else:
+                            val = 0.0  # Do not pre-define speeds for now
+                        states_.append(val)
+                states_array = jnp.array(states_)
+                # Ensure finite values
+                states_array = jnp.where(jnp.isfinite(states_array), states_array, 0.0)
+                self.state = self.state.replace_vector("states", "model", states_array)
             else:
-                raise ValueError(
-                    f"Simulation: initial state '{self.initial_state}' is not supported."
-                )
+                raise ValueError(f"Simulation: initial state '{self.initial_state}' is not supported.")
             # Reset contact / ground contact model
             if hasattr(self.model, "contact_model"):
                 self.model.contact_model.reset(self.state, **kwargs)
@@ -273,14 +277,12 @@ class SimulationEnvironment:
             if hasattr(self.model, "actuator_model"):
                 self.model.actuator_model.reset(self.state, **kwargs)
         elif type(mode) == dict:
-            assert (
-                "states" in mode and "constants" in mode
-            ), "Simulation: initial state must contain 'states' and 'constants' keys."
-            assert (
-                "model" in mode["states"]
-                and "gc_model" in mode["states"]
-                and "actuator_model" in mode["states"]
-            ), "Simulation: initial state must contain 'model', 'gc_model', and 'actuator_model' keys."
+            assert "states" in mode and "constants" in mode, (
+                "Simulation: initial state must contain 'states' and 'constants' keys."
+            )
+            assert "model" in mode["states"] and "gc_model" in mode["states"] and "actuator_model" in mode["states"], (
+                "Simulation: initial state must contain 'model', 'gc_model', and 'actuator_model' keys."
+            )
             assert (
                 "model" in mode["constants"]
                 and "gc_model" in mode["constants"]

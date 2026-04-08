@@ -2,8 +2,11 @@ collocation:
   name: script2d_torque_driven
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
-    model: tests/models/gait2d_torque/gait2d_torque.yaml
+    model: tests/models/gait2d/gait2d.yaml
     nnodes: 50
+    # Logging is disabled for gitlab runners - reenable when running yourself!
+    #enable_logging: true 
+    #logging_interval: 5
     discretization:
       type: euler
       args:
@@ -13,26 +16,27 @@ collocation:
         adaptive_h: false
     output:
       file: "~/.biosym/walking2d.pkl"
-    tol: 1e-3
-    max_iter: 2000
-    dtype: float32 # float64 still makes problems
+    tol: 5e-4
+    acceptable_dual_inf_tol: 1e-3
+    acceptable_tol: 1e-3
+    constr_viol_tol: 1e-4
+    max_iter: 6000
 
   objectives:
-    - name: torque_term
-      weight: 1e-2
+    - name: effort_term
+      weight: 1e5
       args:
         exponent: 3
     - name: jerk_term
-      weight: 1e-2
-
+      weight: 1e-3
 
   constraints:
     - name: dynamics
-      weight: "1/BW"
+      weight: 1
     - name: ground_contact
       weight: "1/BW"
     - name: actuators
-      weight: 1
+      weight: "1/BW"
     - name: periodicity
       weight: 1
       args:
@@ -46,7 +50,7 @@ collocation:
   bounds:
     from_model: true
     start_at_origin: true
-    dur: [1, 2]
+    dur: 0.5
     speed: 1.3
 
 

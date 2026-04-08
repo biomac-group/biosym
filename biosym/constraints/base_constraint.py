@@ -1,10 +1,12 @@
 import abc
 
+
 class BaseConstraint(abc.ABC):
     """
     Abstract base class for constraints in the biosym package.
     All constraints should inherit from this class and implement the required methods.
     """
+
     def __init__(self, model, settings, args):
         """
         Initialize the BaseConstraint class with a model and settings.
@@ -20,11 +22,11 @@ class BaseConstraint(abc.ABC):
         This method can be overridden in subclasses to provide specific information.
         """
         return {
-            'name': self.__class__.__name__,
-            'description': 'Base constraint class for biosym constraints.',
-            'n_constraints': self.get_n_constraints(),
-            'required_variables': None,
-            'nnz': self.get_nnz()
+            "name": self.__class__.__name__,
+            "description": "Base constraint class for biosym constraints.",
+            "n_constraints": self.get_n_constraints(),
+            "required_variables": None,
+            "nnz": self.get_nnz(),
         }
 
     @abc.abstractmethod
@@ -36,7 +38,6 @@ class BaseConstraint(abc.ABC):
         :param kwargs: Keyword arguments for evaluation.
         :return: The constraint function.
         """
-        pass
 
     @abc.abstractmethod
     def get_jacobian(self, *args, **kwargs):
@@ -47,7 +48,6 @@ class BaseConstraint(abc.ABC):
         :param kwargs: Keyword arguments for Jacobian computation.
         :return: The Jacobian of the constraint function.
         """
-        pass
 
     @abc.abstractmethod
     def get_n_constraints(self):
@@ -56,7 +56,6 @@ class BaseConstraint(abc.ABC):
 
         :return: The number of constraints.
         """
-        pass
 
     @abc.abstractmethod
     def get_nnz(self):
@@ -65,4 +64,3 @@ class BaseConstraint(abc.ABC):
 
         :return: The number of non-zero entries.
         """
-        pass

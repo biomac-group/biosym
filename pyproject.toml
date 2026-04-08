@@ -9,6 +9,8 @@ dependencies = [
     "black[jupyter]>=25.1.0",
     "cloudpickle>=3.1.1",
     "cyipopt>=1.5.0",
+    "dash>=3.3.0",
+    "dash-ag-grid>=32.3.2",
     "flatbuffers>=25.2.10",
     "flax>=0.8.5",
     "jax>=0.4.30",
@@ -18,13 +20,27 @@ dependencies = [
     "pyyaml>=6.0.2",
     "ruff>=0.12.1",
     "sympy>=1.14.0",
+    "tqdm>=4.67.1",
+]
+
+[project.optional-dependencies]
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme",
+    "myst-parser",
+    "sphinx-copybutton",
+    "sphinx-automodapi",
+    "numpydoc",
+    "sphinx-gallery",
 ]
 
 [tool.poe.tasks]
 test = "python -m pytest tests/ -v"
+test-cov = "python -m pytest tests/ -v --cov=biosym --cov-report=term-missing --cov-report=html --cov-report=xml"
 lint = "ruff check ."
 format_check = "ruff format --check ."
 docs = "python _tasks.py docs"
+update-coverage-badge = "python scripts/update_coverage_badge.py"
 
 [tool.pytest.ini_options]
 markers = [
@@ -33,12 +49,84 @@ markers = [
 # Set matplotlib backend for testing
 addopts = "--tb=short"
 # You can also set env vars here if needed
-env = [
-    "MPLBACKEND=Agg",
+# env = ["MPLBACKEND=Agg",]
+
+[tool.coverage.run]
+source = ["biosym"]
+omit = [
+    "tests/*",
+    "*/__pycache__/*",
+    "*/.*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
 ]
 
 [dependency-groups]
 dev = [
     "poethepoet>=0.37.0",
     "pytest>=8.4.2",
+    "pytest-cov>=6.0.0",
 ]
+docs = [
+    "myst-parser>=4.0.1",
+    "numpydoc>=1.9.0",
+    "pydata-sphinx-theme>=0.16.1",
+    "recommonmark>=0.7.1",
+    "sphinx>=8.2.3",
+    "sphinx-autodoc-typehints>=3.2.0",
+    "sphinx-gallery>=0.19.0",
+    "sphinx-rtd-theme>=3.0.2",
+    "toml>=0.10.2",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings  
+    "F",   # Pyflakes
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",   # isort
+]
+ignore = [
+    "D",     # pydocstyle (documentation style)
+    "ANN",   # flake8-annotations (type annotations)
+    "ARG",   # flake8-unused-arguments
+    "BLE001", # blind-except
+    "TRY300", # try-consider-else
+    "PLR0915", # too-many-statements
+    "RUF046",  # unnecessary-int-cast
+    "A001",    # builtin-variable-shadowing
+    "PLC0206", # dict-iter-missing-items
+    "W293", # blank line contains whitespace
+    "E402",
+    "E403"
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["F841", "NPY002", "SIM102", "E402", "E501"]  # Allow test-specific patterns
+"notebooks/**/*.py" = ["F841", "E501", "NPY002"]  # Relax rules for notebooks  
+"scripts/**/*.py" = ["E501"]  # Allow longer lines in scripts
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

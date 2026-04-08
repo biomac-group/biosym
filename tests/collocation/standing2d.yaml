@@ -2,7 +2,8 @@ collocation:
   name: script2d_torque_driven
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
-    model: tests/models/gait2d_torque/gait2d_torque.yaml
+    model: tests/models/gait2d/gait2d.yaml
+    #model: tests/models/gait2d_torque/gait2d_torque.yaml
     #model: tests/models/pendulum.xml
     nnodes: 1
     discretization:
@@ -11,21 +12,25 @@ collocation:
       weight: 400
     output:
       file: "~/.biosym/standing2d.pkl"
-    tol: 3e-5
+    tol: 1e-6
 
   objectives:
-    - name: torque_term
+    - name: effort_term
+    #- name: torque_term
       weight: 1
       args:
-        exponent: 3
+        exponent: 4 # Somehow this works best
+
+
+
 
   constraints:
     - name: dynamics
       weight: "1/BW"
+    - name: actuators
+      weight: "1/BW"
     - name: ground_contact
       weight: "1/BW"
-    - name: actuators
-      weight: 1
 
   #initial_guess:
   #  type: random
