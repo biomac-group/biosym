@@ -1,1 +1,20 @@
-{}
+{
+ "biosym.model.model.load_model": [
+  [
+   "gait2d.py",
+   "/Users/markusgambietz/PhD/01_Python_Projects/biosym/docs/../examples",
+   "/Users/markusgambietz/PhD/01_Python_Projects/biosym/docs/./auto_examples",
+   "This is a recreation of \"gait2d\", or 2D gait simulations in general",
+   "Predictive Gait Simulation in 2D"
+  ]
+ ],
+ "biosym.ocp.collocation.Collocation": [
+  [
+   "gait2d.py",
+   "/Users/markusgambietz/PhD/01_Python_Projects/biosym/docs/../examples",
+   "/Users/markusgambietz/PhD/01_Python_Projects/biosym/docs/./auto_examples",
+   "This is a recreation of \"gait2d\", or 2D gait simulations in general",
+   "Predictive Gait Simulation in 2D"
+  ]
+ ]
+}

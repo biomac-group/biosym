@@ -16,8 +16,7 @@ def task_docs(clean=False):
         shutil.rmtree(str(HERE / "docs/auto_examples"), ignore_errors=True)
 
     subprocess.run(
-        "sphinx-build -j auto -d docs/_build docs docs/_build/html",
-        shell=True,
+        [sys.executable, "-m", "sphinx", "-j", "1", "-d", "docs/_build", "docs", "docs/_build/html"],
         check=True,
     )
 

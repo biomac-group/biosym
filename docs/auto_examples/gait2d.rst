@@ -66,21 +66,26 @@ sophisticated biomechanical systems.
 
 
 
-
-
 .. rst-class:: sphx-glr-script-out
 
- .. code-block:: none
+.. code-block:: pytb
 
-    Loading 2D gait model with torque actuators...
-    Replacing dynamic symbols in the EOM with the v_ states, this might take a while...
-    Lambdifying the EOM took 0.42772603034973145 seconds
-    Precompiling the Jacobian took 0.7073619365692139 seconds
-    Precompiling the confun took 0.7124097347259521 seconds
-    Precompiling the mass matrix took 0.9185688495635986 seconds
-    Precompiling the forcing took 0.6951770782470703 seconds
-    Model loaded in 7.183 seconds
-    Model has 45 states and 94 constants
+    Traceback (most recent call last):
+      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/examples/gait2d.py", line 63, in <module>
+        model = load_model(model_file, force_rebuild=True)
+      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/biosym/model/model.py", line 1054, in load_model
+        model_hash = BiosymModel(model_file, get_hash=True)._get_hash()
+                     ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/biosym/model/model.py", line 85, in __init__
+        self.actuators = actuator_parser.get(parser.get_actuators())
+                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/biosym/model/actuators/actuator_parser.py", line 77, in get
+        return general.GeneralMujoco(root.findall("motor"))
+               ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+      File "/Users/markusgambietz/PhD/01_Python_Projects/biosym/biosym/model/actuators/actuator_models/general.py", line 247, in __init__
+        "min": jnp.zeros(self.n_actuators)*-1e4,
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~
+    TypeError: unsupported operand type(s) for *: 'zeros' and 'float'
 
 
 
@@ -143,12 +148,6 @@ optimization bounds: (Bounds on states, controls, durations etc. (usually a prop
     """
 
 
-
-
-
-
-
-
 .. GENERATED FROM PYTHON SOURCE LINES 121-127
 
 Run optimization problem
@@ -158,50 +157,24 @@ Now that we have our model and configuration set up, we can use the yaml file
 to run an optimization problem to find a standing posture.
 Usually, you would see IPOPT's log as well, but it gets redirected when building the documentation.
 
-.. GENERATED FROM PYTHON SOURCE LINES 127-136
+.. GENERATED FROM PYTHON SOURCE LINES 127-139
 
 .. code-block:: Python
 
 
     from biosym.ocp import collocation
 
-    ocp = collocation.Collocation(current_dir+"/examples/standing2d.yaml")
+    ocp = collocation.Collocation(current_dir+"/examples/standing2d.yaml", force_rebuild=True)
     start_ = time.time()
-    solution = ocp.solve()
+    solution = ocp.solve(visualize=True)
     end_ = time.time()
     print(f"Optimization completed in {end_ - start_:.2f} seconds")
 
+    for i, coordinate in enumerate(model.coordinates['names']):
+        print(f"{coordinate}: {solution[0][0].states.model[0,i]:.4f}")
 
 
-
-
-.. rst-class:: sphx-glr-script-out
-
- .. code-block:: none
-
-    Loading model from cache: 793390c1a917e50c59b8d0652618e93af77d0fac6cf9da2d93e0b2854005b0b0.cpkl
-    Collocation warning in process collocation settings: Bounds are not correctly handled
-    Adding constraint: dynamics with weight 1/BW
-    1/BW
-    Adding constraint: ground_contact with weight 1/BW
-    1/BW
-    Adding constraint: actuators with weight 1/BW
-    1/BW
-    Adding objective: torque_term with weight 1.0
-    /Users/markusgambietz/PhD/01_Python_Projects/biosym/.venv/lib/python3.13/site-packages/jax/_src/ops/scatter.py:108: FutureWarning: scatter inputs have incompatible types: cannot safely cast value from dtype=int64 to dtype=int32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.
-      warnings.warn(
-    /Users/markusgambietz/PhD/01_Python_Projects/biosym/.venv/lib/python3.13/site-packages/jax/_src/ops/scatter.py:108: FutureWarning: scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.
-      warnings.warn(
-    Found 279 nonzeros in jacobian structure
-    22.30% of the (sparse) jacobian is nonzero
-    20.26% of the full jacobian is nonzero
-    Saving results to /Users/markusgambietz/.biosym/standing2d.pkl
-    Optimization completed in 3.18 seconds
-
-
-
-
-.. GENERATED FROM PYTHON SOURCE LINES 140-146
+.. GENERATED FROM PYTHON SOURCE LINES 143-149
 
 2D Walking Configuration example
 ------------------------------
@@ -210,7 +183,7 @@ Similarly, you can set up a YAML configuration for a 2D walking gait analysis.
 This would involve defining appropriate objectives, constraints, and settings
 for the walking task.
 
-.. GENERATED FROM PYTHON SOURCE LINES 146-200
+.. GENERATED FROM PYTHON SOURCE LINES 149-203
 
 .. code-block:: Python
 
@@ -269,13 +242,7 @@ for the walking task.
     """
   
 
-
-
-
-
-
-
-.. GENERATED FROM PYTHON SOURCE LINES 201-206
+.. GENERATED FROM PYTHON SOURCE LINES 204-209
 
 Solve standing problem
 ------------------------
@@ -283,7 +250,7 @@ Solve standing problem
 You can use the above YAML configuration to set up and solve a walking gait
 optimization problem similarly to the standing example.
 
-.. GENERATED FROM PYTHON SOURCE LINES 206-213
+.. GENERATED FROM PYTHON SOURCE LINES 209-216
 
 .. code-block:: Python
 
@@ -291,49 +258,14 @@ optimization problem similarly to the standing example.
     ocp_walking = collocation.Collocation(current_dir+"/examples/walking2d.yaml")
     # The solve method returns x (the optimal solution) and info (ipopt information)
     start = time.time()
-    x, info = ocp_walking.solve()
+    x, info = ocp_walking.solve(visualize=True)
     end = time.time()
     print(f"Optimization completed in {end - start:.2f} seconds")
 
 
-
-
-.. rst-class:: sphx-glr-script-out
-
- .. code-block:: none
-
-    Loading model from cache: 793390c1a917e50c59b8d0652618e93af77d0fac6cf9da2d93e0b2854005b0b0.cpkl
-    Collocation warning in process collocation settings: Bounds are not correctly handled
-    Adding constraint: dynamics with weight 1/BW
-    1/BW
-    Adding constraint: ground_contact with weight 1/BW
-    1/BW
-    Adding constraint: actuators with weight 1/BW
-    1/BW
-    Adding constraint: periodicity with weight 1
-    Adding constraint: discretization with weight 10
-    Adding constraint: speed with weight 10
-    Adding objective: torque_term with weight 0.01
-    Adding objective: jerk_term with weight 0.01
-    Loading initial guess from file
-    /Users/markusgambietz/PhD/01_Python_Projects/biosym/.venv/lib/python3.13/site-packages/jax/_src/ops/scatter.py:108: FutureWarning: scatter inputs have incompatible types: cannot safely cast value from dtype=int64 to dtype=int32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.
-      warnings.warn(
-    /Users/markusgambietz/PhD/01_Python_Projects/biosym/.venv/lib/python3.13/site-packages/jax/_src/ops/scatter.py:108: FutureWarning: scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.
-      warnings.warn(
-    Found 16790 nonzeros in jacobian structure
-    25.33% of the (sparse) jacobian is nonzero
-    0.28% of the full jacobian is nonzero
-    JitTracer<float64[51,45]>
-    Saving results to /Users/markusgambietz/.biosym/walking2d.pkl
-    Optimization completed in 69.05 seconds
-
-
-
-
-
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (2 minutes 25.831 seconds)
+   **Total running time of the script:** (0 minutes 0.007 seconds)
 
 
 .. _sphx_glr_download_auto_examples_gait2d.py:

@@ -1,6 +1,5 @@
 # biosym
-![Tests](https://github.com/yourusername/biosym/actions/workflows/test-and-lint.yml/badge.svg)
-![Coverage](https://img.shields.io/badge/coverage-85%25-green)
+[![CI](https://github.com/biomac-group/biosym/actions/workflows/test-and-lint.yml/badge.svg)](https://github.com/biomac-group/biosym/actions/workflows/test-and-lint.yml)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)
 
@@ -8,96 +7,77 @@
 1. https://cyipopt.readthedocs.io/en/stable/install.html
 2. uv sync
 
-## Roadmap towards simulation toolbox
-This is my personal opinion, everything can be discussed or changed. Please use a good template before starting. 
+## Usage
 
-### Project Structure
+biosym is a Python toolbox for building biomechanical models, exploring their structure and dynamics, and solving movement optimization problems. The examples cover three core workflows: loading and inspecting models for forward computations, setting up predictive gait optimal control problems from configuration files, and batching model evaluations with JAX for high-throughput or learning-based applications.
+
+Load and inspect a model:
+
 ```python
-|- biosym # main folder
-  |- model # 
-    |- parser
-      |- parsing.py # Base class(es)
-      |- mujoco_parser.py # see below
-      |- opensim_parser.py
-    |- model.py # Base model class
-    |- muscle # tbd what we need
-      |- ...# muscle model classes
-    |- ground contact
-      |- ... # ground contact classes
-  |- configs
-    |- defaults
-      |- model.yaml
-      |- collocation.yaml
-    |- models
-    |- .yaml files
-  |- ocp
-    |- collocation.py
-    |- confun.py
-    |- objfun.py # Base class for objectives
-    |- utils # I guess we need that folder at some point
-  |- objectives
-    |- base_objective.py # Base class
-    |- ... # jax translations
-  |- constraints
-    |- base_constraint.py # Base class
-    |- ... # jax translations
-  |- forward sim / DL / other stuff
-  |- utils # whatever is needed
-  |- tests 
-  |- ... # other stuff
-|- examples
-|- docs
-```
-### (Faster) parsing and lambdify
+from biosym.model.model import load_model
 
-Based on current observations, using a single vector `v_` to store all variables before calling `lambdify` is best for generating usable `jax` output. To avoid the long duration of `xreplace` routines, we should start with this vector from the beginning and set all our variables, or as many as possible, as parts of this vector. Model should have dictionaries for all the necessary information, e.g. `run` (running jax functions), `n` (number of states, constraints, etc.), `states`, mappings, etc. 
+# Load a simple pendulum model and rebuild the cached functions from source.
+model = load_model("tests/models/pendulum.xml", force_rebuild=True)
 
-Parser structure: The base model builder will get receive a `Parsing` class object, which itself has functions for getting info about e.g. a `dof`, `nDof`, inertial values, ... everthing we need. That way, it should be easy to expand to other modeling formats. Yipeng's project is a good start for this, it did both the model builing and mujoco parsing, so that will be split in two parts. 
-
-### Old and new classes
-
-Biomech-Sim-Toolbox.src structure
-```python
-src
-  |- model
-  |- problem
-  |- trackingData
-  |- result
-  |- tests
-  |- solver
+# Inspect the generalized coordinates, speeds, and overall problem size.
+print(model.coordinates["names"])
+print(model.speeds["names"])
+print(model.n_states, model.n_constants)
 ```
 
-Some things we should improve on:
-1. `model`: We should have a common class that covers all models
-2. `problem`: Rename to collocation, leave room for e.g. deep learning implementations or forward dynamics (unified interface for all yay!).  **Plotting** is important, and during the collocation process, e.g. dash app / plotly are way more interactive than static plots.
-3. 'trackingData': I have no opinion on this, but I believe the implementation is MatLab-specific and doesn't translate super well to python. 
-4. 'result': Specific to collocation, should be moved to the collocation class. I think it can be returned as a dict and we do some plotting helper functions instead. It should be implemented in a way that all objective functions (e.g. plotting) can still be called.
-5. 'tests': Should be expanded.
-6. 'solver': Specific to collocation, with `cyipopt` that should only be a couple lines of code anyways. 
+Set up and solve an optimal control problem from a YAML file:
 
-
-### Collocation details
-In our MatLab toolbox, we give `X` every objective, which is then sliced anyways. I would suggest to reshape `X` in the collocation class, so that all necessary information is available as a dict `{'coordinates':..., 'torques':..., 'model':..., ...etc}`. That should make the objectives more readable and easier to implement.
-
-We will try to `jax.jit`-compile the completed objective functions, therefore, objectives need to be static. That means, that all `init` information should be stored centrally in the collocation class. When registering an objective, it will return it init data, name, etc. We only `jit`-compile objectives that are written in `jax`, others will be called iteratively. `jax` objectives do not need a gradient function, as `jax` will automatically differentiate them. Objectives will be class objects.
-
-### Documentation
-readthedocs.io; sphinx? I really don't think doxygen is very useful
-
-### First steps
-This project is really ambitious, and I think we should start with a small subset of the toolbox. I would suggest to start with the following:
-1. From Yipeng Zhang's project [branch](https://mad-srv.informatik.uni-erlangen.de/MadLab/Biomech-Simu/student-code/p_zhang_yipeng/-/tree/optimal_control?ref_type=heads), refine the parser and optimal control functions to the above structure.
-2. Objectives: translate from matlab to jax, where applicable.
-3. Start with small subset, make it a minimum viable product (a bit cleaner than the previous implementation), then refine and add further features.
-
-### User friendlyness: Yes
-Config files (use OmegaConf!):
-The default way of starting the introduction example should be as easy as: 
 ```python
-import biosym
-model = biosym.Model('defaults/model.yaml') # or 'gait3d.osim'...
-problem = biosym.Collocation('defaults/collocation.yaml', model)
-result = problem.solve()
+from biosym.ocp import collocation
+
+# Read model, objectives, constraints, and solver settings from YAML.
+ocp = collocation.Collocation("examples/standing2d.yaml")
+# Solve the optimal control problem and open the default visualization.
+solution = ocp.solve(visualize=True)
 ```
 
-[Check out the BT "OCP Radar Tracking" implementation for a current use of config files](https://mad-srv.informatik.uni-erlangen.de/MadLab/Biomech-Simu/radar-tracking/-/blob/main/data/benchmarks/T02/T02_periodic.yaml?ref_type=heads)
+Batch model evaluations with JAX:
+
+```python
+import jax
+
+from biosym.model.model import load_model
+from biosym.utils import states
+
+# Load a gait model with contact and actuator dynamics.
+model = load_model("tests/models/gait2d_torque/gait2d_torque.yaml")
+# Replicate the default input state into a batch for vectorized evaluation.
+batched_inputs = states.stack_dataclasses([model.default_inputs] * 128)
+
+# Vectorize the model constraint function across the batch dimension.
+dynamics_fn = jax.vmap(model.run["confun"], in_axes=(0, None))
+batched_output = dynamics_fn(batched_inputs.states, batched_inputs.constants)
+
+# The result contains one dynamics evaluation per batch element.
+print(batched_output.shape)
+```
+
+## Near-term roadmap
+We are actively developing biosym and welcome contributions from the community. Currently, we work on making it easier to install and use, which also means that some structural changes should be expected. Contact us if you want to contribute or have suggestions for improvements.
+
+Additionally, here is what to expect from biosym in the near future:
+
+1. Deep learning integration.
+2. Differentiability with respect to musculoskeletal model parameters.
+3. 3D-ready optimal control simulations.
+4. Continued documentation improvements.
+
+Follow our group's [LinkedIn page](https://www.linkedin.com/company/fau-biomac-group/) for updates on new features and releases.
+
+## Citation
+If you use biosym in academic work, please cite it as software:
+
+```bibtex
+@software{biosym_2026,
+  title = {biosym: A Python toolbox for biomechanical movement simulation and optimal control},
+  author = {Markus Gambietz and Theodoros Balougias and Yipeng Zhang and Anne Koelewijn},
+  year = {2026},
+  version = {0.1.0},
+  url = {https://github.com/biomac-group/biosym}
+}
+```
