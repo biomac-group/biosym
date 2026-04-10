@@ -9,16 +9,31 @@ exclude = ["docs*", "example_data*", "notebooks*", "htmlcov*", "tests*"]
 [project]
 name = "biosym"
 version = "0.1.0"
-description = "Add your description here"
+description = "A Python toolbox for biomechanical movement simulation and optimal control"
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [
+    { name = "Markus Gambietz" },
+    { name = "Theodoros Balougias" },
+    { name = "Yipeng Zhang" },
+    { name = "Anne Koelewijn" },
+]
+keywords = ["biomechanics", "optimal-control", "simulation", "jax", "musculoskeletal","sympy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 dependencies = [
     "absl-py>=2.3.0",
-    "black[jupyter]>=25.1.0",
     "cloudpickle>=3.1.1",
     "cyipopt>=1.5.0",
-    "dash>=3.3.0",
-    "dash-ag-grid>=32.3.2",
     "flatbuffers>=25.2.10",
     "flax>=0.8.5",
     "jax>=0.4.30",
@@ -26,12 +41,21 @@ dependencies = [
     "numpy>=2.0.2",
     "pandas>=2.3.0",
     "pyyaml>=6.0.2",
-    "ruff>=0.12.1",
     "sympy>=1.14.0",
     "tqdm>=4.67.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/biomac-group/biosym"
+Documentation = "https://biosym.readthedocs.io/en/latest/"
+Repository = "https://github.com/biomac-group/biosym"
+Issues = "https://github.com/biomac-group/biosym/issues"
+
 [project.optional-dependencies]
+dashboard = [
+    "dash>=3.3.0",
+    "dash-ag-grid>=32.3.2",
+]
 docs = [
     "sphinx>=4.0",
     "pydata-sphinx-theme",
@@ -85,9 +109,13 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
+    "black[jupyter]>=25.1.0",
     "poethepoet>=0.37.0",
     "pytest>=8.4.2",
     "pytest-cov>=6.0.0",
+    "ruff>=0.12.1",
+    "build>=1.2.2",
+    "twine>=6.1.0",
 ]
 docs = [
     "absl-py>=2.3.0",
