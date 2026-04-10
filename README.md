@@ -6,8 +6,26 @@
 ![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)
 
 ## Installation:
-1. https://cyipopt.readthedocs.io/en/stable/install.html
-2. Run `uv sync`
+For a standard install from PyPI:
+
+1. Install IPOPT and ensure `cyipopt` can build or link against it: https://cyipopt.readthedocs.io/en/stable/install.html
+2. Install biosym:
+
+```bash
+pip install biosym
+```
+
+If you want the iteration dashboard features, install the dashboard extra:
+
+```bash
+pip install "biosym[dashboard]"
+```
+
+For local development in this repository, use:
+
+```bash
+uv sync --group dev
+```
 
 ## Usage
 
