@@ -306,6 +306,9 @@ def find_dependents(model):
     n_constraints = 0
 
     for section in ['contact_model', 'actuator_model']:
+        # Check if the section exists in the model
+        if not hasattr(model, section):
+            continue
         curr_model = getattr(model, section)
         if curr_model.get_n_states() > 1:
             state_vector = curr_model.state_vector
