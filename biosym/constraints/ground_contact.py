@@ -26,7 +26,14 @@ class Constraint(BaseConstraint):
         """
         self.model = model
         self.settings = settings.copy()
-        self.settings["nvpn"] = len(model.state_vector)
+        self.settings["nvpn_model"] = len(model.state_vector)
+        self.settings["nvpn_gc_model"] = model.gc_model.get_n_states()
+        self.settings["nvpn_actuator_model"] = model.actuators.get_n_states()
+        self.settings["nvpn"] = (
+            self.settings["nvpn_model"]
+            + self.settings["nvpn_gc_model"]
+            + self.settings["nvpn_actuator_model"]
+        )
         self.nvar = settings.get("nvar")
         self.nf = model.ext_forces["n"] + model.ext_torques["n"]
         self.ncons_model = len(self.model.fr)
@@ -136,6 +143,9 @@ def jacobian(model, states_list, globals_dict, settings, info):
     """
     nnz = info["nnz"]
     nvpn = settings.get("nvpn")
+    nvpn_model = settings.get("nvpn_model")
+    nvpn_gc_model = settings.get("nvpn_gc_model")
+    nvpn_actuator_model = settings.get("nvpn_actuator_model")
     nnodes = settings.get("nnodes")
     ncons = info["ncons_pernode"]
     rows_out = jnp.empty((nnz,), dtype=int)
@@ -151,16 +161,11 @@ def jacobian(model, states_list, globals_dict, settings, info):
 
         jac_model = jnp.vstack((jac[0].model, jac[1].model))
         jac_gc_model = jnp.vstack((jac[0].gc_model, jac[1].gc_model))
-
-        if jac_gc_model.shape[-1] != 0:
-            raise NotImplementedError("Jacobian for ground contact model states not implemented yet.")
+        jac_actuator_model = jnp.vstack((jac[0].actuator_model, jac[1].actuator_model))
 
         # Jacobian block for the model
         row_block = n * ncons + jnp.arange(ncons)
-        col_block = state_.states.size() * n + jnp.arange(nvpn)
-
-        rows_block = jnp.repeat(row_block, nvpn)  # Shape: (ncons * nvpn,)
-        cols_block = jnp.tile(col_block, ncons)  # Shape: (ncons * nvpn,)
+        node_offset = state_.states.size() * n
 
         # Add -1 to the forces and moments in the model
         # Forces
@@ -176,7 +181,30 @@ def jacobian(model, states_list, globals_dict, settings, info):
         depth = model.ext_torques["idx"] + jnp.arange(6)
         jac_model = jac_model.at[rows, cols, depth].add(-1)
 
-        data_block = jac_model.flatten()  # Flatten the block
+        rows_blocks = []
+        cols_blocks = []
+        data_blocks = []
+
+        if nvpn_model > 0:
+            rows_blocks.append(jnp.repeat(row_block, nvpn_model))
+            cols_blocks.append(jnp.tile(node_offset + jnp.arange(nvpn_model), ncons))
+            data_blocks.append(jac_model.flatten())
+
+        if nvpn_gc_model > 0:
+            rows_blocks.append(jnp.repeat(row_block, nvpn_gc_model))
+            cols_blocks.append(jnp.tile(node_offset + nvpn_model + jnp.arange(nvpn_gc_model), ncons))
+            data_blocks.append(jac_gc_model.flatten())
+
+        if nvpn_actuator_model > 0:
+            rows_blocks.append(jnp.repeat(row_block, nvpn_actuator_model))
+            cols_blocks.append(
+                jnp.tile(node_offset + nvpn_model + nvpn_gc_model + jnp.arange(nvpn_actuator_model), ncons)
+            )
+            data_blocks.append(jac_actuator_model.flatten())
+
+        rows_block = jnp.concatenate(rows_blocks)
+        cols_block = jnp.concatenate(cols_blocks)
+        data_block = jnp.concatenate(data_blocks)
 
         start = n * block_size  # Calculate where to insert this block
 

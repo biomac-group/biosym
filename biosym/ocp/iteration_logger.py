@@ -7,6 +7,7 @@ allowing us to track the evolution of individual objective terms during solving.
 
 import numpy as np
 import pandas as pd
+import threading
 from typing import Dict, List, Any
 from biosym.ocp import utils
 
@@ -52,6 +53,7 @@ class IterationLogger:
         self.initial_guess_states = initial_guess_states
         self.iteration_interval = iteration_interval
         self.log_data = []
+        self._lock = threading.Lock()
         
         # Store objective names for column headers
         self.objective_names = []
@@ -173,7 +175,8 @@ class IterationLogger:
             except Exception as e:
                 print(f"Warning: Failed to evaluate constraints at iteration {iter_count}: {e}")
 
-        self.log_data.append(log_entry)
+        with self._lock:
+            self.log_data.append(log_entry)
     
     def get_dataframe(self) -> pd.DataFrame:
         """
@@ -186,10 +189,14 @@ class IterationLogger:
         """
         if not self.log_data:
             return pd.DataFrame()
-        
-        return pd.DataFrame(self.log_data)
+
+        with self._lock:
+            log_data = list(self.log_data)
+
+        return pd.DataFrame(log_data)
     
     def reset(self):
         """Clear all logged data."""
-        self.log_data = []
+        with self._lock:
+            self.log_data = []
         self._last_logged_iteration = -1
