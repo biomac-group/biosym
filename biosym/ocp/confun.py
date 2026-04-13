@@ -60,8 +60,8 @@ class Constraints:
         for constraint in settings.get("constraints", []):
             self.add_constraint(constraint.get("name"), constraint.get("weight"), constraint.get("args"))
         self.nnz_start, self.c_start = (
-            np.cumsum(self.nnz_start, dtype=np.int32).tolist(),
-            np.cumsum(self.c_start, dtype=np.int32).tolist(),
+            np.cumsum(self.nnz_start, dtype=int).tolist(),
+            np.cumsum(self.c_start, dtype=int).tolist(),
         )
         self.ncon = self.c_start[-1]  # last entry is only total ncon
         self.nnz = self.nnz_start[-1]
@@ -194,7 +194,7 @@ def evaluate_constraints(constraint_functions, weights, ncon, c_start, states_li
     - Constraints are weighted and concatenated into a single vector
     - Used during optimization iterations to evaluate constraint violations
     """
-    c_vec = jnp.empty((ncon,), dtype=jnp.float32)
+    c_vec = jnp.empty((ncon,), dtype=float)
     for i, con in enumerate(constraint_functions):
         c_vec = c_vec.at[c_start[i] : c_start[i + 1]].set(con(states_list, globals_dict) * weights[i])
     return c_vec
@@ -241,9 +241,9 @@ def evaluate_jacobian(jacobian_functions, weights, nnz, c_start, nnz_start, stat
     - Used by optimization algorithms for computing search directions
     """
     rows, cols, data = (
-        jnp.empty((nnz,), dtype=jnp.int32),
-        jnp.empty((nnz,), dtype=jnp.int32),
-        jnp.empty((nnz,), dtype=jnp.float32),
+        jnp.empty((nnz,), dtype=int),
+        jnp.empty((nnz,), dtype=int),
+        jnp.empty((nnz,), dtype=float),
     )
     for i, jac in enumerate(jacobian_functions):
         r, c, d = jac(states_list, globals_dict)
