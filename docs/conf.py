@@ -41,7 +41,7 @@ project = info["name"]
 author = "biosym contributors"  # No authors field in project config
 release = info["version"]
 
-copyright = f"2021 - {datetime.now().year}, MaD Lab, FAU"
+copyright = f"2025 - {datetime.now().year}, BioMAC group, FAU"
 
 # -- Copy the README and Changelog and fix image path --------------------------------------
 with (ROOT_DIR / "README.md").open() as f:

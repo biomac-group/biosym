@@ -161,7 +161,7 @@ def objfun(states_list, globals_dict, settings, info):
         return fk_marker(single.states, single.constants)
 
     # Map FK over time points
-    pos_all = lax.map(lambda i: fk_step(i), jnp.arange(N, dtype=jnp.int32))
+    pos_all = lax.map(lambda i: fk_step(i), jnp.arange(N, dtype=int))
     # Keep only marker rows
     markers_pos = pos_all[:,n_bodies : n_bodies + n_markers, :]  # (N, n_markers, 3)
     sim_X = markers_pos[:, :, 0]
