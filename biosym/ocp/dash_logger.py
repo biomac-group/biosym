@@ -69,12 +69,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
         
         dcc.Interval(
             id='interval-component',
-            interval=2000,  # Update every 2 seconds
+            interval=500,  # Poll twice per second for smoother streaming
             n_intervals=0
         ),
         
         html.Div(id='stats-div', style={'marginTop': 20, 'textAlign': 'center'}),
-        dcc.Store(id='last-update-iteration', data=0)
+        dcc.Store(id='last-update-iteration', data={'iteration': 0, 'rows': 0})
     ], style={'backgroundColor': '#111111', 'color': '#FFFFFF'})
 
     @app.callback(
@@ -86,7 +86,7 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
          Input('scale-selector', 'value')],
         [State('last-update-iteration', 'data')]
     )
-    def update_graph(n, scale_type, last_update_iter):
+    def update_graph(n, scale_type, last_update_state):
         """
         Update the plot with latest logged data.
         
@@ -127,30 +127,35 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
             )
             return empty_fig, empty_fig, "Empty log", no_update
             
-        current_iter = df['iteration'].iloc[-1]
+        current_iter = int(df['iteration'].iloc[-1])
+        current_rows = len(df)
+
+        if isinstance(last_update_state, dict):
+            last_update_iter = int(last_update_state.get('iteration', 0))
+            last_update_rows = int(last_update_state.get('rows', 0))
+        elif isinstance(last_update_state, (int, float)):
+            last_update_iter = int(last_update_state)
+            last_update_rows = 0
+        else:
+            last_update_iter = 0
+            last_update_rows = 0
         
         # Determine if we should update
         should_update = False
-        new_last_iter = no_update
+        new_last_state = no_update
         
         if trigger_id != 'interval-component':
             # Always update on manual interaction (scale change)
             should_update = True
-            # Do NOT update the last_update_iteration to preserve the 100-step interval rhythm
+            new_last_state = {'iteration': current_iter, 'rows': current_rows}
         else:
-            # Interval trigger
-            if current_iter < last_update_iter:
-                # Optimization restarted
+            # Interval trigger: redraw whenever the logged snapshot changed.
+            if current_iter < last_update_iter or current_rows < last_update_rows:
                 should_update = True
-                new_last_iter = current_iter
-            elif current_iter - last_update_iter >= 100:
-                # 100 iterations passed
+                new_last_state = {'iteration': current_iter, 'rows': current_rows}
+            elif current_iter != last_update_iter or current_rows != last_update_rows:
                 should_update = True
-                new_last_iter = current_iter
-            elif last_update_iter == 0 and current_iter > 0:
-                # Ensure we show the first data point
-                should_update = True
-                new_last_iter = current_iter
+                new_last_state = {'iteration': current_iter, 'rows': current_rows}
         
         if not should_update:
             return no_update
@@ -257,7 +262,7 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
         stats_text = f"Iteration: {df['iteration'].iloc[-1]}"
         
         # Return the new iteration count to store it
-        return fig_obj, fig_cons, stats_text, new_last_iter
+        return fig_obj, fig_cons, stats_text, new_last_state
     
     return app
 
