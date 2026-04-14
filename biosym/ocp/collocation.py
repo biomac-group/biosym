@@ -160,7 +160,7 @@ class Collocation:
                 print("Loading initial guess from file")
                 ig_file = os.path.expanduser(initial_guess["file"])
                 with open(ig_file, "rb") as f:
-                    (x, globals), info, ig_settings = cloudpickle.load(f)
+                    (x, globals_), info, ig_settings = cloudpickle.load(f)
                 if ig_settings["nnodes"] == 1:
                     x = x[0].replace_vector("states", "h", jnp.ones((1,)))
                     self.initial_guess_states = states.stack_dataclasses(
@@ -172,10 +172,11 @@ class Collocation:
                         states_ig, globals_ig = x
                     else:
                         states_ig = x
-                        globals_ig = None
+                        globals_ig = globals_
                     self.initial_guess_states = states_ig
                     if globals_ig is not None:
                         self.initial_guess_globals = globals_ig
+                    return
                 else:
                     raise NotImplementedError(
                         "Initial guess from file with resampling is not implemented yet."
