@@ -72,7 +72,13 @@ class Collocation:
                 raise ValueError("Invalid file format. Expected a YAML file.")
         else:
             self.model = args[0]
-            self.settings = process_collocation_settings(self.model, args[1])
+            if type(args[1]) == str:
+                if args[1].endswith(".yaml"):
+                    self._process_yaml(args[1], **kwargs, skip_model_loading=True)
+                else:
+                    raise ValueError("Invalid file format. Expected a YAML file.")
+            else:
+                self.settings = process_collocation_settings(self.model, args[1])
 
         # Initialize objectives and constraints
         self.constraints = confun.Constraints(self.model, self.settings)
@@ -105,10 +111,11 @@ class Collocation:
         """
         with open(yaml_data) as file:
             self.settings = yaml.safe_load(file)["collocation"]
-            self.model = load_model(
-                self.settings.get("settings").get("model"),
-                force_rebuild=kwargs.get("force_rebuild", False),
-            )
+            if not kwargs.get("skip_model_loading", False):
+                self.model = load_model(
+                    self.settings.get("settings").get("model"),
+                    force_rebuild=kwargs.get("force_rebuild", False),
+                )
         self.settings = process_collocation_settings(self.model, self.settings)
 
     def make_initial_guess(self, initial_guess):
@@ -159,6 +166,16 @@ class Collocation:
                     self.initial_guess_states = states.stack_dataclasses(
                         [x] * self.settings["nnodes_dur"]
                     )
+                elif ig_settings["nnodes"] == self.settings["nnodes"]:
+                    # If x is tuple, it will be (states, globals), otherwise it's just states
+                    if isinstance(x, tuple):
+                        states_ig, globals_ig = x
+                    else:
+                        states_ig = x
+                        globals_ig = None
+                    self.initial_guess_states = states_ig
+                    if globals_ig is not None:
+                        self.initial_guess_globals = globals_ig
                 else:
                     raise NotImplementedError(
                         "Initial guess from file with resampling is not implemented yet."
