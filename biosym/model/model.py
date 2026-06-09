@@ -41,7 +41,9 @@ from biosym.model.actuators.actuator_models.passive_torques import PassiveTorque
 from biosym.model.contact import *
 from biosym.model.parsers import *
 from biosym.model.parsers.base_parser import BaseParser
+from biosym.biosym.model.parsers import osim_parser
 from biosym.utils import states as states_module
+from biosym.utils import opensim_utils as osu
 
 
 class BiosymModel:
@@ -88,7 +90,19 @@ class BiosymModel:
                 self.gc_model = contact_parser.get(parser.get_contact_model())
                 parser.external_forces_bodies = self.gc_model.get_bodies()
         elif definition_file.endswith(".osim"):
-            raise NotImplementedError("OSIM models not supported yet.")
+            parser = osim_parser.OsimParser(definition_file)
+
+            # Translate OpenSim to Biosym standard before doing anything else!
+            self._translate_osim_to_biosym(parser)
+
+            # ForceSet parsing
+            if parser.get_n_internal_forces() > 0:
+                parser.actuators = parser.get_internal_forces()
+            
+            # ContactGeometrySet parsing
+            if parser.get_n_external_forces() > 0:
+                parser.external_forces_bodies = parser.get_external_forces_bodies()
+        
         else:
             raise ValueError("Model definition file must be in .xml, .osim, or .yaml format.")
 
@@ -150,6 +164,107 @@ class BiosymModel:
 
         # self._create_FK(parser)
         # self._create_IMU(parser) ....
+
+    def _translate_osim_to_biosym(self, parser):
+        """Translates raw OpenSim parser output into the flat 1D Biosym architecture."""
+        bodies = parser.data["bodies"]
+        joints = parser.data["joints"]
+        
+        # ---------------------------------------------------------
+        # STEP 1: Translate Origins to Joints
+        # ---------------------------------------------------------
+        # Create a quick lookup for bodies
+        body_map = {b["name"]: b for b in bodies}
+        
+        for joint in joints:
+            child_name = joint["child"]
+            if child_name in body_map:
+                child_body = body_map[child_name]
+                
+                # 1. Grab the raw spatial arrays
+                c_trans = np.array(joint["child_offset"])
+                p_trans = joint["parent_offset"]
+                R_c = np.array(joint["child_rotation"])
+                R_p = joint["parent_rotation"]
+                
+                # 2. Biosym body_offset is strictly Parent Origin -> Joint
+                child_body["body_offset"] = p_trans
+                child_body["body_rotation"] = R_p
+                
+                # 3. Shift the COM!
+                old_com = np.array(child_body["com"])
+                new_com = R_c.T @ (old_com - c_trans)
+                child_body["com"] = np.round(new_com, 10).tolist()
+                
+                # 4. Shift the Inertia Matrix!
+                # (You will need to import your inertia unpacking functions here)
+                old_inertia = osu.inertia_list_to_mat(child_body["inertia"])
+                new_inertia = R_c.T @ old_inertia @ R_c
+                child_body["inertia"] = np.round(osu.inertia_mat_to_list(new_inertia), 10).tolist()
+
+        # (Note: You will also want to loop through Contact Geometries and Markers here 
+        # and shift their 'location' exactly like the COM, as we discussed previously).
+
+        # ---------------------------------------------------------
+        # STEP 2: The Joint Flattener (Explode OpenSim Containers)
+        # ---------------------------------------------------------
+        flat_joints = []
+        for joint in joints:
+            joint_type = joint["type"]
+            parent_name = joint["parent"]
+            child_name = joint["child"]
+            coords = joint["coordinates"]
+            
+            # --- CUSTOM TRANSLATOR LOGIC ---
+            if joint_type == "WeldJoint":
+                # Weld joints have no DOFs, they just bolt things together.
+                # In biosym, we just skip making a dynamic joint entirely.
+                pass 
+                
+            elif joint_type == "PinJoint" or joint_type == "CustomJoint":
+                # Assuming standard 1D rotation for Pin
+                if len(coords) == 1:
+                    flat_joints.append({
+                        "name": coords[0]["name"],
+                        "type": "hinge",
+                        "axis": [0.0, 0.0, 1.0], # OpenSim pins default to Z
+                        "range": coords[0]["range"],
+                        "parent": parent_name,
+                        "child": child_name,
+                        "damping": coords[0]["damping"],
+                        "stiffness": coords[0]["stiffness"],
+                        "armature": 0.0
+                    })
+                    
+            elif joint_type == "PlanarJoint":
+                # Planar requires 3 distinct 1D joints stacked together!
+                # We have to parse tx, ty, and rz individually.
+                for coord in coords:
+                    c_name = coord["name"].lower()
+                    if "tx" in c_name:
+                        axis = [1.0, 0.0, 0.0]
+                        j_type = "slide"
+                    elif "ty" in c_name:
+                        axis = [0.0, 1.0, 0.0]
+                        j_type = "slide"
+                    else: # rz
+                        axis = [0.0, 0.0, 1.0]
+                        j_type = "hinge"
+                        
+                    flat_joints.append({
+                        "name": coord["name"],
+                        "type": j_type,
+                        "axis": axis,
+                        "range": coord["range"],
+                        "parent": parent_name, # Note: SymPy requires intermediate frames here!
+                        "child": child_name,
+                        "damping": coord["damping"],
+                        "stiffness": coord["stiffness"],
+                        "armature": 0.0
+                    })
+        
+        # Overwrite the parser's joint list with our flattened list
+        parser.data["joints"] = flat_joints
 
     def _create_dictionaries(self, parser: "BaseParser") -> None:
         """Create dictionaries for model components.
@@ -432,7 +547,7 @@ class BiosymModel:
                 intermediate_frames = [parent_frame]  # We use one frame per rotation
                 # We may need to expose intermediate frames for adding joint torques to them
                 idx_h = 0  # hidden iterator to only iterate over hinges
-                idx = 0  # iterator for all jointss
+                idx = 0  # iterator for all joints
                 while idx < n_hinges:
                     joint = body["joints"][idx_h]
                     if joint["type"] == "hinge":
@@ -717,7 +832,7 @@ class BiosymModel:
         for _, point in self.body_origins.items():
             pos_vector.append(
                 [
-                    point.pos_from(self.origin).dot(frame_dim) # position of bidy origins in ground (global) frame
+                    point.pos_from(self.origin).dot(frame_dim) # position of body origins in ground (global) frame
                     for frame_dim in [
                         self.ground_frame.x,
                         self.ground_frame.y,

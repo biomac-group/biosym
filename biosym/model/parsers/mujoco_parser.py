@@ -188,13 +188,13 @@ class MujocoParser(BaseParser):
         """
         Returns the number of internal forces in the model.
         """
-        return len(self.actuators) if self.actuators is not None else 0
+        return len(self.actuator_elements) if self.actuator_elements is not None else 0
 
     def get_internal_forces(self):
         """
         Returns the list of internal forces in the model.
         """
-        return self.actuators
+        return self.actuator_elements
 
     def get_gravity(self):
         """
