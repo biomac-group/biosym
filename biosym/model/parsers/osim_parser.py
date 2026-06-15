@@ -7,6 +7,7 @@ import opensim as osim
 
 from biosym.model.parsers.base_parser import BaseParser
 from biosym.utils import opensim_utils as osu
+from biosym.utils import useful_functions as uf
 
 @contextlib.contextmanager
 def _suppress_native_output():
@@ -276,6 +277,50 @@ class OsimParser(BaseParser):
     # ---------------------------------------------------------
     # Getter Methods (Required by BaseParser contract)
     # ---------------------------------------------------------
+    def convert_body_frame(self, body):
+        # Convert a body's origin to the joint origin to which it is a child
+        
+        # Find the parent_joint where this body is a child
+        joint = None
+        for j in body.get("joints", []):
+            if j.get("child") == body["name"]:
+                joint = j
+                break
+        
+        # If there is not parent_joint return as is
+        if not joint:
+            body["body_offset"] = [0.0, 0.0, 0.0]
+            body["body_orientation"] = [0.0, 0.0, 0.0]
+            return body
+        
+        # Extract OpenSim joint offsets and orientations
+        child_offset = np.array(joint.get("child_offset", [0.0, 0.0, 0.0]), dtype=float)
+        child_orient = np.array(joint.get("child_orientation", [0.0, 0.0, 0.0]))
+
+        # OpenSim's child_orientation defines the joint frame relative to the body frame
+        # Therefore, using the rotation_matrix_xyz we calculate the rot_joint_to_body
+        rot_joint_to_body = uf.rotation_matrix_xyz(child_orient)
+
+        # Transform the body COM position
+        com_old = np.array(body.get("com", [0.0, 0.0, 0.0]), dtype=float)
+        com_new = (rot_joint_to_body.T) @ (com_old - child_offset)
+        com_new[np.abs(com_new) < 1e-7] = 0.0
+
+        # Transform the inertia tensor
+        inertia_old = body.get("inertia", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        inertia_old_mat = osu.inertia_list_to_mat(inertia_old)
+        inertia_new_mat = (rot_joint_to_body.T) @ inertia_old_mat @ rot_joint_to_body
+        inertia_new_mat[np.abs(inertia_new_mat) < 1e-7] = 0.0
+        inertia_new = osu.inertia_mat_to_list(inertia_new_mat)
+
+        # Update the dictionary
+        body["com"] = com_new.tolist()
+        body["inertia"] = inertia_new
+        body["body_offset"] = joint.get("parent_offset", [0.0, 0.0, 0.0])
+        body["body_orientation"] = joint.get("parent_orientation", [0.0, 0.0, 0.0])
+
+        return body
+
     def get_n_bodies(self): # Returns the number of bodies in the model
         return len(self.data["bodies"])
     

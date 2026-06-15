@@ -36,12 +36,13 @@ from sympy.physics.mechanics import (
     dynamicsymbols,
 )
 
+from biosym.model.joints import *
+from biosym.model.joints.joint_models import *
 from biosym.model.actuators import *
-from biosym.model.actuators.actuator_models.passive_torques import PassiveTorques
+from biosym.model.actuators.actuator_models import PassiveTorques
 from biosym.model.contact import *
 from biosym.model.parsers import *
 from biosym.model.parsers.base_parser import BaseParser
-from biosym.biosym.model.parsers import osim_parser
 from biosym.utils import states as states_module
 from biosym.utils import opensim_utils as osu
 
@@ -89,20 +90,18 @@ class BiosymModel:
             if parser.has_contact_model():
                 self.gc_model = contact_parser.get(parser.get_contact_model())
                 parser.external_forces_bodies = self.gc_model.get_bodies()
+
         elif definition_file.endswith(".osim"):
             parser = osim_parser.OsimParser(definition_file)
-
             # Translate OpenSim to Biosym standard before doing anything else!
             self._translate_osim_to_biosym(parser)
-
             # ForceSet parsing
             if parser.get_n_internal_forces() > 0:
-                parser.actuators = parser.get_internal_forces()
-            
+                parser.actuators = parser.get_internal_forces()            
             # ContactGeometrySet parsing
             if parser.get_n_external_forces() > 0:
                 parser.external_forces_bodies = parser.get_external_forces_bodies()
-        
+
         else:
             raise ValueError("Model definition file must be in .xml, .osim, or .yaml format.")
 
