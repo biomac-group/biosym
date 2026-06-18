@@ -908,14 +908,16 @@ class BiosymModel:
                 f = lambda states, constants: function_(*states, *constants)
                 if states_array.ndim > 1:
                     if not jacobian:
+                        n_dims = 2
                         vmapable = lambda states_, constants_: f(states_, constants_)
                     else:
+                        n_dims = 3
                         vmapable = lambda states_, constants_: jax.jacobian(f)(states_, constants_)
                     if states_array.ndim > 2:
                         states_shape = states_array.shape
                         states_array = states_array.reshape(-1, states_shape[-1])
                         res = jax.vmap(vmapable, in_axes=(0, None))(states_array, constants_array)
-                        res = res.reshape(*states_shape[:-1], *res.shape[-2:])
+                        res = res.reshape(*states_shape[:-1], *res.shape[-n_dims:])
                     else:
                         res = jax.vmap(vmapable, in_axes=(0, None))(states_array, constants_array)
                 else:
