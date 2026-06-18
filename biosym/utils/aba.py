@@ -575,7 +575,7 @@ def _reduce_articulated_body_generic(i_ww, i_wv, i_vw, i_vv, subspace, tau_body,
     }
 
 
-def get_aba_jax_model(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravity_sign=-1.0):
+def get_aba_jax_model(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravity_sign=-1.0, ext_force_callback=None):
     """Return a pure-JAX joint-acceleration kernel for the model."""
     if jax is None:
         raise ImportError("JAX is required for get_aba_jax_model")
@@ -589,8 +589,24 @@ def get_aba_jax_model(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravi
     n_tau = runtime_model["n_tau"]
     n_ext = runtime_model["n_ext"]
 
-    @jit
-    def run_aba(q, qd, tau_ctrl, ext_forces_concatenated, constants):
+    # Precompute static index map: for each qd slot, which tau_ctrl index supplies the torque?
+    # Unactuated joints map to n_tau (the zero-pad slot in tau_pad = [tau_ctrl | 0]).
+    _tau_to_qd_np = np.full(runtime_model["n_qd"], runtime_model["n_tau"], dtype=np.int32)
+    for _spec in runtime_model["body_specs"]:
+        _tau_lup = np.where(
+            np.asarray(_spec["tau_indices"]) >= 0,
+            np.asarray(_spec["tau_indices"]),
+            runtime_model["n_tau"],
+        )
+        for _ji, _qdi in enumerate(np.asarray(_spec["qd_indices"])):
+            _tau_to_qd_np[_qdi] = _tau_lup[_ji]
+    _tau_to_qd_map = jnp.asarray(_tau_to_qd_np, dtype=jnp.int32)
+
+    def _run_aba_core(q, qd, tau_full, ext_forces_conc, constants):
+        """
+        Core ABA body loops — ext forces already resolved (no callback), returns qdd.
+        Used by _run_aba_impl (full dynamics) and _apply_M_inv (pure inertia solve).
+        """
         float_dtype = q.dtype
         zero_vec3 = jnp.zeros((3,), dtype=float_dtype)
         zero_spatial = jnp.zeros((6, 1), dtype=float_dtype)
@@ -598,8 +614,8 @@ def get_aba_jax_model(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravi
 
         q_pad = jnp.concatenate([q, jnp.zeros((1,), dtype=float_dtype)])
         qd_pad = jnp.concatenate([qd, jnp.zeros((1,), dtype=float_dtype)])
-        tau_pad = jnp.concatenate([tau_ctrl[:n_tau], jnp.zeros((1,), dtype=float_dtype)])
-        ext_pad = jnp.concatenate([ext_forces_concatenated[:n_ext], jnp.zeros((1,), dtype=float_dtype)])
+        tau_pad = jnp.concatenate([tau_full, jnp.zeros((1,), dtype=float_dtype)])
+        ext_pad = jnp.concatenate([ext_forces_conc[:n_ext], jnp.zeros((1,), dtype=float_dtype)])
 
         v_list = []
         c_list = []
@@ -618,8 +634,7 @@ def get_aba_jax_model(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravi
             dof = body_spec["dof"]
             q_body = q_pad[jnp.asarray(body_spec["q_indices"], dtype=jnp.int32)]
             qd_body = qd_pad[jnp.asarray(body_spec["qd_indices"], dtype=jnp.int32)]
-            tau_lookup_indices = np.where(body_spec["tau_indices"] >= 0, body_spec["tau_indices"], n_tau)
-            tau_body = tau_pad[jnp.asarray(tau_lookup_indices, dtype=jnp.int32)][:, None]
+            tau_body = tau_pad[jnp.asarray(body_spec["qd_indices"], dtype=jnp.int32)][:, None]
             mass = constants[body_spec["mass_index"]]
             inertia_cm = _inertia_matrix_from_vector(constants[jnp.asarray(body_spec["inertia_indices"], dtype=jnp.int32)])
             com = constants[jnp.asarray(body_spec["com_indices"], dtype=jnp.int32)]
@@ -834,6 +849,236 @@ def get_aba_jax_model(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravi
 
         return accelerations
 
+    @jit
+    def _run_aba_impl(q, qd, tau_ctrl, ext_input, constants):
+        """ABA forward dynamics — resolves ext forces via callback if set, then calls core."""
+        if ext_force_callback is not None:
+            ext_forces_conc = ext_force_callback(q, qd, constants, ext_input)
+        else:
+            ext_forces_conc = ext_input
+        tau_pad = jnp.concatenate([tau_ctrl[:n_tau], jnp.zeros((1,), dtype=q.dtype)])
+        tau_full = tau_pad[_tau_to_qd_map]
+        return _run_aba_core(q, qd, tau_full, ext_forces_conc, constants)
+
+    def _run_rnea_impl(q, qd, qdd, ext_forces_conc, constants):
+        """
+        Recursive Newton-Euler Algorithm (RNEA) — pure-JAX inverse dynamics.
+
+        Returns tau_req = M(q,c) qdd + C(q,qd,c) + g(q,c) - J(q)^T f_ext.
+
+        Three recursive sweeps — no matrix inverses, no articulated-inertia accumulation,
+        and no dependence on model.run["mass_matrix"] or model.run["forcing"].
+        """
+        float_dtype = q.dtype
+        zero_vec3 = jnp.zeros((3,), dtype=float_dtype)
+        zero_spatial = jnp.zeros((6, 1), dtype=float_dtype)
+        identity3 = jnp.eye(3, dtype=float_dtype)
+
+        q_pad   = jnp.concatenate([q,   jnp.zeros((1,), dtype=float_dtype)])
+        qd_pad  = jnp.concatenate([qd,  jnp.zeros((1,), dtype=float_dtype)])
+        qdd_pad = jnp.concatenate([qdd, jnp.zeros((1,), dtype=float_dtype)])
+        ext_pad = jnp.concatenate([ext_forces_conc[:n_ext], jnp.zeros((1,), dtype=float_dtype)])
+
+        # ── Pass 1: Forward kinematics (same structure as ABA) ───────────────
+        v_list            = []
+        c_list            = []
+        p_bias_list       = []  # v_i × (I_i v_i) − f_ext_i  (body inertia, NOT articulated)
+        rotation_list     = []
+        translation_list  = []
+        subspace_list     = []
+        abs_rotation_list = []
+        Ibody_ww_list     = []
+        Ibody_wv_list     = []
+        Ibody_vw_list     = []
+        Ibody_vv_list     = []
+
+        for body_index, body_spec in enumerate(body_specs):
+            dof = body_spec["dof"]
+            q_body  = q_pad[jnp.asarray(body_spec["q_indices"],   dtype=jnp.int32)]
+            qd_body = qd_pad[jnp.asarray(body_spec["qd_indices"], dtype=jnp.int32)]
+            mass       = constants[body_spec["mass_index"]]
+            inertia_cm = _inertia_matrix_from_vector(constants[jnp.asarray(body_spec["inertia_indices"], dtype=jnp.int32)])
+            com        = constants[jnp.asarray(body_spec["com_indices"],    dtype=jnp.int32)]
+            translation_parent = constants[jnp.asarray(body_spec["offset_indices"], dtype=jnp.int32)]
+            axes           = jnp.asarray(body_spec["joint_axes"],  dtype=float_dtype)
+            joint_type_row = body_spec["joint_types"]
+
+            local_rotation  = identity3
+            hinge_rotations = []
+            for joint_index in range(dof):
+                joint_type = joint_type_row[joint_index]
+                axis = axes[joint_index]
+                if joint_type == SLIDE_JOINT:
+                    translation_parent = translation_parent + axis * q_body[joint_index]
+                    hinge_rotations.append(identity3)
+                elif joint_type == HINGE_JOINT:
+                    passive_rotation = _passive_rotation(axis, q_body[joint_index], float_dtype)
+                    local_rotation   = passive_rotation @ local_rotation
+                    hinge_rotations.append(passive_rotation)
+                else:
+                    hinge_rotations.append(identity3)
+
+            hinge_axes_in_body = [zero_vec3 for _ in range(dof)]
+            suffix_rotation    = identity3
+            for rev in range(dof - 1, -1, -1):
+                if joint_type_row[rev] == HINGE_JOINT:
+                    hinge_axes_in_body[rev] = suffix_rotation @ axes[rev]
+                    suffix_rotation = suffix_rotation @ hinge_rotations[rev]
+
+            subspace_columns = []
+            v_joint    = zero_spatial
+            c_joint    = zero_spatial
+            v_previous = zero_spatial
+            for joint_index in range(dof):
+                joint_type = joint_type_row[joint_index]
+                if joint_type == HINGE_JOINT:
+                    column = jnp.vstack([hinge_axes_in_body[joint_index][:, None], jnp.zeros((3, 1), dtype=float_dtype)])
+                elif joint_type == SLIDE_JOINT:
+                    axis_body = local_rotation @ axes[joint_index]
+                    column    = jnp.vstack([jnp.zeros((3, 1), dtype=float_dtype), axis_body[:, None]])
+                else:
+                    column = jnp.zeros((6, 1), dtype=float_dtype)
+                subspace_columns.append(column)
+                v_k     = column * qd_body[joint_index]
+                c_joint = c_joint + _spatial_cross_motion(v_previous, v_k)
+                v_joint = v_joint + v_k
+                v_previous = v_previous + v_k
+
+            subspace = jnp.concatenate(subspace_columns, axis=1) if dof > 0 else jnp.zeros((6, 0), dtype=float_dtype)
+
+            parent_index = body_spec["parent"]
+            if parent_index == -1:
+                v_parent          = zero_spatial
+                absolute_rotation = local_rotation
+            else:
+                v_parent          = v_list[parent_index]
+                absolute_rotation = local_rotation @ abs_rotation_list[parent_index]
+
+            translation_col = translation_parent[:, None]
+            v_body = _transform_motion(local_rotation, translation_col, v_parent) + v_joint
+            c_body = c_joint + _spatial_cross_motion(v_body, v_joint)
+
+            if body_spec["ext_force_indices"] is None:
+                ext_force_ground = zero_vec3
+            else:
+                ext_force_ground = ext_pad[jnp.asarray(body_spec["ext_force_indices"], dtype=jnp.int32)]
+
+            if body_spec["ext_torque_indices"] is None:
+                ext_torque_ground = zero_vec3
+            else:
+                ext_torque_ground = ext_pad[jnp.asarray(body_spec["ext_torque_indices"], dtype=jnp.int32)]
+
+            ext_force_body  = absolute_rotation @ ext_force_ground
+            ext_torque_body = absolute_rotation @ ext_torque_ground
+            ext_spatial = jnp.vstack([ext_torque_body[:, None], ext_force_body[:, None]])
+
+            i_ww, i_wv, i_vw, i_vv = _body_inertia_blocks(mass, com, inertia_cm)
+            momentum   = _apply_spatial_inertia(i_ww, i_wv, i_vw, i_vv, v_body)
+            bias_force = _spatial_cross_force(v_body, momentum) - ext_spatial
+
+            v_list.append(v_body)
+            c_list.append(c_body)
+            p_bias_list.append(bias_force)  # v_i × (I_i v_i) - f_ext_i
+            rotation_list.append(local_rotation)
+            translation_list.append(translation_col)
+            subspace_list.append(subspace)
+            abs_rotation_list.append(absolute_rotation)
+            Ibody_ww_list.append(i_ww)
+            Ibody_wv_list.append(i_wv)
+            Ibody_vw_list.append(i_vw)
+            Ibody_vv_list.append(i_vv)
+
+        # ── Pass 2: Forward accelerations with prescribed q̈ ──────────────────
+        a_ground = jnp.vstack([jnp.zeros((3, 1), dtype=float_dtype), gravity_sign * constants[g_indices][:, None]])
+        a_list = []
+        for body_index, body_spec in enumerate(body_specs):
+            parent_index = body_spec["parent"]
+            parent_accel = a_ground if parent_index == -1 else a_list[parent_index]
+            qdd_body = qdd_pad[jnp.asarray(body_spec["qd_indices"], dtype=jnp.int32)][:, None]
+            a_body = (
+                _transform_motion(rotation_list[body_index], translation_list[body_index], parent_accel)
+                + c_list[body_index]
+                + subspace_list[body_index] @ qdd_body
+            )
+            a_list.append(a_body)
+
+        # ── Pass 3: Backward Newton-Euler force accumulation ─────────────────
+        # f_i = I_i · a_i + v_i × (I_i · v_i) − f_ext_i
+        #      = I_i · a_i + p_bias_list[i]
+        f_list = [
+            _apply_spatial_inertia(Ibody_ww_list[i], Ibody_wv_list[i], Ibody_vw_list[i], Ibody_vv_list[i], a_list[i])
+            + p_bias_list[i]
+            for i in range(len(body_specs))
+        ]
+
+        tau_rnea = jnp.zeros((n_qd,), dtype=float_dtype)
+        for body_index in range(len(body_specs) - 1, -1, -1):
+            body_spec = body_specs[body_index]
+            f_i = f_list[body_index]
+            # τ_i = S_i^T · f_i   (project spatial force to joint torques)
+            tau_i = subspace_list[body_index].T @ f_i      # shape (dof, 1)
+            for joint_index, qd_index in enumerate(body_spec["qd_indices"]):
+                tau_rnea = tau_rnea.at[qd_index].set(tau_i[joint_index, 0])
+            # Propagate spatial force to parent
+            parent_index = body_spec["parent"]
+            if parent_index != -1:
+                f_list[parent_index] = f_list[parent_index] + _transform_force_transpose(
+                    rotation_list[body_index], translation_list[body_index], f_i
+                )
+
+        return tau_rnea
+
+    def _apply_M_inv(q, v, consts):
+        """
+        Apply M(q,c)^{-1} to vector v in O(n) using ABA as a linear solve.
+
+        With qd=0 (C=0), tau=v, ext=0, and gravity disabled, ABA reduces to:
+            qdd = M(q,c)^{-1} · v
+        Uses _run_aba_core directly (no ext_force_callback) for a pure inertia solve.
+        """
+        float_dtype = q.dtype
+        consts_jax  = jnp.asarray(consts)          # ensure JAX array (.at not available on np.ndarray)
+        consts_no_g = consts_jax.at[g_indices].set(0.0)
+        zeros_qd    = jnp.zeros((n_qd,), dtype=float_dtype)
+        zeros_ext   = jnp.zeros((n_ext,), dtype=float_dtype)
+        return _run_aba_core(q, zeros_qd, v, zeros_ext, consts_no_g)
+
+    @jax.custom_jvp
+    def run_aba(q, qd, tau_ctrl, ext_input, constants):
+        return _run_aba_impl(q, qd, tau_ctrl, ext_input, constants)
+
+    @run_aba.defjvp
+    def run_aba_jvp(primals, tangents):
+        q_val, qd_val, tau_val, ext_input_val, consts_val = primals
+        dq_val, dqd_val, dtau_val, dext_input_val, dconsts_val = tangents
+
+        # ① Primal acceleration (ABA, unchanged)
+        qdd_val = run_aba(q_val, qd_val, tau_val, ext_input_val, consts_val)
+
+        # ② EOM residual tangent via RNEA — no model.run["mass_matrix"/"forcing"]
+        #
+        #    r(θ; q̈_fixed) = RNEA(q, q̇, q̈_fixed, ext, c) − τ  =  0  at ABA solution.
+        #    ∂r/∂θ · dθ is the IFT tangent driver: M · dq̈ = −∂r/∂θ · dθ
+        def rnea_residual(q_, qd_, tau_, ext_input_, consts_):
+            if ext_force_callback is not None:
+                ext_conc = ext_force_callback(q_, qd_, consts_, ext_input_)
+            else:
+                ext_conc = ext_input_
+            tau_pad = jnp.concatenate([tau_[:n_tau], jnp.zeros((1,), dtype=q_.dtype)])
+            return _run_rnea_impl(q_, qd_, qdd_val, ext_conc, consts_) - tau_pad[_tau_to_qd_map]
+
+        _, dr = jax.jvp(
+            rnea_residual,
+            (q_val, qd_val, tau_val, ext_input_val, consts_val),
+            (dq_val, dqd_val, dtau_val, dext_input_val, dconsts_val),
+        )
+
+        # ③ Solve  M · dq̈ = −∂r/∂θ · dθ  via ABA as an O(n) linear solve
+        dqdd_val = _apply_M_inv(q_val, -dr, consts_val)
+
+        return qdd_val, dqdd_val
+
+    run_aba.undecorated = _run_aba_impl
     return run_aba
 
 
@@ -842,12 +1087,18 @@ def get_aba_biosym(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravity_
     aba_fn = get_aba_jax_model(model, regularization=regularization, gravity_sign=gravity_sign)
 
     def aba_biosym(states, constants, model):
-        q = states.model[model.coordinates["idx"] : model.coordinates["idx"] + model.coordinates["n"]]
-        qd = states.model[model.speeds["idx"] : model.speeds["idx"] + model.speeds["n"]]
-        tau = states.model[model.forces["idx"] : model.forces["idx"] + model.forces["n"]]
-        ext_forces = states.model[
-            model.ext_forces["idx"] : model.ext_forces["idx"] + model.ext_forces["n"] + model.ext_torques["n"]
-        ]
+        q = states.q
+        qd = states.qd
+        tau = states.tau
+        
+        # Concatenate forces and torques
+        if states.ext_forces is not None and states.ext_torques is not None:
+            ext_forces = jnp.concatenate([states.ext_forces, states.ext_torques], axis=-1)
+        elif states.ext_forces is not None:
+            ext_forces = states.ext_forces
+        else:
+            ext_forces = jnp.zeros((model.ext_forces["n"] + model.ext_torques["n"],), dtype=q.dtype)
+
         return aba_fn(q, qd, tau, ext_forces, constants.model)
 
     return partial(aba_biosym, model=model)
@@ -858,8 +1109,8 @@ def qddot_step_biosym(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravi
     aba_fn = get_aba_jax_model(model, regularization=regularization, gravity_sign=gravity_sign)
 
     def qddot_biosym(states, constants):
-        q = states.model[model.coordinates["idx"] : model.coordinates["idx"] + model.coordinates["n"]]
-        qd = states.model[model.speeds["idx"] : model.speeds["idx"] + model.speeds["n"]]
+        q = states.q
+        qd = states.qd
 
         if "actuator_model" in model.run:
             tau = model.run["actuator_model"](states, constants).flatten()
@@ -877,108 +1128,213 @@ def qddot_step_biosym(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravi
     return qddot_biosym
 
 
-def get_qddot_jacobian_manual(model):
-    aba_model_jacobian = jax.jit(jax.jacobian(get_aba_jax_model(model), argnums=(0, 1, 2, 3)))
+def get_rnea_jax_model(model, *, gravity_sign=-1.0, ext_force_callback=None):
+    """Return a pure-JAX Recursive Newton-Euler Algorithm (RNEA) kernel for the model.
 
-    def qddot_step_jacobian_manual(states, constants, model):
-        q_idx = model.coordinates["idx"]
-        q_n = model.coordinates["n"]
-        qd_idx = model.speeds["idx"]
-        qd_n = model.speeds["n"]
+    Returns a function rnea(q, qd, qdd, ext_input, constants) -> tau_rnea of shape (n_qd,).
+    """
+    if jax is None:
+        raise ImportError("JAX is required for get_rnea_jax_model")
 
-        q = states.model[q_idx : q_idx + q_n]
-        qd = states.model[qd_idx : qd_idx + qd_n]
+    runtime_model = _build_runtime_model(model)
+    body_specs = runtime_model["body_specs"]
+    g_indices = jnp.asarray(runtime_model["g_indices"], dtype=jnp.int32)
+    n_qd = runtime_model["n_qd"]
+    n_ext = runtime_model["n_ext"]
 
-        if "actuator_model" in model.run:
-            tau = model.run["actuator_model"](states, constants).flatten()
-            n_tau = tau.shape[0]
-            d_tau_d_states = model.run["actuator_model_jacobian"](states, constants)
-        else:
-            tau = jnp.zeros((model.forces["n"],), dtype=q.dtype)
-            n_tau = tau.shape[0]
-            d_tau_d_states = None
+    def _run_rnea_impl(q, qd, qdd, ext_forces_conc, constants):
+        """
+        Recursive Newton-Euler Algorithm (RNEA) — pure-JAX inverse dynamics.
 
-        if "gc_model" in model.run:
-            ext_forces, ext_moments = model.run["gc_model"](states, constants)
-            ext_forces_concat = jnp.concatenate([ext_forces, ext_moments], axis=0).flatten()
-            d_ext_forces_d_states, d_ext_moments_d_states = model.run["gc_model_jacobian"](states, constants)
+        Returns tau_req = M(q,c) qdd + C(q,qd,c) + g(q,c) - J(q)^T f_ext.
+        """
+        float_dtype = q.dtype
+        zero_vec3 = jnp.zeros((3,), dtype=float_dtype)
+        zero_spatial = jnp.zeros((6, 1), dtype=float_dtype)
+        identity3 = jnp.eye(3, dtype=float_dtype)
 
-            n_force_rows = ext_forces.shape[0]
-            n_moment_rows = ext_moments.shape[0]
+        q_pad   = jnp.concatenate([q,   jnp.zeros((1,), dtype=float_dtype)])
+        qd_pad  = jnp.concatenate([qd,  jnp.zeros((1,), dtype=float_dtype)])
+        qdd_pad = jnp.concatenate([qdd, jnp.zeros((1,), dtype=float_dtype)])
+        ext_pad = jnp.concatenate([ext_forces_conc[:n_ext], jnp.zeros((1,), dtype=float_dtype)])
 
-            def combine_and_flatten(jac_force, jac_moment):
-                if jac_force is None and jac_moment is None:
-                    return None
+        # ── Pass 1: Forward kinematics ───────────────────────────────────────
+        v_list            = []
+        c_list            = []
+        p_bias_list       = []  # v_i × (I_i v_i) − f_ext_i
+        rotation_list     = []
+        translation_list  = []
+        subspace_list     = []
+        abs_rotation_list = []
+        Ibody_ww_list     = []
+        Ibody_wv_list     = []
+        Ibody_vw_list     = []
+        Ibody_vv_list     = []
 
-                if jac_force is not None:
-                    n_leaf = jac_force.shape[-1]
-                elif jac_moment is not None:
-                    n_leaf = jac_moment.shape[-1]
+        for body_index, body_spec in enumerate(body_specs):
+            dof = body_spec["dof"]
+            q_body  = q_pad[jnp.asarray(body_spec["q_indices"],   dtype=jnp.int32)]
+            qd_body = qd_pad[jnp.asarray(body_spec["qd_indices"], dtype=jnp.int32)]
+            mass       = constants[body_spec["mass_index"]]
+            inertia_cm = _inertia_matrix_from_vector(constants[jnp.asarray(body_spec["inertia_indices"], dtype=jnp.int32)])
+            com        = constants[jnp.asarray(body_spec["com_indices"],    dtype=jnp.int32)]
+            translation_parent = constants[jnp.asarray(body_spec["offset_indices"], dtype=jnp.int32)]
+            axes           = jnp.asarray(body_spec["joint_axes"],  dtype=float_dtype)
+            joint_type_row = body_spec["joint_types"]
+
+            local_rotation  = identity3
+            hinge_rotations = []
+            for joint_index in range(dof):
+                joint_type = joint_type_row[joint_index]
+                axis = axes[joint_index]
+                if joint_type == SLIDE_JOINT:
+                    translation_parent = translation_parent + axis * q_body[joint_index]
+                    hinge_rotations.append(identity3)
+                elif joint_type == HINGE_JOINT:
+                    passive_rotation = _passive_rotation(axis, q_body[joint_index], float_dtype)
+                    local_rotation   = passive_rotation @ local_rotation
+                    hinge_rotations.append(passive_rotation)
                 else:
-                    return None
+                    hinge_rotations.append(identity3)
 
-                safe_force = jac_force if jac_force is not None else jnp.zeros((n_force_rows, 3, n_leaf))
-                safe_moment = jac_moment if jac_moment is not None else jnp.zeros((n_moment_rows, 3, n_leaf))
-                combined = jnp.concatenate([safe_force, safe_moment], axis=0)
-                return combined.reshape(((n_force_rows + n_moment_rows) * 3, n_leaf))
+            hinge_axes_in_body = [zero_vec3 for _ in range(dof)]
+            suffix_rotation    = identity3
+            for rev in range(dof - 1, -1, -1):
+                if joint_type_row[rev] == HINGE_JOINT:
+                    hinge_axes_in_body[rev] = suffix_rotation @ axes[rev]
+                    suffix_rotation = suffix_rotation @ hinge_rotations[rev]
 
-            if d_ext_forces_d_states is None and d_ext_moments_d_states is None:
-                d_ext_d_states = None
-            elif d_ext_forces_d_states is None:
-                d_ext_d_states = jax.tree_util.tree_map(
-                    lambda jac_moment: combine_and_flatten(None, jac_moment),
-                    d_ext_moments_d_states,
-                )
-            elif d_ext_moments_d_states is None:
-                d_ext_d_states = jax.tree_util.tree_map(
-                    lambda jac_force: combine_and_flatten(jac_force, None),
-                    d_ext_forces_d_states,
-                )
+            subspace_columns = []
+            v_joint    = zero_spatial
+            c_joint    = zero_spatial
+            v_previous = zero_spatial
+            for joint_index in range(dof):
+                joint_type = joint_type_row[joint_index]
+                if joint_type == HINGE_JOINT:
+                    column = jnp.vstack([hinge_axes_in_body[joint_index][:, None], jnp.zeros((3, 1), dtype=float_dtype)])
+                elif joint_type == SLIDE_JOINT:
+                    axis_body = local_rotation @ axes[joint_index]
+                    column    = jnp.vstack([jnp.zeros((3, 1), dtype=float_dtype), axis_body[:, None]])
+                else:
+                    column = jnp.zeros((6, 1), dtype=float_dtype)
+                subspace_columns.append(column)
+                v_k     = column * qd_body[joint_index]
+                c_joint = c_joint + _spatial_cross_motion(v_previous, v_k)
+                v_joint = v_joint + v_k
+                v_previous = v_previous + v_k
+
+            subspace = jnp.concatenate(subspace_columns, axis=1) if dof > 0 else jnp.zeros((6, 0), dtype=float_dtype)
+
+            parent_index = body_spec["parent"]
+            if parent_index == -1:
+                v_parent          = zero_spatial
+                absolute_rotation = local_rotation
             else:
-                d_ext_d_states = jax.tree_util.tree_map(
-                    combine_and_flatten,
-                    d_ext_forces_d_states,
-                    d_ext_moments_d_states,
+                v_parent          = v_list[parent_index]
+                absolute_rotation = local_rotation @ abs_rotation_list[parent_index]
+
+            translation_col = translation_parent[:, None]
+            v_body = _transform_motion(local_rotation, translation_col, v_parent) + v_joint
+            c_body = c_joint + _spatial_cross_motion(v_body, v_joint)
+
+            if body_spec["ext_force_indices"] is None:
+                ext_force_ground = zero_vec3
+            else:
+                ext_force_ground = ext_pad[jnp.asarray(body_spec["ext_force_indices"], dtype=jnp.int32)]
+
+            if body_spec["ext_torque_indices"] is None:
+                ext_torque_ground = zero_vec3
+            else:
+                ext_torque_ground = ext_pad[jnp.asarray(body_spec["ext_torque_indices"], dtype=jnp.int32)]
+
+            ext_force_body  = absolute_rotation @ ext_force_ground
+            ext_torque_body = absolute_rotation @ ext_torque_ground
+            ext_spatial = jnp.vstack([ext_torque_body[:, None], ext_force_body[:, None]])
+
+            i_ww, i_wv, i_vw, i_vv = _body_inertia_blocks(mass, com, inertia_cm)
+            momentum   = _apply_spatial_inertia(i_ww, i_wv, i_vw, i_vv, v_body)
+            bias_force = _spatial_cross_force(v_body, momentum) - ext_spatial
+
+            v_list.append(v_body)
+            c_list.append(c_body)
+            p_bias_list.append(bias_force)
+            rotation_list.append(local_rotation)
+            translation_list.append(translation_col)
+            subspace_list.append(subspace)
+            abs_rotation_list.append(absolute_rotation)
+            Ibody_ww_list.append(i_ww)
+            Ibody_wv_list.append(i_wv)
+            Ibody_vw_list.append(i_vw)
+            Ibody_vv_list.append(i_vv)
+
+        # ── Pass 2: Forward accelerations with prescribed q̈ ──────────────────
+        a_ground = jnp.vstack([jnp.zeros((3, 1), dtype=float_dtype), gravity_sign * constants[g_indices][:, None]])
+        a_list = []
+        for body_index, body_spec in enumerate(body_specs):
+            parent_index = body_spec["parent"]
+            parent_accel = a_ground if parent_index == -1 else a_list[parent_index]
+            qdd_body = qdd_pad[jnp.asarray(body_spec["qd_indices"], dtype=jnp.int32)][:, None]
+            a_body = (
+                _transform_motion(rotation_list[body_index], translation_list[body_index], parent_accel)
+                + c_list[body_index]
+                + subspace_list[body_index] @ qdd_body
+            )
+            a_list.append(a_body)
+
+        # ── Pass 3: Backward Newton-Euler force accumulation ─────────────────
+        f_list = [
+            _apply_spatial_inertia(Ibody_ww_list[i], Ibody_wv_list[i], Ibody_vw_list[i], Ibody_vv_list[i], a_list[i])
+            + p_bias_list[i]
+            for i in range(len(body_specs))
+        ]
+
+        tau_rnea = jnp.zeros((n_qd,), dtype=float_dtype)
+        for body_index in range(len(body_specs) - 1, -1, -1):
+            body_spec = body_specs[body_index]
+            f_i = f_list[body_index]
+            tau_i = subspace_list[body_index].T @ f_i      # shape (dof, 1)
+            for joint_index, qd_index in enumerate(body_spec["qd_indices"]):
+                tau_rnea = tau_rnea.at[qd_index].set(tau_i[joint_index, 0])
+            parent_index = body_spec["parent"]
+            if parent_index != -1:
+                f_list[parent_index] = f_list[parent_index] + _transform_force_transpose(
+                    rotation_list[body_index], translation_list[body_index], f_i
                 )
+
+        return tau_rnea
+
+    @jit
+    def run_rnea(q, qd, qdd, ext_input, constants):
+        if ext_force_callback is not None:
+            ext_forces_conc = ext_force_callback(q, qd, constants, ext_input)
         else:
-            ext_forces_concat = jnp.zeros((model.ext_forces["n"] + model.ext_torques["n"],), dtype=q.dtype)
-            d_ext_d_states = None
+            ext_forces_conc = ext_input
+        return _run_rnea_impl(q, qd, qdd, ext_forces_conc, constants)
 
-        d_aba_dq, d_aba_dqd, d_aba_dtau, d_aba_dext = aba_model_jacobian(q, qd, tau, ext_forces_concat, constants.model)
+    return run_rnea
 
-        n_dof = q_n
 
-        def make_zero_jacobian(leaf):
-            if leaf is None:
-                return None
-            return jnp.zeros((n_dof,) + leaf.shape)
+def get_rnea_biosym(model, *, gravity_sign=-1.0):
+    """Return a biosym-compatible RNEA function."""
+    rnea_fn = get_rnea_jax_model(model, gravity_sign=gravity_sign)
 
-        total_jacobian = jax.tree_util.tree_map(make_zero_jacobian, states)
+    def rnea_biosym(states, constants, model):
+        q = states.q
+        qd = states.qd
 
-        if total_jacobian.model is not None:
-            jac_model = total_jacobian.model
-            jac_model = jac_model.at[:, q_idx : q_idx + q_n].add(d_aba_dq)
-            jac_model = jac_model.at[:, qd_idx : qd_idx + qd_n].add(d_aba_dqd)
-            total_jacobian = total_jacobian.replace(model=jac_model)
+        if getattr(states, "qdd", None) is not None:
+            qdd = states.qdd
+        else:
+            qdd = jnp.zeros((model.accs["n"],), dtype=q.dtype)
 
-        if d_tau_d_states is not None:
-            def add_tau(current_jacobian, tau_jacobian):
-                if current_jacobian is None or tau_jacobian is None:
-                    return current_jacobian
-                n_leaf = tau_jacobian.shape[-1]
-                tau_flat = tau_jacobian.reshape((n_tau, n_leaf))
-                return current_jacobian + d_aba_dtau @ tau_flat
+        # Concatenate forces and torques
+        if states.ext_forces is not None and states.ext_torques is not None:
+            ext_forces = jnp.concatenate([states.ext_forces, states.ext_torques], axis=-1)
+        elif states.ext_forces is not None:
+            ext_forces = states.ext_forces
+        else:
+            ext_forces = jnp.zeros((model.ext_forces["n"] + model.ext_torques["n"],), dtype=q.dtype)
 
-            total_jacobian = jax.tree_util.tree_map(add_tau, total_jacobian, d_tau_d_states)
+        return rnea_fn(q, qd, qdd, ext_forces, constants.model)
 
-        if d_ext_d_states is not None:
-            def add_external(current_jacobian, external_jacobian):
-                if current_jacobian is None or external_jacobian is None:
-                    return current_jacobian
-                return current_jacobian + d_aba_dext @ external_jacobian
-
-            total_jacobian = jax.tree_util.tree_map(add_external, total_jacobian, d_ext_d_states)
-
-        return total_jacobian
-
-    return partial(qddot_step_jacobian_manual, model=model)
+    return partial(rnea_biosym, model=model)
