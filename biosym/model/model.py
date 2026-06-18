@@ -6,8 +6,10 @@ and simulating biomechanical models from various input formats (XML, OSIM, YAML)
 The module handles model parsing, symbolic equation generation, JAX compilation,
 and provides interfaces for optimal control problems.
 """
+
 import os
-from typing import Any, Callable, List, Optional, Tuple, NamedTuple
+import time
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional
 
 _cachedir = os.path.expanduser("~/.biosym/jax_cache")
 _model_cache = os.path.expanduser("~/.biosym/")
@@ -15,6 +17,7 @@ os.environ["JAX_COMPILATION_CACHE_DIR"] = _cachedir  # This needs to happen befo
 os.environ["jax_persistent_cache_min_compile_time_secs".upper()] = "0.01"
 os.makedirs((_cachedir), exist_ok=True)
 
+import contextlib
 import hashlib
 from functools import partial
 
@@ -25,7 +28,6 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import yaml
-from jax import tree_util
 from sympy import Matrix, lambdify, symbols
 from sympy.physics.mechanics import (
     Inertia,
@@ -36,26 +38,28 @@ from sympy.physics.mechanics import (
     dynamicsymbols,
 )
 
-from biosym.model.actuators import *
+from biosym.model.actuators import actuator_parser
 from biosym.model.actuators.actuator_models.passive_torques import PassiveTorques
-from biosym.model.contact import *
-from biosym.model.parsers import *
-from biosym.model.parsers.base_parser import BaseParser
+from biosym.model.contact import contact_parser
+from biosym.model.parsers import mujoco_parser
 from biosym.utils import states as states_module
+
+if TYPE_CHECKING:
+    from biosym.model.parsers.base_parser import BaseParser
 
 
 class _ModelProperties(NamedTuple):
-    names: List[str]
-    symbols: List
+    names: list[str]
+    symbols: list
     n: int
-    def __str__(self):
-        print(f"Properties Field: {self.names}")
-        print(f"Number of items: {self.n}")
-        print(f"Symbols: {self.symbols}")
+
+    def __str__(self) -> str:
+        return f"Properties Field: {self.names}\nNumber of items: {self.n}\nSymbols: {self.symbols}"
+
 
 class _ForceProperties(NamedTuple):
-    names: List[str]
-    symbols: List
+    names: list[str]
+    symbols: list
     n: int
     passive_idx: jnp.ndarray
     active_idx: jnp.ndarray
@@ -64,7 +68,7 @@ class _ForceProperties(NamedTuple):
 
 class BiosymModel:
     """Biomechanical model class for biosym.
-    
+
     This class provides functionality to load, save, and manipulate biomechanical
     models from various formats. It handles symbolic mechanics, JAX compilation,
     and provides interfaces for optimization and simulation.
@@ -72,7 +76,7 @@ class BiosymModel:
 
     def __init__(self, definition_file: str, get_hash: bool = False, compile_eom: bool = True) -> None:
         """Initialize a BiosymModel from a definition file.
-        
+
         Parameters
         ----------
         definition_file : str
@@ -81,7 +85,7 @@ class BiosymModel:
             If True, only compute model hash without full initialization, by default False
         compile_eom : bool, optional
             If True, compile symbolic equations of motion and JAX functions, by default True
-            
+
         Raises
         ------
         ValueError
@@ -126,7 +130,7 @@ class BiosymModel:
                         cfg["model"]["additional_parameters"]["ground_contact"]["file"],
                     )
                     self.gc_model = contact_parser.get(gc_model_file)
-                    if cfg["model"]["additional_parameters"]["ground_contact"]["replace_existing"] == True:
+                    if cfg["model"]["additional_parameters"]["ground_contact"]["replace_existing"]:
                         parser.external_forces_bodies = self.gc_model.get_bodies()
                     else:
                         raise NotImplementedError(
@@ -137,8 +141,10 @@ class BiosymModel:
                         os.path.dirname(definition_file),
                         cfg["model"]["additional_parameters"]["actuators"]["file"],
                     )
-                    self.actuators = actuator_parser.get(actuator_model_file, joint_names=[j["name"] for j in parser.get_joints()])
-                    if cfg["model"]["additional_parameters"]["actuators"]["replace_existing"] == True:
+                    self.actuators = actuator_parser.get(
+                        actuator_model_file, joint_names=[j["name"] for j in parser.get_joints()]
+                    )
+                    if cfg["model"]["additional_parameters"]["actuators"]["replace_existing"]:
                         parser.actuators = self.actuators.get_actuators()
                     else:
                         raise NotImplementedError(
@@ -158,7 +164,7 @@ class BiosymModel:
             return
         self._create_sympy_model()
         self._set_default_values()
-        self._create_FK(True)
+        self._create_fk(True)
 
         # Future work, tbd: (These should be disabled or enabled by a flag in the config file); so that we don't need to compile everything every time
         if hasattr(self, "gc_model"):
@@ -169,11 +175,11 @@ class BiosymModel:
         if hasattr(self, "actuators"):
             self.actuators.process_eom(self)
             self._register_actuator_model(self.actuators)
-        
+
         if self.compile_eom:
             self._create_eom()
             self._create_jax_eom()
-            
+
         self._create_variable_dataframe()
 
         # self._create_FK(parser)
@@ -181,27 +187,26 @@ class BiosymModel:
 
     def _create_dictionaries(self, parser: "BaseParser") -> None:
         """Create dictionaries for model components.
-        
+
         Creates dictionaries for coordinates, speeds, accelerations, forces,
         joints, bodies, and external forces. Each contains list of names,
         start_index in the state vector, and number of items.
-        
+
         Parameters
         ----------
         parser : BaseParser
             Model parser instance containing parsed model data
-            
+
         Notes
         -----
         This data is needed to build the state vector correctly and index on it.
-        
+
         Todo
         ----
         - Treat constrained joints - they actually change the number of DOFs
         - Add muscles, they have a different number of states than torques
         - Mujoco: allow assignment of less bodies for external forces
         """
-
         all_sites = parser.get_sites()
         markers = [s for s in all_sites if not s.get("name").startswith("vis_")]
         sites = [s for s in all_sites if s.get("name").startswith("vis_")]
@@ -209,7 +214,7 @@ class BiosymModel:
         self.dicts = {
             "bodies": parser.get_bodies(),
             "joints": parser.get_joints(),
-            "sites": sites,     # keep only torso as a site
+            "sites": sites,  # keep only torso as a site
             "markers": markers,  # all other xml sites become markers
         }
 
@@ -248,21 +253,29 @@ class BiosymModel:
         )
         # The first representation of external forces is a list of bodies, where the forces can be applied
         n_ext_forces = parser.get_n_external_forces()
-        self.ext_forces = _ModelProperties( 
+        self.ext_forces = _ModelProperties(
             names=[f"f_{force}_{dim}" for force in parser.get_external_forces_bodies() for dim in ["x", "y", "z"]],
-            symbols=Matrix(symbols([f"f_{force}_{dim}" for force in parser.get_external_forces_bodies() for dim in ["x", "y", "z"]])),
+            symbols=Matrix(
+                symbols(
+                    [f"f_{force}_{dim}" for force in parser.get_external_forces_bodies() for dim in ["x", "y", "z"]]
+                )
+            ),
             n=n_ext_forces,
         )
 
         # And torques
         self.ext_torques = _ModelProperties(
             names=[f"m_{force}_{dim}" for force in parser.get_external_forces_bodies() for dim in ["x", "y", "z"]],
-            symbols=Matrix(symbols([f"m_{force}_{dim}" for force in parser.get_external_forces_bodies() for dim in ["x", "y", "z"]])),
+            symbols=Matrix(
+                symbols(
+                    [f"m_{force}_{dim}" for force in parser.get_external_forces_bodies() for dim in ["x", "y", "z"]]
+                )
+            ),
             n=n_ext_forces,
         )
 
         # Sites and markers are fixed relative to parent body frame -> NOT part of state vector
-        
+
         n_sites = len(sites)
         self.sites_parsed = {
             "base_names": [f"site_{s['name']}" for s in sites],
@@ -304,65 +317,83 @@ class BiosymModel:
         inertia_tensor = ["Ixx", "Ixy", "Ixz", "Iyy", "Iyz", "Izz"]
         self.inertia = _ModelProperties(
             names=[f"I_{body['name']}_{dim}" for body in parser.get_bodies() for dim in inertia_tensor],
-            symbols=Matrix(symbols([f"I_{body['name']}_{dim}" for body in parser.get_bodies() for dim in inertia_tensor])),
+            symbols=Matrix(
+                symbols([f"I_{body['name']}_{dim}" for body in parser.get_bodies() for dim in inertia_tensor])
+            ),
             n=len(parser.get_bodies()) * len(inertia_tensor),
         )
         i += len(parser.get_bodies()) * len(inertia_tensor)
 
         self.com = _ModelProperties(
             names=[f"com_{body['name']}_{dim}" for body in parser.get_bodies() for dim in ["x", "y", "z"]],
-            symbols=Matrix(symbols([f"com_{body['name']}_{dim}" for body in parser.get_bodies() for dim in ["x", "y", "z"]])),
+            symbols=Matrix(
+                symbols([f"com_{body['name']}_{dim}" for body in parser.get_bodies() for dim in ["x", "y", "z"]])
+            ),
             n=len(parser.get_bodies()) * 3,
         )
         i += len(parser.get_bodies()) * 3
 
         self.offset = _ModelProperties(
             names=[f"offset_{body['name']}_{dim}" for body in parser.get_bodies() for dim in ["x", "y", "z"]],
-            symbols=Matrix(symbols([f"offset_{body['name']}_{dim}" for body in parser.get_bodies() for dim in ["x", "y", "z"]])),
+            symbols=Matrix(
+                symbols([f"offset_{body['name']}_{dim}" for body in parser.get_bodies() for dim in ["x", "y", "z"]])
+            ),
             n=len(parser.get_bodies()) * 3,
         )
         i += len(parser.get_bodies()) * 3
 
-        self.constants = (
-            self.g.names + self.mass.names + self.inertia.names + self.com.names + self.offset.names
-        )
+        self.constants = self.g.names + self.mass.names + self.inertia.names + self.com.names + self.offset.names
         self.n_constants = len(self.constants)
 
         self.gravity = parser.get_gravity()
-        
+
         # Initialize default states and constants
         self.default_states = states_module.States(
-            q = np.zeros(self.coordinates.n),
-            qd = np.zeros(self.speeds.n),
-            qdd = np.zeros(self.accs.n),
-            tau = np.zeros(self.tau.n),
-            ext_forces = np.zeros(self.ext_forces.n),
-            ext_torques = np.zeros(self.ext_torques.n),
+            q=np.zeros(self.coordinates.n),
+            qd=np.zeros(self.speeds.n),
+            qdd=np.zeros(self.accs.n),
+            tau=np.zeros(self.tau.n),
+            ext_forces=np.zeros(self.ext_forces.n),
+            ext_torques=np.zeros(self.ext_torques.n),
         )
         self.default_constants = states_module.Constants(
-            g = self.gravity,
-            mass = np.zeros(self.mass.n),
-            inertia = np.zeros(self.inertia.n),
-            com = np.zeros(self.com.n),
-            offset = np.zeros(self.offset.n),
+            g=self.gravity,
+            mass=np.zeros(self.mass.n),
+            inertia=np.zeros(self.inertia.n),
+            com=np.zeros(self.com.n),
+            offset=np.zeros(self.offset.n),
         )
 
-        self._symbols = Matrix([p.symbols for p in [self.coordinates, self.speeds, self.accs,
-                                            self.tau, self.ext_forces, self.ext_torques,
-                                            self.g, self.mass, self.inertia, self.com, self.offset]])
+        self._symbols = Matrix(
+            [
+                p.symbols
+                for p in [
+                    self.coordinates,
+                    self.speeds,
+                    self.accs,
+                    self.tau,
+                    self.ext_forces,
+                    self.ext_torques,
+                    self.g,
+                    self.mass,
+                    self.inertia,
+                    self.com,
+                    self.offset,
+                ]
+            ]
+        )
 
     def _set_default_values(self) -> None:
         """Create default values for the model.
-        
+
         These are used to initialize the model and can be changed later.
         Sets gravity, masses, and other body parameters to their default values.
         """
 
         def concat_defaults(value: str) -> np.ndarray:
-            """
-            Concatenate all default values for the bodies
-            """
-            if value == 'g': return np.array(self.gravity)
+            """Concatenate all default values for the bodies."""
+            if value == "g":
+                return np.array(self.gravity)
             all_values = []
             for body in self.dicts["bodies"]:
                 all_values.append(body[value])
@@ -371,15 +402,16 @@ class BiosymModel:
 
         # Get all values that are stored as lists
         default_constants_dict = {}
-        for value_dict, value in zip([self.g, self.mass, self.com, self.offset, self.inertia], ["g", "mass", "com", "body_offset", "inertia"]):
-            default_constants_dict[value if value != 'body_offset' else 'offset'] = concat_defaults(value)
-
+        for _value_dict, value in zip(
+            [self.g, self.mass, self.com, self.offset, self.inertia], ["g", "mass", "com", "body_offset", "inertia"]
+        ):
+            default_constants_dict[value if value != "body_offset" else "offset"] = concat_defaults(value)
 
         self.default_constants = self.default_constants.replace(**default_constants_dict)
 
     def _create_sympy_model(self) -> None:
         """Create the symbolic equations of motion (EOM) for the model.
-        
+
         Creates symbolic representations using SymPy for coordinates, speeds,
         and forces. Every value is stored in the vector self._v for vectorization.
         Sets up reference frames, bodies, and mechanical constraints.
@@ -390,13 +422,8 @@ class BiosymModel:
         self._dynamic_q = Matrix(self.coordinates.n, 1, lambda i, _: dynamicsymbols(f"dyn_q{i}"))
         self._dynamic_qd = Matrix(self.speeds.n, 1, lambda i, _: dynamicsymbols(f"dyn_qd{i}"))
 
-        n_q = self.coordinates.n
-        n_tau = self.tau.n
-        n_ext_forces = self.ext_forces.n
-        n_ext_torques = self.ext_torques.n
-        n_bodies = len(self.dicts["bodies"])
+        len(self.dicts["bodies"])
 
-        
         # Maybe the IndexedBase needs to be initialized with its data types
         # e.g. [self._v[i] for i in :self.n_states] = [dynamicsymbols(name) for name in self.state_vector]; [self._v[i] for i in self.n_states:] = [symbols(name) for name in self.constants]
         self.ground_frame = ReferenceFrame("ground")  # Fixed ground frame
@@ -417,7 +444,11 @@ class BiosymModel:
         # Use body_idx as a substitute for now to be safe
         self.topology_tree = self._create_topology_tree()
 
-        def build_reference_frames(topology: list[dict[str, Any]], parent_frame: Optional[ReferenceFrame] = None, parent_origin: Optional[Point] = None) -> None:
+        def build_reference_frames(
+            topology: list[dict[str, Any]],
+            parent_frame: Optional[ReferenceFrame] = None,
+            parent_origin: Optional[Point] = None,
+        ) -> None:
             for idx, node in enumerate(topology):
                 body_name = node["name"]
                 body_idx = [body["name"] for body in self.dicts["bodies"]].index(body_name)
@@ -441,9 +472,7 @@ class BiosymModel:
                     if joint["type"] == "slide":
                         joint_offset += (
                             _to_sympy_vector(joint["axis"], parent_frame)
-                            * self._dynamic_q[
-                                self.coordinates.names.index(f"q_{joint['name']}")
-                            ]
+                            * self._dynamic_q[self.coordinates.names.index(f"q_{joint['name']}")]
                         )
                         joint_speed += (
                             _to_sympy_vector(joint["axis"], parent_frame)
@@ -460,29 +489,25 @@ class BiosymModel:
                 intermediate_frames = [parent_frame]  # We use one frame per rotation
                 # We may need to expose intermediate frames for adding joint torques to them
                 idx_h = 0  # hidden iterator to only iterate over hinges
-                idx = 0  # iterator for all jointss
-                while idx < n_hinges:
+                hinge_idx = 0  # iterator for all jointss
+                while hinge_idx < n_hinges:
                     joint = body["joints"][idx_h]
                     if joint["type"] == "hinge":
                         # Check if we need to add a new frame
-                        symbol = self._dynamic_q[
-                            self.coordinates.names.index(f"q_{joint['name']}")
-                        ]
-                        symbol_dot = self._dynamic_qd[
-                            self.speeds.names.index(f"qd_{joint['name']}")
-                        ]
+                        symbol = self._dynamic_q[self.coordinates.names.index(f"q_{joint['name']}")]
+                        symbol_dot = self._dynamic_qd[self.speeds.names.index(f"qd_{joint['name']}")]
                         joint_angle = _to_sympy_vector(joint["axis"], intermediate_frames[-1])
                         joint_angvel = _to_sympy_vector(joint["axis"], intermediate_frames[-1])
-                        if idx == n_hinges - 1:
+                        if hinge_idx == n_hinges - 1:
                             # I think that we need add the joints iteratively to the frame, order matters
                             body_frame.orient(intermediate_frames[-1], "Axis", (symbol, joint_angle))
                             body_frame.set_ang_vel(intermediate_frames[-1], joint_angvel * symbol_dot)
                         else:
-                            new_frame = ReferenceFrame(f"{body_name}_{joint['name']}_frame_{idx}")
+                            new_frame = ReferenceFrame(f"{body_name}_{joint['name']}_frame_{hinge_idx}")
                             new_frame.orient(intermediate_frames[-1], "Axis", (symbol, joint_angle))
                             new_frame.set_ang_vel(intermediate_frames[-1], joint_angvel * symbol_dot)
                             intermediate_frames.append(new_frame)
-                        idx += 1
+                        hinge_idx += 1
                     idx_h += 1
 
                 self.reference_frames[body_name] = body_frame
@@ -491,7 +516,7 @@ class BiosymModel:
         build_reference_frames(self.topology_tree)
 
         def build_bodies(topology: list[dict[str, Any]]) -> None:
-            for idx, node in enumerate(topology):
+            for _idx, node in enumerate(topology):
                 body_name = node["name"]
                 body_idx = [body["name"] for body in self.dicts["bodies"]].index(body_name)
                 children = node["children"]
@@ -541,7 +566,7 @@ class BiosymModel:
             marker_pt.set_pos(parent_origin, sym_vec)
             marker_pt.v2pt_theory(parent_origin, self.ground_frame, parent_frame)
             self.markers[name] = marker_pt
-        
+
         self.sites = {}
         sites_list = self.dicts.get("sites")
         for site_ in sites_list:
@@ -558,7 +583,7 @@ class BiosymModel:
             self.sites[name] = site_pt
 
         # Add gravitational forces
-        for bodyname, rigid_body in self.rigid_bodies.items():
+        for _bodyname, rigid_body in self.rigid_bodies.items():
             gravity_f = rigid_body.mass * (
                 self.ground_frame.x * self.g.symbols[0]
                 + self.ground_frame.y * self.g.symbols[1]
@@ -567,8 +592,8 @@ class BiosymModel:
             self.loads.append((rigid_body.masscenter, gravity_f))
 
         # Add internal forces
-        for i, joint_name in enumerate(self.tau.names):
-            joint_name = "_".join(joint_name.split("_")[1:])
+        for i, raw_joint_name in enumerate(self.tau.names):
+            joint_name = "_".join(raw_joint_name.split("_")[1:])
             assert joint_name in [j["name"] for j in self.dicts["joints"]], (
                 f"Joint {joint_name} not found in the model definition file, but has an actuator defined."
             )
@@ -617,15 +642,14 @@ class BiosymModel:
             self.loads.append(torque_body)
 
         # Define separate SymPy vector symbols for decoupled JAX lambdification
-        n_bodies = len(self.dicts["bodies"])
-
+        len(self.dicts["bodies"])
 
     def _create_topology_tree(self) -> list[dict[str, Any]]:
         """Create a tree-like topology structure.
-        
+
         Creates a hierarchical tree structure based on the parent-child
         relationships of bodies defined in self.dicts['bodies'].
-        
+
         Returns
         -------
         List[Dict[str, Any]]
@@ -651,7 +675,7 @@ class BiosymModel:
 
     def _create_eom(self) -> None:
         """Create the equations of motion (EOM) for the model.
-        
+
         Uses Kane's method to generate the symbolic equations of motion
         from the defined mechanical system. Stores results in the model
         for later compilation.
@@ -673,25 +697,25 @@ class BiosymModel:
 
     def _create_jax_eom(self) -> None:
         """Create JAX-compiled equations of motion.
-        
+
         Converts the symbolic equations of motion to JAX-compatible functions
         for high-performance numerical computation. Includes automatic
         differentiation capabilities.
         """
-        import time
-
         a = time.time()
         self.confun = lambdify(self._symbols, self.eom, modules="jax", cse=True, docstring_limit=2)
 
         print(f"Lambdifying the EOM took {time.time() - a} seconds")
         a = time.time()
-        self._precompile_fn(self.confun, (self.default_states, self.default_constants), "jacobian", jacobian=True, skip_export=False)
+        self._precompile_fn(
+            self.confun, (self.default_states, self.default_constants), "jacobian", jacobian=True, skip_export=False
+        )
         print(f"Precompiling the Jacobian took {time.time() - a} seconds")
         a = time.time()
         self._precompile_fn(self.confun, (self.default_states, self.default_constants), "confun")
         print(f"Precompiling the confun took {time.time() - a} seconds")
         a = time.time()
-        
+
         mm_replaced = self._replace_dyn(self.kane.mass_matrix)
         self.mass_matrix = lambdify(
             self._symbols,
@@ -704,7 +728,7 @@ class BiosymModel:
         self._precompile_fn(self.mass_matrix, (self.default_states, self.default_constants), "mass_matrix")
         print(f"Precompiling the mass matrix took {time.time() - a} seconds")
         a = time.time()
-        
+
         forcing_replaced = self._replace_dyn(self.kane.forcing)
         self.forcing = lambdify(
             self._symbols,
@@ -718,29 +742,29 @@ class BiosymModel:
         print(f"Precompiling the forcing took {time.time() - a} seconds")
         a = time.time()
 
-    def _create_FK(self, get_FK_dot: bool = True) -> None:
+    def _create_fk(self, get_fk_dot: bool = True) -> None:
         """Create forward kinematics (FK) functions for the model.
-        
+
         Creates symbolic and compiled functions for computing body positions
         and velocities in the global reference frame.
-        
+
         Parameters
         ----------
-        get_FK_dot : bool, optional
+        get_fk_dot : bool, optional
             Whether to also compute velocity kinematics, by default True
-            
+
         Notes
         -----
         Currently returns positions of body_origins in the global frame.
         FK for markers etc. should be added in different functions for max speed.
         """
-        self.positions = [body for body in self.body_origins.keys()]
+        self.positions = list(self.body_origins.keys())
         pos_vector = []
         pos_vector_markers = []
         for _, point in self.body_origins.items():
             pos_vector.append(
                 [
-                    point.pos_from(self.origin).dot(frame_dim) # position of bidy origins in ground (global) frame
+                    point.pos_from(self.origin).dot(frame_dim)  # position of bidy origins in ground (global) frame
                     for frame_dim in [
                         self.ground_frame.x,
                         self.ground_frame.y,
@@ -769,7 +793,9 @@ class BiosymModel:
             pos_vector_marker_ = lambdify(self._symbols, pos_vector_marker_, modules="jax", cse=True, docstring_limit=2)
             self.run["FK_marker_uncompiled"] = pos_vector_marker_
             # store compiled/jitted visualization function
-            pos_vector_marker_ = self._precompile_fn(pos_vector_marker_, (self.default_states, self.default_constants), "FK_marker", skip_export=True)
+            pos_vector_marker_ = self._precompile_fn(
+                pos_vector_marker_, (self.default_states, self.default_constants), "FK_marker", skip_export=True
+            )
 
         # Visualization FK: bodies + markers + sites (when available)
         pos_vector_sites: list[list] = []
@@ -795,13 +821,15 @@ class BiosymModel:
             pos_vector_vis = lambdify(self._symbols, pos_vector_vis, modules="jax", cse=True, docstring_limit=2)
             self.run["FK_vis_uncompiled"] = pos_vector_vis
             # store compiled/jitted visualization function
-            pos_vector_vis = self._precompile_fn(pos_vector_vis, (self.default_states, self.default_constants), "FK_vis", skip_export=True)
+            pos_vector_vis = self._precompile_fn(
+                pos_vector_vis, (self.default_states, self.default_constants), "FK_vis", skip_export=True
+            )
         else:
             # No additional rows beyond bodies; fall back to body-only FK
             self.run["FK_vis_uncompiled"] = self.run["FK_uncompiled"]
             self.run["FK_vis"] = self.run["FK"]
 
-        if get_FK_dot:
+        if get_fk_dot:
             vel_vector = []
             for _, point in self.body_origins.items():
                 vel_vector.append(
@@ -836,11 +864,15 @@ class BiosymModel:
             acc_vector = self._replace_dyn(acc_vector)  # acc causes dq/dt
             acc_vector = lambdify(self._symbols, acc_vector, modules="jax", cse=True, docstring_limit=2)
             self.run["FK_ddot_uncompiled"] = acc_vector
-            acc_vector = self._precompile_fn(acc_vector, (self.default_states, self.default_constants), "FK_ddot", skip_export=True)
+            acc_vector = self._precompile_fn(
+                acc_vector, (self.default_states, self.default_constants), "FK_ddot", skip_export=True
+            )
 
-    def _precompile_fn(self, function: Callable, inputs: Tuple[str], name: str, jacobian: bool = False, skip_export: bool = True) -> None:
+    def _precompile_fn(
+        self, function: Callable, _inputs: tuple[str], name: str, jacobian: bool = False, _skip_export: bool = True
+    ) -> None:
         """Precompile a function using JAX's JIT for faster execution.
-        
+
         Parameters
         ----------
         function : Callable
@@ -853,31 +885,39 @@ class BiosymModel:
             Whether to also compile the Jacobian, by default False
         skip_export : bool, optional
             Whether to skip JAX export, by default True
-            
+
         Notes
         -----
         Uses serialization/deserialization to avoid JAX caching issues.
         This approach doesn't seem slower than normal jax.jit.
         """
 
-        def _jit_function_template(function_: Callable, input_names: Tuple[str, ...] = ("model",)) -> Callable:
+        def _jit_function_template(function_: Callable, _input_names: tuple[str, ...] = ("model",)) -> Callable:
             def wrapped(states: Any, constants: Any) -> Any:
                 return function_(
-                    states.q, states.qd, states.qdd, states.tau, states.ext_forces, states.ext_torques,
-                    constants.g, constants.masses, constants.inertia, constants.com, constants.offset
+                    states.q,
+                    states.qd,
+                    states.qdd,
+                    states.tau,
+                    states.ext_forces,
+                    states.ext_torques,
+                    constants.g,
+                    constants.masses,
+                    constants.inertia,
+                    constants.com,
+                    constants.offset,
                 )
 
             return jax.jit(wrapped)
 
         jit_function = _jit_function_template(function)
 
-        # Precompile
-            if jacobian:
+        if jacobian:
             self.run[name] = jax.jit(jax.jacobian(jit_function, argnums=0))
-            else:
+        else:
             self.run[name] = jit_function
 
-    def _replace_dyn(self, function: Callable, replace_d_q: bool = False) -> Callable:
+    def _replace_dyn(self, function: Callable, _replace_d_q: bool = False) -> Callable:
         """
         Replace the dynamicsymbols in the function with the corresponding v_ states.
         This is needed to get the correct output from the function.
@@ -889,30 +929,20 @@ class BiosymModel:
         function = function.xreplace(dict(zip(self._dynamic_qd, self.speeds.symbols)))
         return function
 
-    def _register_contact_model(self, contact_model: Any, skip_export: bool = True) -> None:
-        """
-        Register the forward function of the contact model as a function in the run dictionary and precompile it.
-        """
-        self.default_states = self.default_states.replace(
-            **{"gc_model": np.zeros(contact_model.get_n_states())}
-        )
-        self.default_constants = self.default_constants.replace(
-            **{"gc_model": np.zeros(contact_model.get_n_constants())}
-        )
+    def _register_contact_model(self, contact_model: Any, _skip_export: bool = True) -> None:
+        """Register the forward function of the contact model as a function in the run dictionary and precompile it."""
+        self.default_states = self.default_states.replace(gc_model=np.zeros(contact_model.get_n_states()))
+        self.default_constants = self.default_constants.replace(gc_model=np.zeros(contact_model.get_n_constants()))
         lambda_func = partial(contact_model.forward, model=self)
         self.run["gc_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
         self.run["gc_model"] = jax.jit(lambda_func)
         self.contact_model = contact_model
 
     def _register_actuator_model(self, actuator_model: Any) -> None:
-        """
-        TODO: Refactor the _register functions, they are almost identical
-        """
-        self.default_states = self.default_states.replace(
-            **{"actuator_model": np.zeros(actuator_model.get_n_states())}
-        )
+        """TODO: Refactor the _register functions, they are almost identical."""
+        self.default_states = self.default_states.replace(actuator_model=np.zeros(actuator_model.get_n_states()))
         self.default_constants = self.default_constants.replace(
-            **{"actuator_model": np.zeros(actuator_model.get_n_constants())}
+            actuator_model=np.zeros(actuator_model.get_n_constants())
         )
 
         actuator_function = actuator_model.forward
@@ -927,12 +957,10 @@ class BiosymModel:
         self.run["actuator_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
 
     def _create_variable_dataframe(self) -> None:
-        """
-        Create a dataframe with all variables in the model.
-        """
+        """Create a dataframe with all variables in the model."""
         df = pd.DataFrame(columns=["type", "name", "x0", "xmin", "xmax"])
-        for i, name in enumerate(self.state_vector):
-            type = "state"
+        for name in self.state_vector:
+            var_type = "state"
             xmin = -3.14  # -np.inf
             xmax = 3.14  # np.inf
             if name.startswith("q_"):
@@ -973,37 +1001,36 @@ class BiosymModel:
                 x0 = self.default_states.tau[idx]
 
             # @todo: parse limits and find reasonable limits
-            df.loc[len(df)] = [type, name, x0, xmin, xmax]
-        print(df)
+            df.loc[len(df)] = [var_type, name, x0, xmin, xmax]
+            
         x0 = self.default_constants.flatten()
-        print(x0)
         for i, name in enumerate(self.constants):
-            type = "constant"
+            var_type = "constant"
             xmin = -np.inf
             xmax = np.inf
-            df.loc[len(df)] = [type, name, x0[i], xmin, xmax]
+            df.loc[len(df)] = [var_type, name, x0[i], xmin, xmax]
         self.variables = df
-        print('Variable Dataframe Created')
+        print("Variable Dataframe Created")
 
     def _get_hash(self) -> str:
         hasher = hashlib.sha256()
-        
+
         # 1. Hash the names of state_vector and constants
         all_state_names = "".join(self.state_vector + self.constants)
         hasher.update(all_state_names.encode())
-        
+
         # 2. Hash files if self.definition_file is set
         def_file = getattr(self, "definition_file_yaml", None) or getattr(self, "definition_file", None)
         if def_file and os.path.exists(def_file):
             with open(def_file, "rb") as f:
                 hasher.update(f.read())
-                
+
         # If we have the yaml def file, also hash the xml definition_file
         xml_file = getattr(self, "definition_file", None)
         if xml_file and xml_file != def_file and os.path.exists(xml_file):
             with open(xml_file, "rb") as f:
                 hasher.update(f.read())
-                
+
         # Hash other referenced files
         cfg = getattr(self, "cfg", None)
         if cfg is not None and def_file:
@@ -1024,7 +1051,7 @@ class BiosymModel:
                         hasher.update(f.read())
             except KeyError:
                 pass
-                
+
         # 3. Hash all python files in the biosym package to invalidate cache on any code change
         try:
             package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1040,7 +1067,7 @@ class BiosymModel:
                     hasher.update(f.read())
         except Exception:
             pass
-            
+
         return hasher.hexdigest()
 
     def __getstate__(self):
@@ -1049,9 +1076,21 @@ class BiosymModel:
         # We clear the compiled JAX functions to avoid serializing brittle hardware-specific tracer objects.
         safe_run = {}
         for k, v in state.get("run", {}).items():
-            if not (k in ["FK", "FK_marker", "FK_vis", "FK_ddot", "FK_dot", "jacobian", "confun", 
-                          "mass_matrix", "forcing",
-                          "gc_model", "gc_model_jacobian", "actuator_model", "actuator_model_jacobian"]):
+            if k not in [
+                "FK",
+                "FK_marker",
+                "FK_vis",
+                "FK_ddot",
+                "FK_dot",
+                "jacobian",
+                "confun",
+                "mass_matrix",
+                "forcing",
+                "gc_model",
+                "gc_model_jacobian",
+                "actuator_model",
+                "actuator_model_jacobian",
+            ]:
                 safe_run[k] = v
         state["run"] = safe_run
         return state
@@ -1060,7 +1099,7 @@ class BiosymModel:
         self.__dict__.update(state)
         # Re-precompile/re-jit all dynamic JAX functions upon unpickling to ensure fresh JAX session tracers.
         self.run = getattr(self, "run", {})
-        
+
         # 1. FK functions
         if "FK_uncompiled" in self.run:
             self._precompile_fn(self.run["FK_uncompiled"], self.default_inputs, "FK")
@@ -1068,14 +1107,13 @@ class BiosymModel:
             self._precompile_fn(self.run["FK_marker_uncompiled"], self.default_inputs, "FK_marker", skip_export=True)
         if "FK_vis_uncompiled" in self.run:
             self._precompile_fn(self.run["FK_vis_uncompiled"], self.default_inputs, "FK_vis", skip_export=True)
-        else:
-            if "FK" in self.run:
-                self.run["FK_vis"] = self.run["FK"]
+        elif "FK" in self.run:
+            self.run["FK_vis"] = self.run["FK"]
         if "FK_dot_uncompiled" in self.run:
             self._precompile_fn(self.run["FK_dot_uncompiled"], self.default_inputs, "FK_dot")
         if "FK_ddot_uncompiled" in self.run:
             self._precompile_fn(self.run["FK_ddot_uncompiled"], self.default_inputs, "FK_ddot", skip_export=True)
-        
+
         # 2. Dynamics JAX functions
         if hasattr(self, "confun"):
             self._precompile_fn(self.confun, self.default_inputs, "jacobian", jacobian=True, skip_export=False)
@@ -1084,7 +1122,7 @@ class BiosymModel:
             self._precompile_fn(self.run["mass_matrix_uncompiled"], self.default_inputs, "mass_matrix")
         if "forcing_uncompiled" in self.run:
             self._precompile_fn(self.run["forcing_uncompiled"], self.default_inputs, "forcing")
-            
+
         # 3. Ground contact and actuator models
         if hasattr(self, "gc_model"):
             self._register_contact_model(self.gc_model)
@@ -1095,12 +1133,12 @@ class BiosymModel:
 def _slice(dictionary: dict[str, Any]) -> slice:
     """
     Slice the state vector according to the dictionary
-    To make accesing states / v_ easier
+    To make accesing states / v_ easier.
     """
     return np.arange(dictionary["idx"], dictionary["idx"] + dictionary["n"])
 
 
-def _to_sympy_vector(values: List[Any], reference_frame: ReferenceFrame) -> Any:
+def _to_sympy_vector(values: list[Any], reference_frame: ReferenceFrame) -> Any:
     """
     Convert a list of positional or directional values to a sympy.physics.mechanics.Vector.
 
@@ -1119,7 +1157,7 @@ def _to_sympy_vector(values: List[Any], reference_frame: ReferenceFrame) -> Any:
 
 def load_model(model_file: str, force_rebuild: bool = False, compile_eom: bool = True) -> "BiosymModel":
     """Load a model from a file with caching support.
-    
+
     Parameters
     ----------
     model_file : str
@@ -1128,53 +1166,50 @@ def load_model(model_file: str, force_rebuild: bool = False, compile_eom: bool =
         If True, rebuild model even if cached version exists, by default False
     compile_eom : bool, optional
         If True, compile symbolic equations of motion and JAX functions, by default True
-        
+
     Returns
     -------
     BiosymModel
         Loaded model instance
-        
+
     Notes
     -----
     Uses hash-based caching to avoid recompiling identical models.
     """
     model_file = os.path.abspath(os.path.expanduser(model_file))
-    
+
     disable_cache = os.environ.get("BIOSYM_DISABLE_CACHE", "0").lower() in ("1", "true", "yes")
     force_rebuild_env = os.environ.get("BIOSYM_FORCE_REBUILD", "0").lower() in ("1", "true", "yes")
     force_rebuild = force_rebuild or force_rebuild_env
-    
+
     if disable_cache:
         print("Caching is disabled via BIOSYM_DISABLE_CACHE. Compiling model from source...")
         return BiosymModel(model_file, compile_eom=compile_eom)
 
     # Generate a hash of the config / or xml tree and save the cloudpickled model in the cache
     model_hash = BiosymModel(model_file, get_hash=True, compile_eom=compile_eom)._get_hash()
-    
+
     cache_dir = os.environ.get("BIOSYM_CACHE_DIR", _model_cache)
     os.makedirs(cache_dir, exist_ok=True)
     precision_tag = "x64" if bool(jax.config.read("jax_enable_x64")) else "x32"
     cache_path = os.path.join(cache_dir, f"{model_hash}_{precision_tag}.cpkl")
 
-    if not force_rebuild:
-        if os.path.exists(cache_path):
-            print(f"Loading model from cache: {model_hash}_{precision_tag}.cpkl")
-            try:
-                with open(cache_path, "rb") as f:
+    if not force_rebuild and os.path.exists(cache_path):
+        print(f"Loading model from cache: {model_hash}_{precision_tag}.cpkl")
+        try:
+            with open(cache_path, "rb") as f:
                 model = cloudpickle.load(f)
-                return model
-            except Exception as e:
-                print(f"Failed to load cached model ({e}). Rebuilding from source...")
-                try:
-                    os.remove(cache_path)
-                except Exception:
-                    pass
+            return model
+        except Exception as e:
+            print(f"Failed to load cached model ({e}). Rebuilding from source...")
+            with contextlib.suppress(Exception):
+                os.remove(cache_path)
 
     model = BiosymModel(model_file, compile_eom=compile_eom)
     # Save the model to the cache
     try:
         with open(cache_path, "wb") as f:
-        cloudpickle.dump(model, f)
+            cloudpickle.dump(model, f)
     except Exception as e:
         print(f"Warning: Failed to save model to cache ({e}).")
     return model
@@ -1182,7 +1217,7 @@ def load_model(model_file: str, force_rebuild: bool = False, compile_eom: bool =
 
 def clear_caches() -> None:
     """Clear the caches for JAX and the model.
-    
+
     Removes all cached compiled functions and model files to force
     recompilation on next use. Useful for development and debugging.
     """
@@ -1206,11 +1241,13 @@ def clear_caches() -> None:
 # Small testing script
 if __name__ == "__main__":
     import time
+
     from biosym.utils import states as states_module
+
     start = time.time()
     # model_file = "tests/models/pendulum.xml"
     model_file = "tests/models/gait2d/gait2d.yaml"
-    #model_file = "tests/models/gait2d_torque/gait2d_torque.yaml"
+    # model_file = "tests/models/gait2d_torque/gait2d_torque.yaml"
 
     model = load_model(model_file, True)
     print(f"Reloading model in {time.time() - start} seconds")
@@ -1220,9 +1257,9 @@ if __name__ == "__main__":
     print(states)
     model.run["actuator_model"](states, constants)
 
-    states_dict = states_module.stack_dataclasses([model.default_inputs]*100)
+    states_dict = states_module.stack_dataclasses([model.default_inputs] * 100)
     model.run["actuator_model"](states_dict.states, states_dict.constants)
-    
+
     for _ in range(1):
         model.run["jacobian"](states, constants)
     print(f"1 jacobian in in {time.time() - start} seconds (with reimporting)")
