@@ -56,6 +56,9 @@ class _ModelProperties(NamedTuple):
     def __str__(self) -> str:
         return f"Properties Field: {self.names}\nNumber of items: {self.n}\nSymbols: {self.symbols}"
 
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 class _ForceProperties(NamedTuple):
     names: list[str]
@@ -64,6 +67,12 @@ class _ForceProperties(NamedTuple):
     passive_idx: jnp.ndarray
     active_idx: jnp.ndarray
     combined_idx: jnp.ndarray
+
+    def __str__(self) -> str:
+        return f"Force Properties: {self.names}\nNumber of items: {self.n}\nSymbols: {self.symbols}\nPassive indices: {self.passive_idx}\nActive indices: {self.active_idx}\nCombined indices: {self.combined_idx}"
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
 
 class BiosymModel:
@@ -869,7 +878,7 @@ class BiosymModel:
             )
 
     def _precompile_fn(
-        self, function: Callable, _inputs: tuple[str], name: str, jacobian: bool = False, _skip_export: bool = True
+        self, function: Callable, _inputs: tuple[str], name: str, jacobian: bool = False, skip_export: bool = True
     ) -> None:
         """Precompile a function using JAX's JIT for faster execution.
 
@@ -884,7 +893,7 @@ class BiosymModel:
         jacobian : bool, optional
             Whether to also compile the Jacobian, by default False
         skip_export : bool, optional
-            Whether to skip JAX export, by default True
+            Whether to skip JAX export, by default True, is unused and should be deprecated
 
         Notes
         -----
@@ -1002,7 +1011,7 @@ class BiosymModel:
 
             # @todo: parse limits and find reasonable limits
             df.loc[len(df)] = [var_type, name, x0, xmin, xmax]
-            
+
         x0 = self.default_constants.flatten()
         for i, name in enumerate(self.constants):
             var_type = "constant"
@@ -1010,7 +1019,6 @@ class BiosymModel:
             xmax = np.inf
             df.loc[len(df)] = [var_type, name, x0[i], xmin, xmax]
         self.variables = df
-        print("Variable Dataframe Created")
 
     def _get_hash(self) -> str:
         hasher = hashlib.sha256()

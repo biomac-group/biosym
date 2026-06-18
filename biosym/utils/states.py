@@ -88,6 +88,7 @@ class States:
         metadata: dict | None = None,
         **kwargs,
     ):
+
         object.__setattr__(self, "q", q)
         object.__setattr__(self, "qd", qd)
         object.__setattr__(self, "qdd", qdd)
@@ -137,6 +138,9 @@ class States:
                 parts.append(f"{name}={val.shape if hasattr(val, 'shape') else type(val)}")
         return f"States({', '.join(parts)})"
 
+    def __repr__(self):
+        return self.__str__()
+
     def size(self):
         return sum(x.size for x in jax.tree_util.tree_leaves(self))
 
@@ -169,19 +173,14 @@ class States:
             if val is not None:
                 active_fields.append(name)
                 children.append(val)
-        aux_data = (tuple(active_fields), _freeze(self.names), _freeze(self.metadata))
+        aux_data = (tuple(active_fields))
         return tuple(children), aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        active_fields, names, metadata = aux_data
-        names = _thaw(names)
-        metadata = _thaw(metadata)
+        active_fields = aux_data
 
-        kwargs = {
-            "names": names,
-            "metadata": metadata,
-        }
+        kwargs = {}
         for name, val in zip(active_fields, children):
             kwargs[name] = val
         return cls(**kwargs)
@@ -217,7 +216,7 @@ class Constants:
         offset: jnp.ndarray = None,
         gc_model: jnp.ndarray = None,
         actuator_model: jnp.ndarray = None,
-
+        **kwargs
     ):
 
         if gc_model is None:
@@ -250,12 +249,6 @@ class Constants:
         for field_name in ["g", "mass", "inertia", "com", "offset"]:
             if not hasattr(self, field_name):
                 object.__setattr__(self, field_name, jnp.zeros((0,)))
-        if not hasattr(self, "slices"):
-            object.__setattr__(self, "slices", {})
-        if not hasattr(self, "names"):
-            object.__setattr__(self, "names", None)
-        if not hasattr(self, "metadata"):
-            object.__setattr__(self, "metadata", None)
 
     def replace(self, **updates) -> "Constants":
         """Replace fields while keeping model and separate physical components in sync."""
@@ -271,39 +264,35 @@ class Constants:
                 parts.append(f"{name}={val.shape if hasattr(val, 'shape') else type(val)}")
         return f"Constants({', '.join(parts)})"
 
+    def __repr__(self):
+        return self.__str__()
+
     def multiply(self, other):
         if isinstance(other, (int, float)):
             return jax.tree_util.tree_map(lambda x: x * other, self)
         raise NotImplementedError("biosym.utils.states.Constants.multiply.notfloat")
 
     def tree_flatten(self):
-        children = (self.g, self.mass, self.inertia, self.com, self.offset, self.gc_model, self.actuator_model)
-        aux_data = (self.slices, _freeze(self.names), _freeze(self.metadata))
-        return children, aux_data
-
-    def flatten(self):
-        return jnp.concatenate([x.flatten() if isinstance(x, jnp.ndarray) else x for x in jax.tree_util.tree_leaves(self)], axis=0)
+        active_fields = []
+        children = []
+        for name in ["g", "mass", "inertia", "com", "offset", "gc_model", "actuator_model"]:
+            val = getattr(self, name)
+            if val is not None:
+                active_fields.append(name)
+                children.append(val)
+        aux_data = (tuple(active_fields))
+        return tuple(children), aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        if len(aux_data) == 1:
-            slices, = aux_data
-            names = None
-            metadata = None
-        else:
-            slices, names, metadata = aux_data
-
-        names = _thaw(names)
-        metadata = _thaw(metadata)
-
-        g, masses, inertia, com, offset, gc_model, actuator_model = children
-                           
-        return cls(
-            gc_model=gc_model, actuator_model=actuator_model,
-            g=g, masses=masses, inertia=inertia, com=com, offset=offset,
-            slices=slices, names=names, metadata=metadata
-        )
-
+        active_fields, = aux_data
+        kwargs = {}
+        for name, val in zip(active_fields, children):
+            kwargs[name] = val
+        return cls(**kwargs)
+                
+    def flatten(self):
+        return jnp.concatenate([x.flatten() if isinstance(x, jnp.ndarray) else x for x in jax.tree_util.tree_leaves(self)], axis=0)
 
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True)
@@ -332,104 +321,6 @@ class Globals:
     def tree_unflatten(cls, aux_data, children):
         dur, speed = children
         return cls(dur=dur, speed=speed)
-
-def stack_dataclasses(instances):
-    if not instances:
-        raise ValueError("Cannot stack an empty list")
-    if type(instances) not in [list, tuple]:
-        raise TypeError("Input must be a list of dataclass instances")
-
-    # Stack States and Constants individually to avoid structural/metadata mismatch on StatesDict wrappers
-    stacked_states = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *[inst.states for inst in instances])
-    constants = instances[0].constants
-    
-    names = instances[0].names if hasattr(instances[0], "names") else None
-    metadata = instances[0].metadata if hasattr(instances[0], "metadata") else None
-    
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=DeprecationWarning)
-        return StatesDict(stacked_states, constants, names=names, metadata=metadata)
-
-
-def reduce_dataclasses(instances, fn=None, weights=None):
-    if not instances:
-        raise ValueError("Cannot reduce an empty list")
-    if weights is None:
-        weights = [1] * len(instances)
-    else:
-        if len(weights) != len(instances):
-            raise ValueError("Weights must match the number of instances")
-        for i, weight in enumerate(weights):
-            instances[i] = instances[i].multiply(weight)
-    if fn is None:
-        return instances
-
-    # Reduce States and Constants individually to avoid structural/metadata mismatch on StatesDict wrappers
-    stacked_states = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *[inst.states for inst in instances])
-    reduced_states = jax.tree_util.tree_map(lambda x: fn(x, axis=0), stacked_states)
-    
-    constants = instances[0].constants
-    names = instances[0].names if hasattr(instances[0], "names") else None
-    metadata = instances[0].metadata if hasattr(instances[0], "metadata") else None
-    
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=DeprecationWarning)
-        return StatesDict(states=reduced_states, constants=constants, names=names, metadata=metadata)
-
-
-def dict_to_dataclass(states_dict):
-    def get_value(d, *keys):
-        for key in keys:
-            if not isinstance(d, dict):
-                return None
-            d = d.get(key, None)
-            if d is None:
-                return None
-        return d
-
-    qd_val = get_value(states_dict, "states", "qd")
-    if qd_val is None:
-        qd_val = get_value(states_dict, "states", "dq")
-
-    qdd_val = get_value(states_dict, "states", "qdd")
-    if qdd_val is None:
-        qdd_val = get_value(states_dict, "states", "ddq")
-
-    states = States(
-        q=get_value(states_dict, "states", "q"),
-        qd=qd_val,
-        qdd=qdd_val,
-        tau=get_value(states_dict, "states", "tau"),
-        ext_forces=get_value(states_dict, "states", "ext_forces"),
-        ext_torques=get_value(states_dict, "states", "ext_torques"),
-        gc_model=get_value(states_dict, "states", "gc_model"),
-        actuator_model=get_value(states_dict, "states", "actuator_model"),
-        h=get_value(states_dict, "states", "h"),
-        names=get_value(states_dict, "states", "names"),
-        metadata=get_value(states_dict, "states", "metadata"),
-    )
-    constants = Constants(
-        gc_model=get_value(states_dict, "constants", "gc_model"),
-        actuator_model=get_value(states_dict, "constants", "actuator_model"),
-        g=get_value(states_dict, "constants", "g"),
-        masses=get_value(states_dict, "constants", "masses"),
-        inertia=get_value(states_dict, "constants", "inertia"),
-        com=get_value(states_dict, "constants", "com"),
-        offset=get_value(states_dict, "constants", "offset"),
-        slices=get_value(states_dict, "constants", "slices"),
-        names=get_value(states_dict, "constants", "names"),
-        metadata=get_value(states_dict, "constants", "metadata"),
-    )
-    
-    sd_names = get_value(states_dict, "names")
-    sd_metadata = get_value(states_dict, "metadata")
-    
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=DeprecationWarning)
-        return StatesDict(states=states, constants=constants, names=sd_names, metadata=sd_metadata)
 
 
 def get_states_offsets(states) -> dict:
