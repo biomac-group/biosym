@@ -98,7 +98,18 @@ class States:
         object.__setattr__(self, "gc_model", gc_model)
         object.__setattr__(self, "actuator_model", actuator_model)
         object.__setattr__(self, "h", h)
-        object.__setattr__(self, "names", names)
+        # Make a list of the names, for each set attribute
+        n = []
+        if q is not None: n.append('q')
+        if qd is not None: n.append('qd')
+        if qdd is not None: n.append('qdd')
+        if tau is not None: n.append('tau')
+        if ext_forces is not None: n.append('ext_forces')
+        if ext_torques is not None: n.append('ext_torques')
+        if gc_model is not None: n.append('gc_model')
+        if actuator_model is not None: n.append('actuator_model')
+        if h is not None: n.append('h')
+        object.__setattr__(self, "names", n)
         object.__setattr__(self, "metadata", metadata)
 
 
@@ -121,14 +132,12 @@ class States:
         if not hasattr(self, "metadata"):
             object.__setattr__(self, "metadata", None)
 
-    def replace(self, **updates) -> "States":
+    def replace(self, name=None, value=None, **kwargs) -> "States":
         """Replace fields while keeping physical components structured."""
-        if "dq" in updates:
-            updates["qd"] = updates.pop("dq")
-        if "ddq" in updates:
-            updates["qdd"] = updates.pop("ddq")
-
-        return dataclasses.replace(self, **updates)
+        if name is not None and value is not None:
+            return dataclasses.replace(self, **{name:value})
+        else:
+            return dataclasses.replace(self, **kwargs)
 
     def __str__(self):
         parts = []
@@ -148,7 +157,17 @@ class States:
         flat_states = jax.tree_util.tree_leaves(self)
         return jnp.concatenate([x.flatten() if isinstance(x, jnp.ndarray) else x for x in flat_states], axis=0)
 
+    def filter(self, names: list[str]) -> "States":
+        """Filter states by name."""
+        if names=="model": names=['q','qd','qdd','tau','ext_forces','ext_torques']
+        return States(**{name: getattr(self, name) for name in names})
+
+    def to_array(self):
+        return jnp.concatenate([getattr(self, name) for name in self.names if getattr(self, name) is not None], axis=-1)
+
     def __getitem__(self, index):
+        if type(index)==str:
+            return getattr(self, index)
         def slice_fn(x):
             if isinstance(x, jnp.ndarray):
                 if x.shape[0] == 0:
@@ -173,14 +192,19 @@ class States:
             if val is not None:
                 active_fields.append(name)
                 children.append(val)
-        aux_data = (tuple(active_fields))
+        aux_data = (tuple(active_fields), _freeze(getattr(self, "names", None)), _freeze(getattr(self, "metadata", None)))
         return tuple(children), aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        active_fields = aux_data
+        active_fields, names, metadata = aux_data
+        names = _thaw(names)
+        metadata = _thaw(metadata)
 
-        kwargs = {}
+        kwargs = {
+            "names": names,
+            "metadata": metadata,
+        }
         for name, val in zip(active_fields, children):
             kwargs[name] = val
         return cls(**kwargs)
@@ -250,11 +274,14 @@ class Constants:
             if not hasattr(self, field_name):
                 object.__setattr__(self, field_name, jnp.zeros((0,)))
 
-    def replace(self, **updates) -> "Constants":
+    def replace(self, name=None, value=None, **kwargs) -> "Constants":
         """Replace fields while keeping model and separate physical components in sync."""
         #for field, value in updates.items():
         #    return dataclasses.replace(self, **{field:value})
-        return dataclasses.replace(self, **updates)
+        if name is not None and value is not None:
+            return dataclasses.replace(self, **{name:value})
+        else:
+            return dataclasses.replace(self, **kwargs)
 
     def __str__(self):
         parts = []
@@ -267,10 +294,19 @@ class Constants:
     def __repr__(self):
         return self.__str__()
 
+    def __getitem__(self, index):
+        if type(index)==str:
+            return getattr(self, index)
+
     def multiply(self, other):
         if isinstance(other, (int, float)):
             return jax.tree_util.tree_map(lambda x: x * other, self)
         raise NotImplementedError("biosym.utils.states.Constants.multiply.notfloat")
+    
+    def filter(self, names: list[str]) -> "Constants":
+        """Filter states by name."""
+        if names=="model": names=['g','mass','inertia','com','offset']
+        return Constants(**{name: getattr(self, name) for name in names})
 
     def tree_flatten(self):
         active_fields = []
@@ -280,7 +316,7 @@ class Constants:
             if val is not None:
                 active_fields.append(name)
                 children.append(val)
-        aux_data = (tuple(active_fields))
+        aux_data = (tuple(active_fields),)
         return tuple(children), aux_data
 
     @classmethod
@@ -293,6 +329,9 @@ class Constants:
                 
     def flatten(self):
         return jnp.concatenate([x.flatten() if isinstance(x, jnp.ndarray) else x for x in jax.tree_util.tree_leaves(self)], axis=0)
+
+    def to_array(self):
+        return jnp.concatenate([x if isinstance(x, jnp.ndarray) else x for x in jax.tree_util.tree_leaves(self)], axis=0)
 
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True)

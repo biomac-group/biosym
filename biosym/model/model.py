@@ -903,19 +903,20 @@ class BiosymModel:
 
         def _jit_function_template(function_: Callable, _input_names: tuple[str, ...] = ("model",)) -> Callable:
             def wrapped(states: Any, constants: Any) -> Any:
-                return function_(
-                    states.q,
-                    states.qd,
-                    states.qdd,
-                    states.tau,
-                    states.ext_forces,
-                    states.ext_torques,
-                    constants.g,
-                    constants.masses,
-                    constants.inertia,
-                    constants.com,
-                    constants.offset,
-                )
+                states_array = states.filter('model').to_array()
+                constants_array = constants.filter('model').to_array()
+                if states_array.ndim > 1:
+                    vmapable = lambda states_, constants_: function_(*states_, *constants_)
+                    if states_array.ndim > 2:
+                        states_shape = states_array.shape
+                        states_array = states_array.reshape(-1, states_shape[-1])
+                    
+                    res = jax.vmap(vmapable, in_axes=(0, None))(states_array, constants_array)
+                    if len(states_shape)>2:
+                        res = res.reshape(*states_shape[:-1], *res.shape[-2:])
+                else:
+                    res = function_(*states_array, *constants_array)
+                return res
 
             return jax.jit(wrapped)
 
