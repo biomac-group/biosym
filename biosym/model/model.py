@@ -901,31 +901,33 @@ class BiosymModel:
         This approach doesn't seem slower than normal jax.jit.
         """
 
-        def _jit_function_template(function_: Callable, _input_names: tuple[str, ...] = ("model",)) -> Callable:
+        def _jit_function_template(function_: Callable, _input_names: tuple[str, ...] = ("model",), jacobian:bool=False) -> Callable:
             def wrapped(states: Any, constants: Any) -> Any:
                 states_array = states.filter('model').to_array()
                 constants_array = constants.filter('model').to_array()
+                f = lambda states, constants: function_(*states, *constants)
                 if states_array.ndim > 1:
-                    vmapable = lambda states_, constants_: function_(*states_, *constants_)
+                    if not jacobian:
+                        vmapable = lambda states_, constants_: f(states_, constants_)
+                    else:
+                        vmapable = lambda states_, constants_: jax.jacobian(f)(states_, constants_)
                     if states_array.ndim > 2:
                         states_shape = states_array.shape
                         states_array = states_array.reshape(-1, states_shape[-1])
-                    
-                    res = jax.vmap(vmapable, in_axes=(0, None))(states_array, constants_array)
-                    if len(states_shape)>2:
+                        res = jax.vmap(vmapable, in_axes=(0, None))(states_array, constants_array)
                         res = res.reshape(*states_shape[:-1], *res.shape[-2:])
+                    else:
+                        res = jax.vmap(vmapable, in_axes=(0, None))(states_array, constants_array)
                 else:
-                    res = function_(*states_array, *constants_array)
-                return res
+                    if not jacobian:
+                        res = f(states_array, constants_array)
+                    else:
+                        res = jax.jacobian(f)(states_array, constants_array)
+                return res.squeeze()
 
             return jax.jit(wrapped)
 
-        jit_function = _jit_function_template(function)
-
-        if jacobian:
-            self.run[name] = jax.jit(jax.jacobian(jit_function, argnums=0))
-        else:
-            self.run[name] = jit_function
+        self.run[name] = _jit_function_template(function, jacobian=jacobian)
 
     def _replace_dyn(self, function: Callable, _replace_d_q: bool = False) -> Callable:
         """
