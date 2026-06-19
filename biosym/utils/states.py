@@ -108,7 +108,7 @@ class States:
         **kwargs,
     ):
         if "h" in kwargs:
-            # To be removed in 0.3.0
+            # TODO(deprecation): Remove states.h support in 0.3.0
             import warnings
             warnings.warn(
                 "Passing 'h' to States is deprecated. 'h' has been moved to Globals.",
@@ -139,7 +139,7 @@ class States:
 
     @property
     def h(self):
-        # To be removed in 0.3.0    
+        # TODO(deprecation): Remove states.h support in 0.3.0
         import warnings
         warnings.warn(
             "Accessing 'h' from States is deprecated. 'h' has been moved to Globals.",
