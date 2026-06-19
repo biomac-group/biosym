@@ -36,7 +36,13 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
     >>> app = create_dashboard_app(problem.iteration_logger)
     >>> app.run(debug=False)
     """
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    
     app = Dash(__name__)
+
+
     
     app.layout = html.Div([
         html.H1("Optimization Progress", style={'textAlign': 'center'}),
@@ -97,9 +103,9 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
         ctx = callback_context
         
         if not ctx.triggered:
-            return no_update
-
-        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            trigger_id = ''
+        else:
+            trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
         if iteration_logger is None or not iteration_logger.log_data:
             # Return empty plots if no data
@@ -158,7 +164,7 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
                 new_last_state = {'iteration': current_iter, 'rows': current_rows}
         
         if not should_update:
-            return no_update
+            return no_update, no_update, no_update, no_update
         
         # Separate objective and constraint columns
         all_cols = [col for col in df.columns if col != 'iteration']
@@ -174,9 +180,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
             
             # Add a trace for each objective column
             for col in objective_cols:
+                y_val = df[col]
+                if scale_type == 'log':
+                    y_val = np.maximum(y_val, 1e-8)
                 fig_obj.add_trace(go.Scatter(
                     x=df['iteration'],
-                    y=df[col],
+                    y=y_val,
                     mode='lines+markers',
                     name=col,
                     line=dict(width=2),
@@ -184,9 +193,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
                 ))
             
             # Add Total Objective trace
+            y_total = df['Total_Obj']
+            if scale_type == 'log':
+                y_total = np.maximum(y_total, 1e-8)
             fig_obj.add_trace(go.Scatter(
                 x=df['iteration'],
-                y=df['Total_Obj'],
+                y=y_total,
                 mode='lines+markers',
                 name='Total Objective',
                 line=dict(width=4, color='white'),
@@ -222,9 +234,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
             for col in constraint_cols:
                 # Remove "Constraint_" prefix for cleaner legend
                 display_name = col.replace("Constraint_", "")
+                y_val = df[col]
+                if scale_type == 'log':
+                    y_val = np.maximum(y_val, 1e-8)
                 fig_cons.add_trace(go.Scatter(
                     x=df['iteration'],
-                    y=df[col],
+                    y=y_val,
                     mode='lines+markers',
                     name=display_name,
                     line=dict(width=2),
@@ -232,9 +247,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
                 ))
                 
             # Add Total Constraint Violation trace
+            y_total_cons = df['Total_Cons']
+            if scale_type == 'log':
+                y_total_cons = np.maximum(y_total_cons, 1e-8)
             fig_cons.add_trace(go.Scatter(
                 x=df['iteration'],
-                y=df['Total_Cons'],
+                y=y_total_cons,
                 mode='lines+markers',
                 name='Total Violation',
                 line=dict(width=4, color='white'),

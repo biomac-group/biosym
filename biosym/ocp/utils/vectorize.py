@@ -14,7 +14,6 @@ from jax import vmap
 from jax.flatten_util import ravel_pytree
 
 from biosym.utils.states import Globals
-# @todo for agent: x_to_states_dict should be states only
 
 
 @jax.jit

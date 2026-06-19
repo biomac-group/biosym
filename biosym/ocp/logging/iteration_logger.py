@@ -100,8 +100,8 @@ class IterationLogger:
         bool
             True to continue optimization, False to abort
         """
-        # Only log at specified intervals
-        if iter_count % self.iteration_interval == 0 and iter_count != 0:
+        # Only log at specified intervals or iteration 0
+        if iter_count % self.iteration_interval == 0 or iter_count == 0:
             # Get current x from problem object (stored during objective evaluation)
             if hasattr(self.problem, '_current_x') and self.problem._current_x is not None:
                 self._log_current_iteration(iter_count, self.problem._current_x)
@@ -143,8 +143,8 @@ class IterationLogger:
             # Evaluate unweighted objective
             try:
                 obj_value = obj_func(states, globals_dict)
-                # Store weighted value
-                log_entry[name] = weight * obj_value
+                # Store weighted value converted to standard Python float for JSON serializability
+                log_entry[name] = float(weight * obj_value)
                 #print(f"Objective {name} has {log_entry[name]} value at iteration {iter_count}")
             except Exception as e:
                 # If evaluation fails, store NaN
@@ -171,7 +171,8 @@ class IterationLogger:
                     violation = np.sum(np.abs(c_values))
                     
                     name = constraint._get_info().get("name", f"Constraint_{i}")
-                    log_entry[f"Constraint_{name}"] = violation
+                    # Store as standard Python float for JSON serializability
+                    log_entry[f"Constraint_{name}"] = float(violation)
             except Exception as e:
                 print(f"Warning: Failed to evaluate constraints at iteration {iter_count}: {e}")
 

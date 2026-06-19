@@ -225,17 +225,16 @@ def evaluate_gradients(objective_gradients, weights, states_list, globals_dict=N
     globals_gradients = []
     for i, grad_fun in enumerate(objective_gradients):
         gradient, globals_gradient = grad_fun(states_list, globals_dict)
-        gradients.append(gradient)
-        globals_gradients.append(globals_gradient)
-    # Add all gradients together
-    gradients = states.reduce_dataclasses(gradients, jnp.sum, weights)
-    # Remove all None entries from globals_gradients
-    globals_gradients = [g for g in globals_gradients if g is not None]
-    if globals_gradients:
-        # Sum the global gradients if they exist
-        globals_gradients = states.reduce_dataclasses(
-            globals_gradients, jnp.sum, weights
-        )
-    else:
-        globals_gradients = None
+        gradients.append(states.sum(gradient, weights=jnp.array([weights[i]])))
+        if globals_gradient is not None:
+            globals_gradients.append(states.sum(globals_gradient, weights=jnp.array([weights[i]])))
+
+    gradients = jax.tree_util.tree_map(
+        lambda *xs: jnp.sum(jnp.stack(xs), axis=0), *gradients
+    )
+    globals_gradients = (
+        jax.tree_util.tree_map(lambda *xs: jnp.sum(jnp.stack(xs), axis=0), *globals_gradients)
+        if globals_gradients
+        else None
+    )
     return gradients, globals_gradients

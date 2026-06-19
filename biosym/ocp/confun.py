@@ -131,7 +131,7 @@ class Constraints:
             raise ValueError("Invalid constraint object provided.")
 
         info = constraint._get_info()
-        print(f"Adding constraint: {info.get('name')} with weight {weight}")
+        print(f"Adding constraint: {info.get('name')} with weight {weight}, ncons={info['ncons']}, nnz={info['nnz']}")
         self.c_start.append(info["ncons"])
         self.nnz_start.append(info["nnz"])
         self.constraint_functions.append(constraint.get_confun())
@@ -247,6 +247,7 @@ def evaluate_jacobian(jacobian_functions, weights, nnz, c_start, nnz_start, stat
     )
     for i, jac in enumerate(jacobian_functions):
         r, c, d = jac(states_list, globals_dict)
+        print(f"JIT TRACING DEBUG evaluate_jacobian i={i}: r.shape={r.shape}, expected_size={nnz_start[i+1] - nnz_start[i]}")
         r = r + c_start[i]
         rows = rows.at[nnz_start[i] : nnz_start[i + 1]].set(r)
         cols = cols.at[nnz_start[i] : nnz_start[i + 1]].set(c)
