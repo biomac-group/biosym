@@ -88,12 +88,10 @@ class States:
 
     gc_model: jnp.ndarray = None
     actuator_model: jnp.ndarray = None
-    h: jnp.ndarray = None
 
-    # Metadata, names, and constants
+    # Metadata and names
     names: list | None = None
     metadata: dict | None = None
-    constants: Any = None
 
     def __init__(
         self,
@@ -105,12 +103,18 @@ class States:
         ext_torques: jnp.ndarray | None = None,
         gc_model: jnp.ndarray | None = None,
         actuator_model: jnp.ndarray | None = None,
-        h: jnp.ndarray | None = None,
         names: list | None = None,
         metadata: dict | None = None,
-        constants: Any = None,
         **kwargs,
     ):
+        if "h" in kwargs:
+            # To be removed in 0.3.0
+            import warnings
+            warnings.warn(
+                "Passing 'h' to States is deprecated. 'h' has been moved to Globals.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         object.__setattr__(self, "q", q)
         object.__setattr__(self, "qd", qd)
@@ -120,7 +124,6 @@ class States:
         object.__setattr__(self, "ext_torques", ext_torques)
         object.__setattr__(self, "gc_model", gc_model)
         object.__setattr__(self, "actuator_model", actuator_model)
-        object.__setattr__(self, "h", h)
         # Make a list of the names, for each set attribute
         n = []
         if q is not None: n.append('q')
@@ -131,15 +134,19 @@ class States:
         if ext_torques is not None: n.append('ext_torques')
         if gc_model is not None: n.append('gc_model')
         if actuator_model is not None: n.append('actuator_model')
-        if h is not None: n.append('h')
         object.__setattr__(self, "names", n)
         object.__setattr__(self, "metadata", metadata)
-        object.__setattr__(self, "constants", constants)
 
     @property
-    def states(self):
-        """Self-reference property for backward compatibility with StatesDict wrapper."""
-        return self
+    def h(self):
+        # To be removed in 0.3.0    
+        import warnings
+        warnings.warn(
+            "Accessing 'h' from States is deprecated. 'h' has been moved to Globals.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return None
 
     def __setstate__(self, state):
         # Handle legacy dq/ddq
@@ -149,10 +156,10 @@ class States:
             state["qdd"] = state.pop("ddq")
 
         for k, v in state.items():
-            if k in ["slices"]:
+            if k in ["slices", "h", "constants", "states"]:
                 continue
             object.__setattr__(self, k, v)
-        for field_name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model", "h", "constants"]:
+        for field_name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
             if not hasattr(self, field_name):
                 object.__setattr__(self, field_name, None)
         if not hasattr(self, "names"):
@@ -169,7 +176,7 @@ class States:
 
     def __str__(self):
         parts = []
-        for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model", "h"]:
+        for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
             val = getattr(self, name)
             if val is not None:
                 parts.append(f"{name}={val.shape if hasattr(val, 'shape') else type(val)}")
@@ -190,11 +197,6 @@ class States:
         if names=="model": names=['q','qd','qdd','tau','ext_forces','ext_torques']
         return States(**{name: getattr(self, name) for name in names})
 
-    @property
-    def model(self) -> jnp.ndarray:
-        """Flat model vector representation for backward compatibility."""
-        return self.filter('model').to_array()
-
     def resample(self, N: int) -> "States":
         """Resample the States object to a new number of nodes N."""
         kwargs = {}
@@ -208,19 +210,6 @@ class States:
                 kwargs[field] = None
             else:
                 kwargs[field] = _resample_array(val, N)
-                
-        # Handle h specifically to adjust it
-        if self.h is None:
-            kwargs["h"] = None
-        else:
-            h_arr = jnp.asarray(self.h)
-            if h_arr.shape[-1] == 0:
-                kwargs["h"] = jnp.zeros((N, 0))
-            else:
-                old_sum = jnp.sum(h_arr)
-                resampled_h = _resample_array(h_arr, N)
-                new_sum = jnp.sum(resampled_h)
-                kwargs["h"] = jnp.where(new_sum > 0, resampled_h * (old_sum / new_sum), resampled_h)
                     
         return States(**kwargs)
 
@@ -240,7 +229,7 @@ class States:
         return jax.tree_util.tree_map(slice_fn, self)
     
     def __len__(self):
-        for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model", "h"]:
+        for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
             val = getattr(self, name)
             if val is not None and hasattr(val, "ndim"):
                 return val.shape[0] if val.ndim > 1 else 1
@@ -249,35 +238,27 @@ class States:
     def tree_flatten(self):
         active_fields = []
         children = []
-        for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model", "h"]:
+        for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
             val = getattr(self, name)
             if val is not None:
                 active_fields.append(name)
                 children.append(val)
-        aux_data = (
-            tuple(active_fields),
-            _freeze(getattr(self, "names", None)),
-            _freeze(getattr(self, "metadata", None)),
-            _freeze(getattr(self, "constants", None))
-        )
+        aux_data = (tuple(active_fields), _freeze(getattr(self, "names", None)), _freeze(getattr(self, "metadata", None)))
         return tuple(children), aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        active_fields, names, metadata, constants = aux_data
+        active_fields, names, metadata = aux_data
         names = _thaw(names)
         metadata = _thaw(metadata)
-        constants = _thaw(constants)
 
         kwargs = {
             "names": names,
             "metadata": metadata,
-            "constants": constants,
         }
         for name, val in zip(active_fields, children):
             kwargs[name] = val
         return cls(**kwargs)
-
 
 
 @jax.tree_util.register_pytree_node_class
@@ -286,8 +267,7 @@ class Constants:
     """
     Time-invariant model parameters and constants.
     
-    Stores physical constants (gravity, masses, inertia, etc.) natively in separate arrays,
-    while maintaining flat model backward compatibility.
+    Stores physical constants (gravity, masses, inertia, etc.) natively in separate arrays.
     """
     # Separate physical constants
     g: jnp.ndarray = None
@@ -298,7 +278,6 @@ class Constants:
 
     gc_model: jnp.ndarray = None
     actuator_model: jnp.ndarray = None
-
 
     def __init__(
         self,
@@ -335,7 +314,6 @@ class Constants:
         object.__setattr__(self, "com", com)
         object.__setattr__(self, "offset", offset)
 
-
     def __setstate__(self, state):
         for k, v in state.items():
             object.__setattr__(self, k, v)
@@ -345,8 +323,6 @@ class Constants:
 
     def replace(self, name=None, value=None, **kwargs) -> "Constants":
         """Replace fields while keeping model and separate physical components in sync."""
-        #for field, value in updates.items():
-        #    return dataclasses.replace(self, **{field:value})
         if name is not None and value is not None:
             return dataclasses.replace(self, **{name:value})
         else:
@@ -377,12 +353,6 @@ class Constants:
         if names=="model": names=['g','mass','inertia','com','offset']
         return Constants(**{name: getattr(self, name) for name in names})
 
-    @property
-    def model(self) -> jnp.ndarray:
-        """Flat model vector representation for backward compatibility."""
-        return self.filter('model').to_array()
-
-
     def tree_flatten(self):
         active_fields = []
         children = []
@@ -408,6 +378,7 @@ class Constants:
     def to_array(self):
         return jnp.concatenate([x if isinstance(x, jnp.ndarray) else x for x in jax.tree_util.tree_leaves(self)], axis=0)
 
+
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True)
 class Globals:
@@ -416,6 +387,7 @@ class Globals:
     """
     dur: jnp.ndarray = field(default_factory=lambda: jnp.zeros((1,)))
     speed: jnp.ndarray = field(default_factory=lambda: jnp.zeros((1,)))
+    h: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))
 
     def replace(self, **updates) -> "Globals":
         return dataclasses.replace(self, **updates)
@@ -429,18 +401,18 @@ class Globals:
         raise NotImplementedError("biosym.utils.states.Globals.multiply.notfloat")
 
     def tree_flatten(self):
-        return (self.dur, self.speed), ()
+        return (self.dur, self.speed, self.h), ()
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        dur, speed = children
-        return cls(dur=dur, speed=speed)
+        dur, speed, h = children
+        return cls(dur=dur, speed=speed, h=h)
 
 
 def get_states_offsets(states) -> dict:
     offsets = {}
     current = 0
-    for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model", "h"]:
+    for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
         val = getattr(states, name)
         if val is not None:
             offsets[name] = current
@@ -459,7 +431,7 @@ def concatenate(states_list: list[States]) -> States:
     kwargs["names"] = states_list[0].names
     kwargs["metadata"] = states_list[0].metadata
     
-    fields = ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model", "h"]
+    fields = ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]
     for field in fields:
         vals = [getattr(s, field) for s in states_list]
         if all(v is None for v in vals):
@@ -488,4 +460,3 @@ def resample(states_obj: States, N: int) -> States:
     if not isinstance(states_obj, States):
         raise TypeError(f"Expected States object, got {type(states_obj)}")
     return states_obj.resample(N)
-

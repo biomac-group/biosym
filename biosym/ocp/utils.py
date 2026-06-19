@@ -13,13 +13,14 @@ import jax.numpy as jnp
 from jax import vmap
 from jax.flatten_util import ravel_pytree
 
-from biosym.utils.states import Globals, StatesDict
+from biosym.utils.states import Globals
+# @todo for agent: x_to_states_dict should be states only
 
 
 @jax.jit
 def x_to_states_dict(x, states_dict, globals_dict=None):
     """
-    Convert a flat optimization vector into structured state and global dictionaries.
+    Convert a flat optimization vector into structured state and global objects.
     
     This function is essential for interfacing with optimization algorithms that
     work with flat parameter vectors, converting them back to the structured
@@ -30,8 +31,8 @@ def x_to_states_dict(x, states_dict, globals_dict=None):
     x : jnp.ndarray
         Flat array containing state values and potentially global parameters.
         Structure: [N*d state values, global parameters...]
-    states_dict : StatesDict
-        Template StatesDict defining the structure and dimensions of states.
+    states_dict : States
+        Template States defining the structure and dimensions of states.
         Used to determine how to reshape the flat array.
     globals_dict : dict, optional
         Template for global variables structure. If provided, extracts global
@@ -41,19 +42,18 @@ def x_to_states_dict(x, states_dict, globals_dict=None):
     -------
     tuple
         Tuple containing:
-        - new_states_dict: StatesDict with states filled from x
+        - new_states: States object with states filled from x
         - new_globals: Globals object with parameters from x (or None)
         
     Notes
     -----
     - Expects x to contain N*d state values followed by global parameters
     - Uses JAX tree operations for efficient array reshaping
-    - Preserves constants from the input states_dict unchanged
     - JIT-compiled for performance during optimization
     """
     # 1) Build an “example” single state by slicing index 0 out of each array in the batch
     example_state = jax.tree_util.tree_map(
-        lambda arr: arr[0] if isinstance(arr, jnp.ndarray) else arr, states_dict.states
+        lambda arr: arr[0] if isinstance(arr, jnp.ndarray) else arr, states_dict
     )
 
     # 2) Flatten that example to get size 'd' and an unravel_fn
@@ -61,32 +61,27 @@ def x_to_states_dict(x, states_dict, globals_dict=None):
     d = flat_ex.shape[0]
 
     # 3) Batch size N
-    N = states_dict.states.model.shape[0]
+    N = len(states_dict)
 
     # 4) Split x: first N*d entries for states, rest for globals
     flat_states = x[: N * d].reshape((N, d))
     rest = x[N * d :]
     if globals_dict is not None:
-        new_globals = Globals(dur=x[-2], speed=x[-1]) if len(rest) == 2 else 71101
-        if len(rest) != 2:
-            raise ValueError(f"Expected 2 global parameters (dur, speed), got {len(rest)}")
+        _, unravel_globals = ravel_pytree(globals_dict)
+        new_globals = unravel_globals(rest)
     else:
         new_globals = None
 
     # 5) Rebuild the batched States by vmap‑ing the unravel
     new_states = vmap(unravel_state)(flat_states)
 
-    # 7) Return a new StatesDict (keep constants unchanged)
-    return StatesDict(
-        states=new_states,
-        constants=states_dict.constants,
-    ), new_globals
+    return new_states, new_globals
 
 
 @jax.jit
 def states_dict_to_x(states_dict, globals_dict=None):
     """
-    Convert structured state and global dictionaries into a flat optimization vector.
+    Convert structured state and global objects into a flat optimization vector.
     
     This is the inverse operation of x_to_states_dict, converting from the structured
     data formats used in biosym back to the flat parameter vectors required by
@@ -94,8 +89,8 @@ def states_dict_to_x(states_dict, globals_dict=None):
     
     Parameters
     ----------
-    states_dict : StatesDict
-        Structured state dictionary containing batched state variables.
+    states_dict : States
+        Structured state object containing batched state variables.
     globals_dict : dict, optional
         Global variables dictionary to append to the flat vector.
         
@@ -104,16 +99,9 @@ def states_dict_to_x(states_dict, globals_dict=None):
     jnp.ndarray
         Flat array containing all state values followed by global parameters.
         Structure: [N*d state values, global parameters...]
-        
-    Notes
-    -----
-    - Uses JAX tree flattening for efficient conversion
-    - Concatenates state and global parameters into single vector
-    - JIT-compiled for performance during optimization
-    - Essential for interfacing with gradient-based optimizers
     """
     # Flatten each batched state
-    batch_flat = vmap(lambda s: ravel_pytree(s)[0])(states_dict.states)
+    batch_flat = vmap(lambda s: ravel_pytree(s)[0])(states_dict)
 
     # Flatten globals if present
     if globals_dict is not None:

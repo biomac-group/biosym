@@ -162,7 +162,7 @@ class Collocation:
                 with open(ig_file, "rb") as f:
                     (x, globals_), info, ig_settings = cloudpickle.load(f)
                 if ig_settings["nnodes"] == 1:
-                    x = x[0].replace(h=jnp.ones((1,)))
+                    x = x[0]
                     self.initial_guess_states = states.concatenate(
                         [x] * self.settings["nnodes_dur"]
                     )
@@ -175,7 +175,12 @@ class Collocation:
                         globals_ig = globals_
                     self.initial_guess_states = states_ig
                     if globals_ig is not None:
-                        self.initial_guess_globals = globals_ig
+                        if not hasattr(globals_ig, "h"):
+                            adaptive_h = self.settings["discretization"]["args"]["adaptive_h"]
+                            h_init = jnp.ones((self.settings["nnodes_dur"] - 1,)) * globals_ig.dur / (self.settings["nnodes_dur"] - 1) if adaptive_h else jnp.zeros((0,))
+                            self.initial_guess_globals = states.Globals(dur=globals_ig.dur, speed=globals_ig.speed, h=h_init)
+                        else:
+                            self.initial_guess_globals = globals_ig
                     return
                 else:
                     if isinstance(x, tuple):
@@ -185,7 +190,12 @@ class Collocation:
                         globals_ig = globals_
                     self.initial_guess_states = states_ig.resample(self.settings["nnodes_dur"])
                     if globals_ig is not None:
-                        self.initial_guess_globals = globals_ig
+                        if not hasattr(globals_ig, "h"):
+                            adaptive_h = self.settings["discretization"]["args"]["adaptive_h"]
+                            h_init = jnp.ones((self.settings["nnodes_dur"] - 1,)) * globals_ig.dur / (self.settings["nnodes_dur"] - 1) if adaptive_h else jnp.zeros((0,))
+                            self.initial_guess_globals = states.Globals(dur=globals_ig.dur, speed=globals_ig.speed, h=h_init)
+                        else:
+                            self.initial_guess_globals = globals_ig
                     return
             else:
                 raise ValueError(
@@ -218,23 +228,14 @@ class Collocation:
                 if len(speed_) == 1:
                     speed_ = np.array([speed_, speed_])
                 speed_mean = jnp.mean(speed_)
-            if (
-                self.settings["discretization"]["args"]["adaptive_h"]
-                and len(self.initial_guess_states.h) == 0
-            ):
-                self.initial_guess_states = self.initial_guess_states.replace(
-                    h=jnp.ones((self.settings["nnodes_dur"], 1))
-                    * dur_mean
-                    / (self.settings["nnodes_dur"] - 1),
-                )
-            if not self.settings["discretization"]["args"]["adaptive_h"]:
-                self.initial_guess_states = self.initial_guess_states.replace(
-                    h=jnp.zeros((self.settings["nnodes_dur"], 0))
-                )
+
+            adaptive_h = self.settings["discretization"]["args"]["adaptive_h"]
+            h_init = jnp.ones((self.settings["nnodes_dur"] - 1,)) * dur_mean / (self.settings["nnodes_dur"] - 1) if adaptive_h else jnp.zeros((0,))
 
             self.initial_guess_globals = states.Globals(
                 dur=dur_mean,
                 speed=speed_mean,
+                h=h_init,
             )
 
     def setup(self):
@@ -767,10 +768,7 @@ def process_collocation_settings(model, settings):
         "Collocation warning in process collocation settings: Bounds are not correctly handled"
     )
     if settings["settings"]["nnodes"] > 1:
-        if settings["settings"]["discretization"]["args"]["adaptive_h"]:
-            model.default_states = model.default_states.replace(
-                h=jnp.ones((1,))
-            )
+        pass
 
     settings["nnodes"] = settings["settings"]["nnodes"]
 
@@ -864,11 +862,16 @@ def process_collocation_settings(model, settings):
             raise ValueError(
                 "Speed and duration bounds must be a list of two values [min, max]."
             )
+        adaptive_h = settings["discretization"]["args"]["adaptive_h"]
+        nn_con = settings["nnodes_dur"] - 1
+        h_min = jnp.zeros((nn_con,)) if adaptive_h else jnp.zeros((0,))
+        h_max = jnp.ones((nn_con,)) * settings["bounds"]["dur"][1] if adaptive_h else jnp.zeros((0,))
+
         settings["bounds"]["global_min"] = states.Globals(
-            dur=settings["bounds"]["dur"][0], speed=settings["bounds"]["speed"][0]
+            dur=settings["bounds"]["dur"][0], speed=settings["bounds"]["speed"][0], h=h_min
         )
         settings["bounds"]["global_max"] = states.Globals(
-            dur=settings["bounds"]["dur"][1], speed=settings["bounds"]["speed"][1]
+            dur=settings["bounds"]["dur"][1], speed=settings["bounds"]["speed"][1], h=h_max
         )
     else:
         settings["nnodes_dur"] = settings["nnodes"]
@@ -909,18 +912,6 @@ def process_collocation_settings(model, settings):
                 jnp.zeros(model.accs.n, dtype=float)
             )
             settings["bounds"][section] = settings["bounds"][section].replace(qdd=qdd_val)
-
-    elif not settings["discretization"]["args"]["adaptive_h"]:
-        settings["bounds"]["min"] = settings["bounds"]["min"].replace(
-            h=jnp.ones((settings["nnodes_dur"], 0))
-        )
-        settings["bounds"]["max"] = settings["bounds"]["max"].replace(
-            h=jnp.ones((settings["nnodes_dur"], 0))
-        )
-    else:
-        settings["bounds"]["min"] = settings["bounds"]["min"].replace(
-            h=jnp.zeros(settings["nnodes_dur"])
-        )
 
     if settings["bounds"]["start_at_origin"]:
         q_min = settings["bounds"]["min"].q.at[0, 0].set(0)
