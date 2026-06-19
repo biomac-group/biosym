@@ -174,6 +174,45 @@ class States:
         else:
             return dataclasses.replace(self, **kwargs)
 
+    def reshape(self, shape: tuple[int, ...] | int) -> "States":
+        """
+            Reshape a states-object to the requested shape. The last dimension is always retained, 
+            therefore the requested shape should only contain the first two desired dimensions.
+        """
+        if isinstance(shape, int):
+            shape = (shape,)
+
+        return self.replace(
+            q=self.q.reshape(shape + self.q.shape[-1:] if self.q is not None else None),
+            qd=self.qd.reshape(shape + self.qd.shape[-1:] if self.qd is not None else None),
+            qdd=self.qdd.reshape(shape + self.qdd.shape[-1:] if self.qdd is not None else None),
+            tau=self.tau.reshape(shape + self.tau.shape[-1:] if self.tau is not None else None),
+            ext_forces=self.ext_forces.reshape(shape + self.ext_forces.shape[-1:] if self.ext_forces is not None else None),
+            ext_torques=self.ext_torques.reshape(shape + self.ext_torques.shape[-1:] if self.ext_torques is not None else None),
+            gc_model=self.gc_model.reshape(shape + self.gc_model.shape[-1:] if self.gc_model is not None else None),
+            actuator_model=self.actuator_model.reshape(shape + self.actuator_model.shape[-1:] if self.actuator_model is not None else None),
+        )
+    
+    def shape(self):
+        """Returns the non-model-axis shape for the states-object.
+        """
+        return self.q.shape[:-1]
+
+    def squeeze(self):
+        """
+        Squeeze the states-object.
+        """
+        return self.replace(
+            q=self.q.squeeze() if self.q is not None else None,
+            qd=self.qd.squeeze() if self.qd is not None else None,
+            qdd=self.qdd.squeeze() if self.qdd is not None else None,
+            tau=self.tau.squeeze() if self.tau is not None else None,
+            ext_forces=self.ext_forces.squeeze() if self.ext_forces is not None else None,
+            ext_torques=self.ext_torques.squeeze() if self.ext_torques is not None else None,
+            gc_model=self.gc_model.squeeze() if self.gc_model is not None else None,
+            actuator_model=self.actuator_model.squeeze() if self.actuator_model is not None else None,
+        )
+
     def __str__(self):
         parts = []
         for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:

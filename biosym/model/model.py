@@ -43,6 +43,7 @@ from biosym.model.actuators.actuator_models.passive_torques import PassiveTorque
 from biosym.model.contact import contact_parser
 from biosym.model.parsers import mujoco_parser
 from biosym.utils import states as states_module
+from biosym.utils import rnea, aba
 
 if TYPE_CHECKING:
     from biosym.model.parsers.base_parser import BaseParser
@@ -190,6 +191,8 @@ class BiosymModel:
             self._create_jax_eom()
 
         self._create_variable_dataframe()
+
+        self._register_aba_rnea()
 
         # self._create_FK(parser)
         # self._create_IMU(parser) ....
@@ -717,11 +720,11 @@ class BiosymModel:
         print(f"Lambdifying the EOM took {time.time() - a} seconds")
         a = time.time()
         self._precompile_fn(
-            self.confun, (self.default_states, self.default_constants), "jacobian", jacobian=True, skip_export=False
+            self.confun, (self.default_states, self.default_constants), "kane_jacobian", jacobian=True
         )
         print(f"Precompiling the Jacobian took {time.time() - a} seconds")
         a = time.time()
-        self._precompile_fn(self.confun, (self.default_states, self.default_constants), "confun")
+        self._precompile_fn(self.confun, (self.default_states, self.default_constants), "kane")
         print(f"Precompiling the confun took {time.time() - a} seconds")
         a = time.time()
 
@@ -803,7 +806,7 @@ class BiosymModel:
             self.run["FK_marker_uncompiled"] = pos_vector_marker_
             # store compiled/jitted visualization function
             pos_vector_marker_ = self._precompile_fn(
-                pos_vector_marker_, (self.default_states, self.default_constants), "FK_marker", skip_export=True
+                pos_vector_marker_, (self.default_states, self.default_constants), "FK_marker"
             )
 
         # Visualization FK: bodies + markers + sites (when available)
@@ -831,7 +834,7 @@ class BiosymModel:
             self.run["FK_vis_uncompiled"] = pos_vector_vis
             # store compiled/jitted visualization function
             pos_vector_vis = self._precompile_fn(
-                pos_vector_vis, (self.default_states, self.default_constants), "FK_vis", skip_export=True
+                pos_vector_vis, (self.default_states, self.default_constants), "FK_vis"
             )
         else:
             # No additional rows beyond bodies; fall back to body-only FK
@@ -874,11 +877,11 @@ class BiosymModel:
             acc_vector = lambdify(self._symbols, acc_vector, modules="jax", cse=True, docstring_limit=2)
             self.run["FK_ddot_uncompiled"] = acc_vector
             acc_vector = self._precompile_fn(
-                acc_vector, (self.default_states, self.default_constants), "FK_ddot", skip_export=True
+                acc_vector, (self.default_states, self.default_constants), "FK_ddot"
             )
 
     def _precompile_fn(
-        self, function: Callable, _inputs: tuple[str], name: str, jacobian: bool = False, skip_export: bool = True
+        self, function: Callable, _inputs: tuple[str], name: str, jacobian: bool = False, is_jax_fn: bool = False
     ) -> None:
         """Precompile a function using JAX's JIT for faster execution.
 
@@ -892,8 +895,7 @@ class BiosymModel:
             Name for storing the compiled function
         jacobian : bool, optional
             Whether to also compile the Jacobian, by default False
-        skip_export : bool, optional
-            Whether to skip JAX export, by default True, is unused and should be deprecated
+
 
         Notes
         -----
@@ -901,35 +903,39 @@ class BiosymModel:
         This approach doesn't seem slower than normal jax.jit.
         """
 
-        def _jit_function_template(function_: Callable, _input_names: tuple[str, ...] = ("model",), jacobian:bool=False) -> Callable:
+        def _jit_function_template(function_: Callable, _input_names: tuple[str, ...] = ("model",), jacobian:bool=False, is_jax_fn: bool = False) -> Callable:
             def wrapped(states: Any, constants: Any) -> Any:
-                states_array = states.filter('model').to_array()
-                constants_array = constants.filter('model').to_array()
-                f = lambda states, constants: function_(*states, *constants)
-                if states_array.ndim > 1:
+                states = states.filter('model')
+                constants = constants.filter('model')
+                if not is_jax_fn:
+                    f = lambda states, constants: function_(*states.flatten(), *constants.flatten())
+                else:
+                    f = function_
+                
+                if sum(states.shape()) > 1:
                     if not jacobian:
                         n_dims = 2
                         vmapable = lambda states_, constants_: f(states_, constants_)
                     else:
                         n_dims = 3
                         vmapable = lambda states_, constants_: jax.jacobian(f)(states_, constants_)
-                    if states_array.ndim > 2:
-                        states_shape = states_array.shape
-                        states_array = states_array.reshape(-1, states_shape[-1])
-                        res = jax.vmap(vmapable, in_axes=(0, None))(states_array, constants_array)
+                    if len(states.shape()) > 2:
+                        states_shape = states.shape
+                        reshaped_states = states.reshape(-1, states_shape[-1])
+                        res = jax.vmap(vmapable, in_axes=(0, None))(reshaped_states, constants)
                         res = res.reshape(*states_shape[:-1], *res.shape[-n_dims:])
                     else:
-                        res = jax.vmap(vmapable, in_axes=(0, None))(states_array, constants_array)
+                        res = jax.vmap(vmapable, in_axes=(0, None))(states, constants)
                 else:
                     if not jacobian:
-                        res = f(states_array, constants_array)
+                        res = f(states, constants)
                     else:
-                        res = jax.jacobian(f)(states_array, constants_array)
+                        res = jax.jacobian(f)(states, constants)
                 return res.squeeze()
 
             return jax.jit(wrapped)
 
-        self.run[name] = _jit_function_template(function, jacobian=jacobian)
+        self.run[name] = _jit_function_template(function, jacobian=jacobian, is_jax_fn=is_jax_fn)
 
     def _replace_dyn(self, function: Callable, _replace_d_q: bool = False) -> Callable:
         """
@@ -969,6 +975,16 @@ class BiosymModel:
         lambda_func = partial(lambda_func, model=self)
         self.run["actuator_model"] = jax.jit(lambda_func)
         self.run["actuator_model_jacobian"] = jax.jit(jax.jacobian(lambda_func))
+
+    def _register_aba_rnea(self) -> None:
+        """Precompile the ABA (Articulated Body Algorithm) and RNEA (Recursive Newton-Euler Algorithm) functions."""
+        # The idea is to have aba and rnea inside the model's run dictionary
+        rnea_fun = rnea.get_rnea_biosym(self)
+        aba_fun = aba.get_aba_biosym(self)
+        self._precompile_fn(rnea_fun, (self.default_states, self.default_constants), "rnea", is_jax_fn=True)
+        self._precompile_fn(aba_fun, (self.default_states, self.default_constants), "aba", is_jax_fn=True)
+        self._precompile_fn(rnea_fun, (self.default_states, self.default_constants), "rnea_jacobian", jacobian=True, is_jax_fn=True)
+        self._precompile_fn(aba_fun, (self.default_states, self.default_constants), "aba_jacobian", jacobian=True, is_jax_fn=True)
 
     def _create_variable_dataframe(self) -> None:
         """Create a dataframe with all variables in the model."""
@@ -1117,19 +1133,19 @@ class BiosymModel:
         if "FK_uncompiled" in self.run:
             self._precompile_fn(self.run["FK_uncompiled"], (self.default_states, self.default_constants), "FK")
         if "FK_marker_uncompiled" in self.run:
-            self._precompile_fn(self.run["FK_marker_uncompiled"], (self.default_states, self.default_constants), "FK_marker", skip_export=True)
+            self._precompile_fn(self.run["FK_marker_uncompiled"], (self.default_states, self.default_constants), "FK_marker")
         if "FK_vis_uncompiled" in self.run:
-            self._precompile_fn(self.run["FK_vis_uncompiled"], (self.default_states, self.default_constants), "FK_vis", skip_export=True)
+            self._precompile_fn(self.run["FK_vis_uncompiled"], (self.default_states, self.default_constants), "FK_vis")
         elif "FK" in self.run:
             self.run["FK_vis"] = self.run["FK"]
         if "FK_dot_uncompiled" in self.run:
             self._precompile_fn(self.run["FK_dot_uncompiled"], (self.default_states, self.default_constants), "FK_dot")
         if "FK_ddot_uncompiled" in self.run:
-            self._precompile_fn(self.run["FK_ddot_uncompiled"], (self.default_states, self.default_constants), "FK_ddot", skip_export=True)
+            self._precompile_fn(self.run["FK_ddot_uncompiled"], (self.default_states, self.default_constants), "FK_ddot")
 
         # 2. Dynamics JAX functions
         if hasattr(self, "confun"):
-            self._precompile_fn(self.confun, (self.default_states, self.default_constants), "jacobian", jacobian=True, skip_export=False)
+            self._precompile_fn(self.confun, (self.default_states, self.default_constants), "jacobian", jacobian=True)
             self._precompile_fn(self.confun, (self.default_states, self.default_constants), "confun")
         if "mass_matrix_uncompiled" in self.run:
             self._precompile_fn(self.run["mass_matrix_uncompiled"], (self.default_states, self.default_constants), "mass_matrix")

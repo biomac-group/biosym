@@ -75,8 +75,8 @@ def _build_parent_index_map(bodies):
 
 def _force_index_map(model):
     mapping = {}
-    for index, name in enumerate(model.forces["names"]):
-        if name.startswith("M_"):
+    for index, name in enumerate(model.tau.names):
+        if name.startswith("t_"):
             mapping[name[2:]] = index
     return mapping
 
@@ -91,8 +91,19 @@ def _state_index_map(names, prefix):
     return mapping
 
 
-def _constant_offset(model, index):
-    return index - model.n_states
+def _constant_offset_from_names(model, section):
+    """Return the start index of a constants section within the flat constants array.
+
+    The flat array is ordered as: [g, mass, inertia, com, offset].
+    """
+    offsets = {
+        "g": 0,
+        "mass": model.g.n,
+        "inertia": model.g.n + model.mass.n,
+        "com": model.g.n + model.mass.n + model.inertia.n,
+        "offset": model.g.n + model.mass.n + model.inertia.n + model.com.n,
+    }
+    return offsets[section]
 
 
 def _normalize_joint_axis(axis, joint_name, body_name):
@@ -108,22 +119,22 @@ def _build_runtime_model(model):
     original_body_indices = {body["name"]: index for index, body in enumerate(original_bodies)}
     bodies, parent_indices = _build_parent_index_map(original_bodies)
 
-    q_index_map = _state_index_map(model.coordinates["names"], "q_")
-    qd_index_map = _state_index_map(model.speeds["names"], "qd_")
+    q_index_map = _state_index_map(model.coordinates.names, "q_")
+    qd_index_map = _state_index_map(model.speeds.names, "qd_")
     tau_index_map = _force_index_map(model)
 
-    const_mass_start = _constant_offset(model, model.masses["idx"])
-    const_inertia_start = _constant_offset(model, model.inertia["idx"])
-    const_com_start = _constant_offset(model, model.com["idx"])
-    const_offset_start = _constant_offset(model, model.offset["idx"])
-    const_g_start = _constant_offset(model, model.g["idx"])
+    const_g_start = _constant_offset_from_names(model, "g")
+    const_mass_start = _constant_offset_from_names(model, "mass")
+    const_inertia_start = _constant_offset_from_names(model, "inertia")
+    const_com_start = _constant_offset_from_names(model, "com")
+    const_offset_start = _constant_offset_from_names(model, "offset")
     const_g_indices = np.arange(const_g_start, const_g_start + 3, dtype=np.int32)
 
     ext_force_body_map = {
-        "_".join(name.split("_")[1:-1]): 3 * index for index, name in enumerate(model.ext_forces["names"][::3])
+        "_".join(name.split("_")[1:-1]): 3 * index for index, name in enumerate(model.ext_forces.names[::3])
     }
     ext_torque_body_map = {
-        "_".join(name.split("_")[1:-1]): 3 * index for index, name in enumerate(model.ext_torques["names"][::3])
+        "_".join(name.split("_")[1:-1]): 3 * index for index, name in enumerate(model.ext_torques.names[::3])
     }
 
     body_specs = []
@@ -194,8 +205,8 @@ def _build_runtime_model(model):
                 "ext_torque_indices": None
                 if ext_torque_start is None
                 else np.arange(
-                    model.ext_forces["n"] + ext_torque_start,
-                    model.ext_forces["n"] + ext_torque_start + 3,
+                    model.ext_forces.n + ext_torque_start,
+                    model.ext_forces.n + ext_torque_start + 3,
                     dtype=np.int32,
                 ),
             }
@@ -205,10 +216,10 @@ def _build_runtime_model(model):
         "body_specs": tuple(body_specs),
         "g_indices": const_g_indices,
         "n_bodies": len(body_specs),
-        "n_q": model.coordinates["n"],
-        "n_qd": model.speeds["n"],
-        "n_tau": model.forces["n"],
-        "n_ext": model.ext_forces["n"] + model.ext_torques["n"],
+        "n_q": model.coordinates.n,
+        "n_qd": model.speeds.n,
+        "n_tau": model.tau.n,
+        "n_ext": model.ext_forces.n + model.ext_torques.n,
     }
 
 
@@ -1085,21 +1096,23 @@ def get_aba_jax_model(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravi
 def get_aba_biosym(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravity_sign=-1.0):
     """Return a biosym-compatible ABA function."""
     aba_fn = get_aba_jax_model(model, regularization=regularization, gravity_sign=gravity_sign)
+    _n_ext = model.ext_forces.n + model.ext_torques.n
 
     def aba_biosym(states, constants, model):
         q = states.q
         qd = states.qd
         tau = states.tau
-        
+
         # Concatenate forces and torques
         if states.ext_forces is not None and states.ext_torques is not None:
             ext_forces = jnp.concatenate([states.ext_forces, states.ext_torques], axis=-1)
         elif states.ext_forces is not None:
             ext_forces = states.ext_forces
         else:
-            ext_forces = jnp.zeros((model.ext_forces["n"] + model.ext_torques["n"],), dtype=q.dtype)
+            ext_forces = jnp.zeros((_n_ext,), dtype=q.dtype)
 
-        return aba_fn(q, qd, tau, ext_forces, constants.model)
+        constants_array = constants.filter('model').to_array()
+        return aba_fn(q, qd, tau, ext_forces, constants_array)
 
     return partial(aba_biosym, model=model)
 
@@ -1107,6 +1120,8 @@ def get_aba_biosym(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravity_
 def qddot_step_biosym(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravity_sign=-1.0):
     """Return a biosym-compatible joint-acceleration function."""
     aba_fn = get_aba_jax_model(model, regularization=regularization, gravity_sign=gravity_sign)
+    _n_tau = model.tau.n
+    _n_ext = model.ext_forces.n + model.ext_torques.n
 
     def qddot_biosym(states, constants):
         q = states.q
@@ -1115,15 +1130,16 @@ def qddot_step_biosym(model, *, regularization=DEFAULT_ABA_REGULARIZATION, gravi
         if "actuator_model" in model.run:
             tau = model.run["actuator_model"](states, constants).flatten()
         else:
-            tau = jnp.zeros((model.forces["n"],), dtype=q.dtype)
+            tau = jnp.zeros((_n_tau,), dtype=q.dtype)
 
         if "gc_model" in model.run:
             ext_forces, ext_moments = model.run["gc_model"](states, constants)
             ext_forces_concat = jnp.concatenate([ext_forces, ext_moments], axis=0).flatten()
         else:
-            ext_forces_concat = jnp.zeros((model.ext_forces["n"] + model.ext_torques["n"],), dtype=q.dtype)
+            ext_forces_concat = jnp.zeros((_n_ext,), dtype=q.dtype)
 
-        return aba_fn(q, qd, tau, ext_forces_concat, constants.model)
+        constants_array = constants.filter('model').to_array()
+        return aba_fn(q, qd, tau, ext_forces_concat, constants_array)
 
     return qddot_biosym
 
@@ -1317,6 +1333,8 @@ def get_rnea_jax_model(model, *, gravity_sign=-1.0, ext_force_callback=None):
 def get_rnea_biosym(model, *, gravity_sign=-1.0):
     """Return a biosym-compatible RNEA function."""
     rnea_fn = get_rnea_jax_model(model, gravity_sign=gravity_sign)
+    _n_accs = model.accs.n
+    _n_ext = model.ext_forces.n + model.ext_torques.n
 
     def rnea_biosym(states, constants, model):
         q = states.q
@@ -1325,7 +1343,7 @@ def get_rnea_biosym(model, *, gravity_sign=-1.0):
         if getattr(states, "qdd", None) is not None:
             qdd = states.qdd
         else:
-            qdd = jnp.zeros((model.accs["n"],), dtype=q.dtype)
+            qdd = jnp.zeros((_n_accs,), dtype=q.dtype)
 
         # Concatenate forces and torques
         if states.ext_forces is not None and states.ext_torques is not None:
@@ -1333,8 +1351,9 @@ def get_rnea_biosym(model, *, gravity_sign=-1.0):
         elif states.ext_forces is not None:
             ext_forces = states.ext_forces
         else:
-            ext_forces = jnp.zeros((model.ext_forces["n"] + model.ext_torques["n"],), dtype=q.dtype)
+            ext_forces = jnp.zeros((_n_ext,), dtype=q.dtype)
 
-        return rnea_fn(q, qd, qdd, ext_forces, constants.model)
+        constants_array = constants.filter('model').to_array()
+        return rnea_fn(q, qd, qdd, ext_forces, constants_array)
 
     return partial(rnea_biosym, model=model)
