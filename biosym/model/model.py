@@ -1115,26 +1115,26 @@ class BiosymModel:
 
         # 1. FK functions
         if "FK_uncompiled" in self.run:
-            self._precompile_fn(self.run["FK_uncompiled"], self.default_inputs, "FK")
+            self._precompile_fn(self.run["FK_uncompiled"], (self.default_states, self.default_constants), "FK")
         if "FK_marker_uncompiled" in self.run:
-            self._precompile_fn(self.run["FK_marker_uncompiled"], self.default_inputs, "FK_marker", skip_export=True)
+            self._precompile_fn(self.run["FK_marker_uncompiled"], (self.default_states, self.default_constants), "FK_marker", skip_export=True)
         if "FK_vis_uncompiled" in self.run:
-            self._precompile_fn(self.run["FK_vis_uncompiled"], self.default_inputs, "FK_vis", skip_export=True)
+            self._precompile_fn(self.run["FK_vis_uncompiled"], (self.default_states, self.default_constants), "FK_vis", skip_export=True)
         elif "FK" in self.run:
             self.run["FK_vis"] = self.run["FK"]
         if "FK_dot_uncompiled" in self.run:
-            self._precompile_fn(self.run["FK_dot_uncompiled"], self.default_inputs, "FK_dot")
+            self._precompile_fn(self.run["FK_dot_uncompiled"], (self.default_states, self.default_constants), "FK_dot")
         if "FK_ddot_uncompiled" in self.run:
-            self._precompile_fn(self.run["FK_ddot_uncompiled"], self.default_inputs, "FK_ddot", skip_export=True)
+            self._precompile_fn(self.run["FK_ddot_uncompiled"], (self.default_states, self.default_constants), "FK_ddot", skip_export=True)
 
         # 2. Dynamics JAX functions
         if hasattr(self, "confun"):
-            self._precompile_fn(self.confun, self.default_inputs, "jacobian", jacobian=True, skip_export=False)
-            self._precompile_fn(self.confun, self.default_inputs, "confun")
+            self._precompile_fn(self.confun, (self.default_states, self.default_constants), "jacobian", jacobian=True, skip_export=False)
+            self._precompile_fn(self.confun, (self.default_states, self.default_constants), "confun")
         if "mass_matrix_uncompiled" in self.run:
-            self._precompile_fn(self.run["mass_matrix_uncompiled"], self.default_inputs, "mass_matrix")
+            self._precompile_fn(self.run["mass_matrix_uncompiled"], (self.default_states, self.default_constants), "mass_matrix")
         if "forcing_uncompiled" in self.run:
-            self._precompile_fn(self.run["forcing_uncompiled"], self.default_inputs, "forcing")
+            self._precompile_fn(self.run["forcing_uncompiled"], (self.default_states, self.default_constants), "forcing")
 
         # 3. Ground contact and actuator models
         if hasattr(self, "gc_model"):
@@ -1265,13 +1265,12 @@ if __name__ == "__main__":
     model = load_model(model_file, True)
     print(f"Reloading model in {time.time() - start} seconds")
     start = time.time()
-    states = model.default_inputs.states
-    constants = model.default_inputs.constants
+    states = model.default_states
+    constants = model.default_constants
     print(states)
     model.run["actuator_model"](states, constants)
-
-    states_dict = states_module.stack_dataclasses([model.default_inputs] * 100)
-    model.run["actuator_model"](states_dict.states, states_dict.constants)
+    states_dict = states_module.concatenate([model.default_states] * 100)
+    model.run["actuator_model"](states_dict, constants)
 
     for _ in range(1):
         model.run["jacobian"](states, constants)
