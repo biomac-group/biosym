@@ -47,6 +47,27 @@ def _thaw(x):
     return x
 
 
+def _resample_array(arr, N):
+    if arr is None:
+        return None
+    arr = jnp.asarray(arr)
+    # If ndim is 1, treat it as a single node (length 1)
+    if arr.ndim == 1:
+        return jnp.tile(arr, (N, 1))
+    
+    M = arr.shape[0]
+    if M <= 1:
+        return jnp.tile(arr, (N, 1)) if arr.ndim > 1 else jnp.tile(arr[jnp.newaxis, :], (N, 1))
+        
+    # Standard resampling using interpolation
+    xp = jnp.linspace(0.0, 1.0, M)
+    x = jnp.linspace(0.0, 1.0, N)
+    
+    # We interpolate each coordinate/dimension independently
+    resampled = jnp.stack([jnp.interp(x, xp, arr[:, i]) for i in range(arr.shape[1])], axis=1)
+    return resampled
+
+
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, init=False)
 class States:
@@ -69,9 +90,10 @@ class States:
     actuator_model: jnp.ndarray = None
     h: jnp.ndarray = None
 
-    # Metadata and names
+    # Metadata, names, and constants
     names: list | None = None
     metadata: dict | None = None
+    constants: Any = None
 
     def __init__(
         self,
@@ -86,6 +108,7 @@ class States:
         h: jnp.ndarray | None = None,
         names: list | None = None,
         metadata: dict | None = None,
+        constants: Any = None,
         **kwargs,
     ):
 
@@ -111,7 +134,12 @@ class States:
         if h is not None: n.append('h')
         object.__setattr__(self, "names", n)
         object.__setattr__(self, "metadata", metadata)
+        object.__setattr__(self, "constants", constants)
 
+    @property
+    def states(self):
+        """Self-reference property for backward compatibility with StatesDict wrapper."""
+        return self
 
     def __setstate__(self, state):
         # Handle legacy dq/ddq
@@ -124,7 +152,7 @@ class States:
             if k in ["slices"]:
                 continue
             object.__setattr__(self, k, v)
-        for field_name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model", "h"]:
+        for field_name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model", "h", "constants"]:
             if not hasattr(self, field_name):
                 object.__setattr__(self, field_name, None)
         if not hasattr(self, "names"):
@@ -162,6 +190,40 @@ class States:
         if names=="model": names=['q','qd','qdd','tau','ext_forces','ext_torques']
         return States(**{name: getattr(self, name) for name in names})
 
+    @property
+    def model(self) -> jnp.ndarray:
+        """Flat model vector representation for backward compatibility."""
+        return self.filter('model').to_array()
+
+    def resample(self, N: int) -> "States":
+        """Resample the States object to a new number of nodes N."""
+        kwargs = {}
+        kwargs["names"] = self.names
+        kwargs["metadata"] = self.metadata
+        
+        fields = ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]
+        for field in fields:
+            val = getattr(self, field)
+            if val is None:
+                kwargs[field] = None
+            else:
+                kwargs[field] = _resample_array(val, N)
+                
+        # Handle h specifically to adjust it
+        if self.h is None:
+            kwargs["h"] = None
+        else:
+            h_arr = jnp.asarray(self.h)
+            if h_arr.shape[-1] == 0:
+                kwargs["h"] = jnp.zeros((N, 0))
+            else:
+                old_sum = jnp.sum(h_arr)
+                resampled_h = _resample_array(h_arr, N)
+                new_sum = jnp.sum(resampled_h)
+                kwargs["h"] = jnp.where(new_sum > 0, resampled_h * (old_sum / new_sum), resampled_h)
+                    
+        return States(**kwargs)
+
     def to_array(self):
         return jnp.concatenate([getattr(self, name) for name in self.names if getattr(self, name) is not None], axis=-1)
 
@@ -192,18 +254,25 @@ class States:
             if val is not None:
                 active_fields.append(name)
                 children.append(val)
-        aux_data = (tuple(active_fields), _freeze(getattr(self, "names", None)), _freeze(getattr(self, "metadata", None)))
+        aux_data = (
+            tuple(active_fields),
+            _freeze(getattr(self, "names", None)),
+            _freeze(getattr(self, "metadata", None)),
+            _freeze(getattr(self, "constants", None))
+        )
         return tuple(children), aux_data
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
-        active_fields, names, metadata = aux_data
+        active_fields, names, metadata, constants = aux_data
         names = _thaw(names)
         metadata = _thaw(metadata)
+        constants = _thaw(constants)
 
         kwargs = {
             "names": names,
             "metadata": metadata,
+            "constants": constants,
         }
         for name, val in zip(active_fields, children):
             kwargs[name] = val
@@ -308,6 +377,12 @@ class Constants:
         if names=="model": names=['g','mass','inertia','com','offset']
         return Constants(**{name: getattr(self, name) for name in names})
 
+    @property
+    def model(self) -> jnp.ndarray:
+        """Flat model vector representation for backward compatibility."""
+        return self.filter('model').to_array()
+
+
     def tree_flatten(self):
         active_fields = []
         children = []
@@ -373,3 +448,44 @@ def get_states_offsets(states) -> dict:
         else:
             offsets[name] = None
     return offsets
+
+
+def concatenate(states_list: list[States]) -> States:
+    """Concatenate a list of States objects along the time dimension."""
+    if not states_list:
+        raise ValueError("Cannot concatenate an empty list of States.")
+    
+    kwargs = {}
+    kwargs["names"] = states_list[0].names
+    kwargs["metadata"] = states_list[0].metadata
+    
+    fields = ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model", "h"]
+    for field in fields:
+        vals = [getattr(s, field) for s in states_list]
+        if all(v is None for v in vals):
+            kwargs[field] = None
+            continue
+            
+        processed_vals = []
+        for v in vals:
+            if v is None:
+                continue
+            arr = jnp.asarray(v)
+            if arr.ndim == 1:
+                arr = jnp.expand_dims(arr, axis=0)
+            processed_vals.append(arr)
+            
+        if processed_vals:
+            kwargs[field] = jnp.concatenate(processed_vals, axis=0)
+        else:
+            kwargs[field] = None
+            
+    return States(**kwargs)
+
+
+def resample(states_obj: States, N: int) -> States:
+    """Resample a States object to a new number of nodes N."""
+    if not isinstance(states_obj, States):
+        raise TypeError(f"Expected States object, got {type(states_obj)}")
+    return states_obj.resample(N)
+
