@@ -460,3 +460,60 @@ def resample(states_obj: States, N: int) -> States:
     if not isinstance(states_obj, States):
         raise TypeError(f"Expected States object, got {type(states_obj)}")
     return states_obj.resample(N)
+
+
+def sum(obj, weights: jnp.ndarray | None = None):
+    """Sum a pytree (States, Constants, Globals, …) over axis 0.
+
+    Parameters
+    ----------
+    obj : any JAX-registered pytree
+        The object to reduce.  All array leaves are summed along axis 0.
+    weights : array_like of shape ``(N,)``, optional
+        Per-node weights.  Each leaf is multiplied by the weight vector
+        (broadcast to the leaf shape) before summing, giving a
+        **weighted sum**.
+
+    Returns
+    -------
+    Same type as *obj*, with the node axis removed from every leaf.
+    """
+    def _reduce(x):
+        if not isinstance(x, jnp.ndarray) or x.ndim == 0:
+            return x
+        if weights is not None:
+            w = jnp.asarray(weights)
+            for _ in range(x.ndim - 1):
+                w = w[..., jnp.newaxis]
+            return jnp.sum(x * w, axis=0)
+        return jnp.sum(x, axis=0)
+
+    return jax.tree_util.tree_map(_reduce, obj)
+
+
+def mean(obj, weights: jnp.ndarray | None = None):
+    """Mean of a pytree (States, Constants, Globals, …) over axis 0.
+
+    Parameters
+    ----------
+    obj : any JAX-registered pytree
+        The object to reduce.  All array leaves are averaged along axis 0.
+    weights : array_like of shape ``(N,)``, optional
+        Per-node weights.  The result is ``Σ wᵢ·xᵢ / Σ wᵢ`` for each leaf
+        (weighted mean).  Implemented by normalising *weights* and delegating
+        to :func:`sum`.
+
+    Returns
+    -------
+    Same type as *obj*, with the node axis removed from every leaf.
+    """
+    if weights is not None:
+        w = jnp.asarray(weights)
+        return sum(obj, weights=w / jnp.sum(w))
+
+    def _reduce(x):
+        if not isinstance(x, jnp.ndarray) or x.ndim == 0:
+            return x
+        return jnp.mean(x, axis=0)
+
+    return jax.tree_util.tree_map(_reduce, obj)
