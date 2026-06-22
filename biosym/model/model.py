@@ -717,16 +717,12 @@ class BiosymModel:
         a = time.time()
         self.confun = lambdify(self._symbols, self.eom, modules="jax", cse=True, docstring_limit=2)
 
-        print(f"Lambdifying the EOM took {time.time() - a} seconds")
-        a = time.time()
         self._precompile_fn(
             self.confun, (self.default_states, self.default_constants), "kane_jacobian", jacobian=True
         )
-        print(f"Precompiling the Jacobian took {time.time() - a} seconds")
-        a = time.time()
+
         self._precompile_fn(self.confun, (self.default_states, self.default_constants), "kane")
-        print(f"Precompiling the confun took {time.time() - a} seconds")
-        a = time.time()
+
 
         mm_replaced = self._replace_dyn(self.kane.mass_matrix)
         self.mass_matrix = lambdify(
@@ -738,8 +734,8 @@ class BiosymModel:
         )
         self.run["mass_matrix_uncompiled"] = self.mass_matrix
         self._precompile_fn(self.mass_matrix, (self.default_states, self.default_constants), "mass_matrix")
-        print(f"Precompiling the mass matrix took {time.time() - a} seconds")
-        a = time.time()
+        self._precompile_fn(self.mass_matrix, (self.default_states, self.default_constants), "mass_matrix_jacobian", jacobian=True)
+
 
         forcing_replaced = self._replace_dyn(self.kane.forcing)
         self.forcing = lambdify(
@@ -751,8 +747,8 @@ class BiosymModel:
         )
         self.run["forcing_uncompiled"] = self.forcing
         self._precompile_fn(self.forcing, (self.default_states, self.default_constants), "forcing")
-        print(f"Precompiling the forcing took {time.time() - a} seconds")
-        a = time.time()
+        self._precompile_fn(self.forcing, (self.default_states, self.default_constants), "forcing_jacobian", jacobian=True)
+
 
     def _create_fk(self, get_fk_dot: bool = True) -> None:
         """Create forward kinematics (FK) functions for the model.
