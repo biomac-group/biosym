@@ -274,6 +274,9 @@ class States:
                 return val.shape[0] if val.ndim > 1 else 1
         return 1
 
+    def get_n_states(self):
+        return self.to_array().shape[-1]
+
     def tree_flatten(self):
         active_fields = []
         children = []
@@ -524,8 +527,8 @@ def sum(obj, weights: jnp.ndarray | None = None):
             w = jnp.asarray(weights)
             for _ in range(x.ndim - 1):
                 w = w[..., jnp.newaxis]
-            return jnp.sum(x * w, axis=0)
-        return jnp.sum(x, axis=0)
+            return jnp.sum(x * w, axis=0, keepdims=True)
+        return jnp.sum(x, axis=0, keepdims=True)
 
     return jax.tree_util.tree_map(_reduce, obj)
 
@@ -553,6 +556,6 @@ def mean(obj, weights: jnp.ndarray | None = None):
     def _reduce(x):
         if not isinstance(x, jnp.ndarray) or x.ndim == 0:
             return x
-        return jnp.mean(x, axis=0)
+        return jnp.mean(x, axis=0, keepdims=True)
 
     return jax.tree_util.tree_map(_reduce, obj)
