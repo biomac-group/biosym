@@ -225,7 +225,8 @@ class States:
         return self.__str__()
 
     def size(self):
-        return sum(x.size for x in jax.tree_util.tree_leaves(self))
+        import builtins
+        return builtins.sum(x.size for x in jax.tree_util.tree_leaves(self))
 
     def flatten(self):
         flat_states = jax.tree_util.tree_leaves(self)
@@ -435,7 +436,8 @@ class Globals:
         return dataclasses.replace(self, **updates)
 
     def size(self):
-        return sum(x.size for x in jax.tree_util.tree_leaves(self))
+        import builtins
+        return builtins.sum(x.size for x in jax.tree_util.tree_leaves(self))
 
     def multiply(self, other):
         if isinstance(other, (int, float)):
@@ -520,17 +522,16 @@ def sum(obj, weights: jnp.ndarray | None = None):
     -------
     Same type as *obj*, with the node axis removed from every leaf.
     """
-    def _reduce(x):
-        if not isinstance(x, jnp.ndarray) or x.ndim == 0:
-            return x
+    
+    def _reduce(*args):
         if weights is not None:
             w = jnp.asarray(weights)
-            for _ in range(x.ndim - 1):
-                w = w[..., jnp.newaxis]
-            return jnp.sum(x * w, axis=0, keepdims=True)
-        return jnp.sum(x, axis=0, keepdims=True)
+        else: 
+            w = jnp.ones(len(obj))
+        out = [w[i]*args[i] for i in range(len(args))]
+        return out
 
-    return jax.tree_util.tree_map(_reduce, obj)
+    return jax.tree.map(_reduce, *obj)
 
 
 def mean(obj, weights: jnp.ndarray | None = None):
