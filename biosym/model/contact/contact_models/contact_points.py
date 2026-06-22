@@ -271,7 +271,7 @@ class ContactPoints(BaseContact):
 
         # Bincount is only 1D, therefore vmap it to 2D (note: vmap the whole model --> gpu version)
         def _bincount(arr, weights):
-            return jnp.bincount(arr, weights=weights, length=int(length))
+            return jnp.bincount(arr.astype(jnp.int_), weights=weights, length=int(length))
 
         foot_forces = jax.vmap(_bincount)(self.body_mapping, cp_forces.T).T
 
@@ -322,37 +322,47 @@ class ContactPoints(BaseContact):
             pos_cps = []
             pos_bodies = []
             cp_forces = []
+            def _normalize_item(item):
+                s = item.states if hasattr(item, "states") else item
+                c = item.constants if hasattr(item, "constants") else model.default_constants
+                return s, c
+
+            from biosym.utils.states import States
+            
             if isinstance(states, list):
                 for i in range(len(states)):
+                    s, c = _normalize_item(states[i])
                     pcp, pbody, body_idx = self.get_cp_moment_arms(
-                        states[i].states,
-                        states[i].constants,
-                        model,
-                        return_positions=True,
+                        s, c, model, return_positions=True
                     )
                     pos_cps.append(pcp)
                     pos_bodies.append(pbody)
-                    cp_forces.append(self.get_cp_forces(states[i].states, states[i].constants, model))
-                    # f = self.forward(states[i]['states'], states[i]['constants'], model)
-                    # print("Forces: ", f[0], "moments:" ,f[1])
-            elif states.states.q.ndim == 1:
+                    cp_forces.append(self.get_cp_forces(s, c, model))
+            elif isinstance(states, States) and getattr(states.q, "ndim", 2) == 1:
+                s, c = _normalize_item(states)
                 pcp, pbody, body_idx = self.get_cp_moment_arms(
-                    states.states, states.constants, model, return_positions=True
+                    s, c, model, return_positions=True
                 )
                 pos_cps.append(pcp)
                 pos_bodies.append(pbody)
-                cp_forces.append(self.get_cp_forces(states[0].states, states[0].constants, model))
+                cp_forces.append(self.get_cp_forces(s, c, model))
+            elif hasattr(states, "states") and not hasattr(states, "__len__"):
+                s, c = _normalize_item(states)
+                pcp, pbody, body_idx = self.get_cp_moment_arms(
+                    s, c, model, return_positions=True
+                )
+                pos_cps.append(pcp)
+                pos_bodies.append(pbody)
+                cp_forces.append(self.get_cp_forces(s, c, model))
             else:
                 for i in range(len(states)):
+                    s, c = _normalize_item(states[i])
                     pcp, pbody, body_idx = self.get_cp_moment_arms(
-                        states[i].states,
-                        states[i].constants,
-                        model,
-                        return_positions=True,
+                        s, c, model, return_positions=True
                     )
                     pos_cps.append(pcp)
                     pos_bodies.append(pbody)
-                    cp_forces.append(self.get_cp_forces(states[i].states, states[i].constants, model))
+                    cp_forces.append(self.get_cp_forces(s, c, model))
             self.pos_cps = np.array(pos_cps)
             self.pos_bodies = np.array(pos_bodies)
             self.cp_forces = np.array(cp_forces)

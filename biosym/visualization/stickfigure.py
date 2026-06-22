@@ -5,6 +5,42 @@ import numpy as np
 from matplotlib import animation
 
 
+def _pad_state_for_fk(model, state):
+    """Ensure FK callables receive a full model state vector.
+
+    Some OCP setups use lean states (e.g., q/qd/tau only). FK lambdified
+    callables expect q, dq, ddq, tau, ext_forces, ext_torques to be
+    present, so we pad missing parts with zeros.
+    """
+    ndim = getattr(state.q, "ndim", 1)
+    z = (lambda n: np.zeros(n, dtype=state.q.dtype if (state.q is not None and hasattr(state.q, "dtype")) else float)) if ndim == 1 else \
+        (lambda n: np.zeros((state.q.shape[0], n), dtype=state.q.dtype if (state.q is not None and hasattr(state.q, "dtype")) else float))
+
+    q = state.q if getattr(state, "q", None) is not None else z(model.coordinates["n"])
+    qd = state.qd if getattr(state, "qd", None) is not None else z(model.speeds["n"])
+    qdd = state.qdd if getattr(state, "qdd", None) is not None else z(model.accs["n"])
+    tau = state.tau if getattr(state, "tau", None) is not None else z(model.forces["n"])
+    ext_forces = (
+        state.ext_forces
+        if getattr(state, "ext_forces", None) is not None
+        else z(model.ext_forces["n"])
+    )
+    ext_torques = (
+        state.ext_torques
+        if getattr(state, "ext_torques", None) is not None
+        else z(model.ext_torques["n"])
+    )
+
+    return state.replace(
+        q=q,
+        qd=qd,
+        qdd=qdd,
+        tau=tau,
+        ext_forces=ext_forces,
+        ext_torques=ext_torques,
+    )
+
+
 def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
     """Extract joints (bodies), simulated markers, sites, and experimental markers.
 
@@ -32,7 +68,10 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
     marker_frames = []
     site_frames = []
     for i in range(n_frames):
-        arr = fk_vis(state_sequence[i].states, state_sequence[i].constants)
+        s_item = state_sequence[i]
+        s = _pad_state_for_fk(model, s_item.states if hasattr(s_item, "states") else s_item)
+        consts = s_item.constants if hasattr(s_item, "constants") else model.default_constants
+        arr = fk_vis(s, consts)
         # Bodies first
         joints = arr[:n_bodies+n_sites, :] if n_bodies > 0 else arr
         # Sites as last n_sites rows (robust to presence/absence of markers in arr)
@@ -42,7 +81,7 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
         markers = None
         if n_markers > 0:
             if fk_marker is not None:
-                m_arr = fk_marker(state_sequence[i].states, state_sequence[i].constants)
+                m_arr = fk_marker(s, consts)
                 m_arr = np.asarray(m_arr)
                 if m_arr.ndim == 1 and m_arr.size == 3 * n_markers:
                     m_arr = m_arr.reshape(n_markers, 3)
@@ -596,6 +635,25 @@ def plot_stick_figure(
     else:
         state_sequence = states
         globals_obj = None
+
+    from biosym.utils.states import States
+    # Pad lean states to ensure they have all physical variables for FK and plotting
+    if isinstance(state_sequence, States):
+        state_sequence = _pad_state_for_fk(model, state_sequence)
+    elif hasattr(state_sequence, "states"):
+        padded_states = _pad_state_for_fk(model, state_sequence.states)
+        state_sequence = state_sequence.replace(states=padded_states)
+    elif isinstance(state_sequence, list):
+        new_list = []
+        for s in state_sequence:
+            if isinstance(s, States):
+                new_list.append(_pad_state_for_fk(model, s))
+            elif hasattr(s, "states"):
+                padded = _pad_state_for_fk(model, s.states)
+                new_list.append(s.replace(states=padded))
+            else:
+                new_list.append(_pad_state_for_fk(model, s))
+        state_sequence = new_list
 
     if globals_obj is not None:
         try:

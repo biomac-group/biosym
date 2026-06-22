@@ -348,7 +348,7 @@ class Hill2d(BaseActuator):
         for i, geom in enumerate(muscle_geometry):
             # Replace dynamic symbols before lambdifying
             geom_replaced = model._replace_dyn(geom)
-            compiled_func = lambdify(model.speeds.symbols, geom_replaced, modules="numpy", cse=True)
+            compiled_func = lambdify(model._symbols, geom_replaced, modules="numpy", cse=True)
             self.muscle_geometry.append(compiled_func)
 
         return super().process_eom(model)
@@ -509,10 +509,18 @@ class Hill2d(BaseActuator):
             muscle_paths_all_frames = []
             activations = []
 
+            def _normalize_item(item):
+                s = item.states if hasattr(item, "states") else item
+                c = item.constants if hasattr(item, "constants") else model.default_constants
+                return s, c
+
+            from biosym.utils.states import States
+
             if isinstance(states, list):
                 for i in range(len(states)):
+                    s, c = _normalize_item(states[i])
                     # Get muscle paths from precomputed EOM geometry
-                    _, _ = self._get_muscle_attachment_points(states[i].states, states[i].constants, model)
+                    _, _ = self._get_muscle_attachment_points(s, c, model)
 
                     # Store muscle paths for this frame
                     if hasattr(self, "current_muscle_paths"):
@@ -521,29 +529,42 @@ class Hill2d(BaseActuator):
                         muscle_paths_all_frames.append([])
 
                     # Get muscle activations
-                    act = self._get_activations(states[i].states)
+                    act = self._get_activations(s)
                     activations.append(act)
 
-            elif len(states.states.q.shape) == 1:
-                _, _ = self._get_muscle_attachment_points(states.states, states.constants, model)
+            elif isinstance(states, States) and getattr(states.q, "ndim", 2) == 1:
+                s, c = _normalize_item(states)
+                _, _ = self._get_muscle_attachment_points(s, c, model)
 
                 if hasattr(self, "current_muscle_paths"):
                     muscle_paths_all_frames.append(self.current_muscle_paths.copy())
                 else:
                     muscle_paths_all_frames.append([])
 
-                act = self._get_activations(states.states)
+                act = self._get_activations(s)
+                activations.append(act)
+            elif hasattr(states, "states") and not hasattr(states, "__len__"):
+                s, c = _normalize_item(states)
+                _, _ = self._get_muscle_attachment_points(s, c, model)
+
+                if hasattr(self, "current_muscle_paths"):
+                    muscle_paths_all_frames.append(self.current_muscle_paths.copy())
+                else:
+                    muscle_paths_all_frames.append([])
+
+                act = self._get_activations(s)
                 activations.append(act)
             else:
                 for i in range(len(states)):
-                    _, _ = self._get_muscle_attachment_points(states[i].states, states[i].constants, model)
+                    s, c = _normalize_item(states[i])
+                    _, _ = self._get_muscle_attachment_points(s, c, model)
 
                     if hasattr(self, "current_muscle_paths"):
                         muscle_paths_all_frames.append(self.current_muscle_paths.copy())
                     else:
                         muscle_paths_all_frames.append([])
 
-                    act = self._get_activations(states[i].states)
+                    act = self._get_activations(s)
                     activations.append(act)
 
             self.muscle_paths_all_frames = muscle_paths_all_frames
@@ -638,10 +659,12 @@ class Hill2d(BaseActuator):
 
     def _get_muscle_attachment_points(self, states, constants, model):
         """Helper method to get muscle origin and insertion points using precomputed symbolic geometry."""
-        flat_states = _get_flat_states(states, model)
-
         if not hasattr(self, "muscle_geometry"):
             raise ValueError("Muscle geometry not compiled. Call process_eom first.")
+
+        flat_states = np.asarray(states.filter('model').to_array())
+        model_constants = np.asarray(constants.filter('model').to_array())
+        args = np.concatenate([flat_states, model_constants])
 
         n_muscles = self.n_actuators
         origins = np.zeros((n_muscles, 3))
@@ -652,8 +675,7 @@ class Hill2d(BaseActuator):
             # Get the muscle path from precomputed symbolic geometry
             try:
                 # Call the lambdified function with unpacked state and constant vectors
-                model_constants = constants.filter('model').to_array()
-                muscle_path = self.muscle_geometry[i](*flat_states, *model_constants)
+                muscle_path = self.muscle_geometry[i](*args)
                 if muscle_path.shape[0] >= 2:
                     origins[i] = muscle_path[0]  # First point
                     insertions[i] = muscle_path[-1]  # Last point
