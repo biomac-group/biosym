@@ -30,13 +30,21 @@ def jvpfun(model, primals, tangents):
     inertial_force = jnp.matmul(mm, qdd[..., None])[..., 0]
     residuals = inertial_force - forcing
 
-    # Compute tangents using JVP of mass_matrix and forcing
-    def mm_and_forcing(s, c):
-        return model.run['mass_matrix'](s, c), model.run['forcing'](s, c)
+    # Compute d(M(q)*qdd) and dforcing using JVP of vector-valued functions.
+    # This avoids computing the tangent of the full mass matrix (O(n^2)) 
+    # and instead computes the tangent of the contracted vector (O(n)).
+    def mm_qdd_and_forcing(s, c):
+        M = model.run['mass_matrix'](s, c)
+        F = model.run['forcing'](s, c)
+        M_qdd = jnp.matmul(M, qdd[..., None])[..., 0]
+        return M_qdd, F
 
-    _, (dmm, dforcing) = jax.jvp(mm_and_forcing, (states, constants), (dstates, dconstants))
+    _, (dmm_qdd, dforcing) = jax.jvp(
+        lambda s, c: mm_qdd_and_forcing(s, c),
+        (states, constants),
+        (dstates, dconstants)
+    )
 
-    dmm_qdd = jnp.matmul(dmm, qdd[..., None])[..., 0]
     mm_dqdd = jnp.matmul(mm, dqdd[..., None])[..., 0]
     dresiduals = dmm_qdd + mm_dqdd - dforcing
 
