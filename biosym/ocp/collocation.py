@@ -164,6 +164,7 @@ class Collocation:
             if self.settings["nnodes"] > 1
             else None,
         )
+
         ub = utils.states_dict_to_x(
             self.settings["bounds"]["max"],
             self.settings["bounds"]["global_max"]
@@ -177,7 +178,7 @@ class Collocation:
             self.initial_guess_states,
             ub,
             lb,
-            globals=ig_globals,
+            globals_=ig_globals,
         )
         cl = np.zeros(m)
         cu = np.zeros(m)

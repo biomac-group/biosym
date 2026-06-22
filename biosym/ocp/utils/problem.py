@@ -34,7 +34,7 @@ class CyIpoptProblem:
         Lower bounds for optimization variables.
     upper_bound : jnp.ndarray
         Upper bounds for optimization variables.
-    globals : dict, optional
+    globals_ : dict, optional
         Global variables and parameters for the problem.
 
     Notes
@@ -55,7 +55,7 @@ class CyIpoptProblem:
         template,
         upper_bound,
         lower_bound,
-        globals=None,
+        globals_=None,
     ):
         """
         Initialize the IPOPT problem interface.
@@ -74,7 +74,7 @@ class CyIpoptProblem:
             Upper bounds for optimization variables.
         lower_bound : jnp.ndarray
             Lower bounds for optimization variables.
-        globals : dict, optional
+        globals_ : dict, optional
             Global variables and parameters for the problem.
         """
         self.model = model
@@ -82,7 +82,7 @@ class CyIpoptProblem:
         self.cons = constraints
         self.template = template  # For reconstructing something better looking
         self.ub, self.lb = upper_bound, lower_bound
-        self.globals = globals
+        self.globals_ = globals_
         self._init_jac = False
         self.jacobianstructure()
         # Store current x for iteration callback access
@@ -121,8 +121,8 @@ class CyIpoptProblem:
         """
         # Store current x for callback access
         self._current_x = x
-        x, globals = x_to_states_dict(x, self.template, self.globals)
-        return self.objs.objfun(x, globals)
+        x, globals_ = x_to_states_dict(x, self.template, self.globals_)
+        return self.objs.objfun(x, globals_)
 
     def gradient(self, x):
         """
@@ -138,8 +138,8 @@ class CyIpoptProblem:
         jnp.ndarray
             Gradient vector with respect to optimization variables.
         """
-        x, globals = x_to_states_dict(x, self.template, self.globals)
-        return states_dict_to_x(*self.objs.gradfun(x, globals))
+        x, globals_ = x_to_states_dict(x, self.template, self.globals_)
+        return states_dict_to_x(*self.objs.gradfun(x, globals_))
 
     def constraints(self, x):
         """
@@ -155,8 +155,8 @@ class CyIpoptProblem:
         jnp.ndarray
             Constraint violation vector (should be zero at optimum).
         """
-        x, globals = x_to_states_dict(x, self.template, self.globals)
-        return self.cons.confun(x, globals)
+        x, globals_ = x_to_states_dict(x, self.template, self.globals_)
+        return self.cons.confun(x, globals_)
 
     def jacobian(self, x):
         """
@@ -172,8 +172,8 @@ class CyIpoptProblem:
         jnp.ndarray
             Sparse Jacobian matrix values at current point.
         """
-        x, globals = x_to_states_dict(x, self.template, self.globals)
-        _, _, jac = self.cons.jacobian(x, globals)
+        x, globals_ = x_to_states_dict(x, self.template, self.globals_)
+        _, _, jac = self.cons.jacobian(x, globals_)
         return jac[self.jac_indices]
 
     def jacobianstructure(self):
@@ -201,12 +201,13 @@ class CyIpoptProblem:
             return self.jacstruct
 
         def jac_0(x):
-            x, globals = x_to_states_dict(x, self.template, self.globals)
-            return self.cons.jacobian(x, globals)
+            x, globals_ = x_to_states_dict(x, self.template, self.globals_)
+            return self.cons.jacobian(x, globals_)
 
         rows, cols, j0 = jac_0(self.lb)
         curr_nonzeros = np.nonzero(j0)
         nnz = len(curr_nonzeros[0])
+        
         no_new_nonzero_found = 0
 
         while no_new_nonzero_found < 20:
@@ -230,3 +231,202 @@ class CyIpoptProblem:
         self._init_jac = True
         self.jacstruct = rows[self.jac_indices[0]], cols[self.jac_indices[0]]
         return self.jacstruct
+
+    def check_derivatives(self, x: jnp.ndarray = None, eps=1e-5, rtol=1e-4, atol=1e-4):
+        """
+        Validate analytical objective gradients and constraint Jacobians
+        against numerical finite differences (central differences).
+        
+        This test always runs in double-precision (x64) mode to avoid
+        numerical precision limitations in single-precision float32.
+
+        Parameters
+        ----------
+        x : jnp.ndarray, optional
+            Flat optimization vector. If None, a random value between the bounds of the
+            optimization problem is used.
+        eps : float, optional
+            Perturbation size for finite differences, by default 1e-5.
+        rtol : float, optional
+            Relative tolerance for matching, by default 1e-4.
+        atol : float, optional
+            Absolute tolerance for matching, by default 1e-4.
+
+        Returns
+        -------
+        dict
+            A dictionary containing validation results and detailed info
+            on any mismatches.
+        """
+        import time
+        from jax.flatten_util import ravel_pytree
+        from dataclasses import fields
+
+        # Save and set x64
+        original_x64 = jax.config.read("jax_enable_x64")
+        jax.config.update("jax_enable_x64", True)
+
+        if x is None:
+            x = np.random.uniform(self.lb, self.ub)
+
+        x_64 = np.array(x, dtype=np.float64)
+        n_vars = len(x_64)
+
+        # Evaluate analytical value
+        grad_jax = np.array(self.gradient(x_64), dtype=np.float64)
+        
+        jac_jax_0 = np.array(self.jacobian(x_64), dtype=np.float64)
+        jacstruct = self.jacobianstructure()
+        n_cons = self.cons.ncon
+        
+        jac_jax = np.zeros((n_vars, n_cons), dtype=np.float64)
+        # jacstruct[1] corresponds to cols (variables), jacstruct[0] to rows (constraints)
+        jac_jax[jacstruct[1], jacstruct[0]] = jac_jax_0
+
+        # Numerical evaluations using central differences
+
+        grad_num = np.zeros_like(grad_jax, dtype=np.float64)
+        jac_num = np.zeros_like(jac_jax, dtype=np.float64)
+        
+        x0 = x_64.copy()
+        start_time = time.time()
+
+        for i in range(n_vars):
+            # Positive perturbation
+            x_perturbed = x0.copy()
+            x_perturbed[i] += eps
+            obj_plus = float(self.objective(x_perturbed))
+            con_plus = np.array(self.constraints(x_perturbed), dtype=np.float64)
+
+            # Negative perturbation
+            x_perturbed = x0.copy()
+            x_perturbed[i] -= eps
+            obj_minus = float(self.objective(x_perturbed))
+            con_minus = np.array(self.constraints(x_perturbed), dtype=np.float64)
+
+            grad_num[i] = (obj_plus - obj_minus) / (2.0 * eps)
+            jac_num[i] = (con_plus - con_minus) / (2.0 * eps)
+
+            if i % 200 == 0 and time.time() - start_time > 5.0:
+                print(f"Derivative test: {i}/{n_vars} variables evaluated ({100.0 * i / n_vars:.1f}%)")
+
+        # Determine mismatches
+        grad_diff = np.abs(grad_jax - grad_num)
+        grad_ok = bool(np.allclose(grad_jax, grad_num, rtol=rtol, atol=atol))
+        
+        jac_diff = np.abs(jac_jax - jac_num)
+        jac_ok = bool(np.allclose(jac_jax, jac_num, rtol=rtol, atol=atol))
+
+        # Set up the index mapping logic to translate indices to names
+        # Build example state and unraveling functions
+        example_state = jax.tree_util.tree_map(
+            lambda arr: arr[0] if isinstance(arr, jnp.ndarray) else arr, self.template
+        )
+        flat_ex, unravel_state = ravel_pytree(example_state)
+        d = flat_ex.shape[0]
+        N = len(self.template)
+        indices_tree = unravel_state(jnp.arange(d))
+
+        def map_var_index_to_name(idx):
+            if idx < N * d:
+                node_idx = idx // d
+                var_idx = idx % d
+                for field_name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
+                    indices = getattr(indices_tree, field_name, None)
+                    if indices is not None:
+                        matching_indices = np.where(indices == var_idx)[0]
+                        if len(matching_indices) > 0:
+                            local_idx = matching_indices[0]
+                            if field_name == "q" and hasattr(self.model, "coordinates") and "names" in self.model.coordinates:
+                                coord_name = self.model.coordinates["names"][local_idx]
+                                return f"node {node_idx}, q[{coord_name}]"
+                            elif field_name == "qd" and hasattr(self.model, "coordinates") and "names" in self.model.coordinates:
+                                coord_name = self.model.coordinates["names"][local_idx]
+                                return f"node {node_idx}, qd[{coord_name}]"
+                            elif field_name == "qdd" and hasattr(self.model, "coordinates") and "names" in self.model.coordinates:
+                                coord_name = self.model.coordinates["names"][local_idx]
+                                return f"node {node_idx}, qdd[{coord_name}]"
+                            elif field_name == "tau" and hasattr(self.model, "coordinates") and "names" in self.model.coordinates:
+                                coord_name = self.model.coordinates["names"][local_idx]
+                                return f"node {node_idx}, tau[{coord_name}]"
+                            elif field_name == "gc_model" and hasattr(self.model, "contact_model") and hasattr(self.model.contact_model, "state_vector"):
+                                gc_name = self.model.contact_model.state_vector[local_idx]
+                                return f"node {node_idx}, gc_model[{gc_name}]"
+                            elif field_name == "actuator_model" and hasattr(self.model, "actuator_model") and hasattr(self.model.actuator_model, "state_vector"):
+                                act_name = self.model.actuator_model.state_vector[local_idx]
+                                return f"node {node_idx}, actuator_model[{act_name}]"
+                            else:
+                                return f"node {node_idx}, {field_name}[{local_idx}]"
+                return f"node {node_idx}, unknown_var[{var_idx}]"
+            else:
+                global_idx = idx - (N * d)
+                if self.globals_ is not None:
+                    current = 0
+                    for field_desc in fields(self.globals_):
+                        val = getattr(self.globals_, field_desc.name)
+                        if val is not None:
+                            size = val.size
+                            if global_idx < current + size:
+                                local_idx = global_idx - current
+                                return f"globals_.{field_desc.name}[{local_idx}]"
+                            current += size
+                return f"global_var[{global_idx}]"
+
+        def map_con_index_to_name(idx):
+            for k, start_idx in enumerate(self.cons.c_start[:-1]):
+                end_idx = self.cons.c_start[k+1]
+                if start_idx <= idx < end_idx:
+                    constraint_obj = self.cons._constraints[k]
+                    local_idx = idx - start_idx
+                    constraint_name = constraint_obj._get_info().get("name", constraint_obj.__class__.__name__)
+                    return f"{constraint_name} (local index {local_idx})"
+            return f"unknown_constraint[{idx}]"
+
+        grad_mismatches = []
+        if not grad_ok:
+            mismatch_indices = np.where(grad_diff > (atol + rtol * np.abs(grad_num)))[0]
+            for idx in mismatch_indices:
+                grad_mismatches.append({
+                    "index": int(idx),
+                    "var": map_var_index_to_name(idx),
+                    "jax_val": float(grad_jax[idx]),
+                    "num_val": float(grad_num[idx]),
+                    "diff": float(grad_diff[idx])
+                })
+
+        jac_mismatches = []
+        if not jac_ok:
+            mismatches_v, mismatches_c = np.where(jac_diff > (atol + rtol * np.abs(jac_num)))
+            for v, c in zip(mismatches_v, mismatches_c):
+                jac_mismatches.append({
+                    "var_index": int(v),
+                    "con_index": int(c),
+                    "var": map_var_index_to_name(v),
+                    "con": map_con_index_to_name(c),
+                    "jax_val": float(jac_jax[v, c]),
+                    "num_val": float(jac_num[v, c]),
+                    "diff": float(jac_diff[v, c])
+                })
+
+        res = {
+            "gradient_ok": grad_ok,
+            "jacobian_ok": jac_ok,
+            "gradient_error": {
+                "max_diff": float(np.max(grad_diff)) if grad_diff.size > 0 else 0.0,
+                "max_diff_idx": int(np.argmax(grad_diff)) if grad_diff.size > 0 else 0,
+                "max_diff_var": map_var_index_to_name(np.argmax(grad_diff)) if grad_diff.size > 0 else "",
+                "mismatches": grad_mismatches
+            } if not grad_ok else None,
+            "jacobian_error": {
+                "max_diff": float(np.max(jac_diff)) if jac_diff.size > 0 else 0.0,
+                "max_diff_idx": [int(idx) for idx in np.unravel_index(np.argmax(jac_diff), jac_diff.shape)] if jac_diff.size > 0 else [0, 0],
+                "max_diff_var": map_var_index_to_name(np.unravel_index(np.argmax(jac_diff), jac_diff.shape)[0]) if jac_diff.size > 0 else "",
+                "max_diff_con": map_con_index_to_name(np.unravel_index(np.argmax(jac_diff), jac_diff.shape)[1]) if jac_diff.size > 0 else "",
+                "mismatches": jac_mismatches
+            } if not jac_ok else None,
+        }
+
+        # Restore original x64 config
+        jax.config.update("jax_enable_x64", original_x64)
+
+        return res
