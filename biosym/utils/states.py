@@ -522,14 +522,11 @@ def sum(obj, weights: jnp.ndarray | None = None):
     -------
     Same type as *obj*, with the node axis removed from every leaf.
     """
-    
+    import builtins
+
     def _reduce(*args):
-        if weights is not None:
-            w = jnp.asarray(weights)
-        else: 
-            w = jnp.ones(len(obj))
-        out = [w[i]*args[i] for i in range(len(args))]
-        return out
+        w = jnp.asarray(weights) if weights is not None else jnp.ones(len(args))
+        return builtins.sum(w[i] * args[i] for i in range(len(args)))
 
     return jax.tree.map(_reduce, *obj)
 

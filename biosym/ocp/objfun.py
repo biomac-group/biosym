@@ -228,6 +228,9 @@ def evaluate_gradients(objective_gradients, weights, states_list, globals_dict=N
         gradients.append(gradient)
         globals_gradients.append(globals_gradient)
 
+    if len(gradients) == 1:
+        return jax.tree.map(lambda x: x * weights[0], gradients[0]), \
+               jax.tree.map(lambda x: x * weights[0], globals_gradients[0])
     gradients = states.sum(gradients, weights)
-    globals_gradients = states.sum(globals_gradients, weights)    
+    globals_gradients = states.sum(globals_gradients, weights)
     return gradients, globals_gradients

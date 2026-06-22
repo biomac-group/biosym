@@ -92,7 +92,8 @@ def confun(modelfn, states_list, globals_dict, settings, info, model):
     :param info: Information about the constraint function.
     :return: Flattened residual vector of shape (nnodes * ncons_model,)
     """
-    return modelfn(states_list, model.default_constants).flatten()
+    nnodes = settings.get("nnodes")
+    return modelfn(states_list[:nnodes], model.default_constants).flatten()
 
 
 def jacobian(modelfn, states_list, globals_dict, settings, info, model):
@@ -107,20 +108,22 @@ def jacobian(modelfn, states_list, globals_dict, settings, info, model):
     :return: (rows, cols, data) sparse COO arrays
     """
     nnz = info["nnz"]
-    nvpn = settings.get("nvpn")
+    nvpn = settings.get("nvpn")            # model-only state count (q,qd,qdd,tau,f,m)
+    nvpn_total = states_list[0].size()     # full state per node (model + gc + actuator)
     nnodes = settings.get("nnodes")
     ncons_pernode = info["ncons_pernode"]
 
     # jac is a States-shaped pytree; each field has shape (nnodes, ncons_pernode, field_dim)
     # (or squeezed to (ncons_pernode, field_dim) for nnodes=1)
-    jac = modelfn(states_list, model.default_constants).to_array().flatten()
+    jac = modelfn(states_list[:nnodes], model.default_constants).to_array().flatten()
     # Build COO indices
     node_indices = jnp.arange(nnodes)
 
     # Row indices: for node n, constraints are [n*ncons_pernode, ..., (n+1)*ncons_pernode - 1]
     row_base = node_indices[:, jnp.newaxis] * ncons_pernode + jnp.arange(ncons_pernode)[jnp.newaxis, :]
-    # col indices: for node n, state vars are [n*nvpn, ..., (n+1)*nvpn - 1]
-    col_base = node_indices[:, jnp.newaxis] * nvpn + jnp.arange(nvpn)[jnp.newaxis, :]
+    # col indices: node stride is nvpn_total (full state), but dynamics only touches the
+    # first nvpn (model) columns within each node block.
+    col_base = node_indices[:, jnp.newaxis] * nvpn_total + jnp.arange(nvpn)[jnp.newaxis, :]
 
     # Expand to (nnodes, ncons_pernode, nvpn)
     rows = jnp.repeat(row_base[:, :, jnp.newaxis], nvpn, axis=2)      # (nnodes, ncons_pernode, nvpn)
