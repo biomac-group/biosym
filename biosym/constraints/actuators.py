@@ -25,12 +25,12 @@ class Constraint(BaseConstraint):
         """
         self.model = model
         self.settings = settings.copy()
-        self.settings["nvpn_model"] = len(model.state_vector)
-        self.settings["nvpn"] = len(model.state_vector) + model.actuators.get_n_states()
+        self.settings["nvpn_model"] = model.default_states.get_n_states()
+        self.settings["nvpn"] = model.default_states.get_n_states()
         self.settings["nact"] = model.actuators.get_n_states()
         self.nvar = settings.get("nvar")
-        self.nf = model.forces["n"]
-        self.ncons_model = self.model.forces["n"]
+        self.nf = model.tau.n
+        self.ncons_model = self.model.tau.n
 
     def _get_info(self):
         """
@@ -45,8 +45,8 @@ class Constraint(BaseConstraint):
             "nnz": self.get_nnz(),
             "ncons": self.get_n_constraints(),
             "ncons_pernode": self.nf,
-            "idx_forces": self.model.forces["idx"],
-            "n_forces": self.model.forces["n"],
+            "idx_forces": self.model.tau.combined_idx,
+            "n_forces": self.model.tau.n,
         }
 
     def get_confun(self):
@@ -102,18 +102,14 @@ def confun(model, states_list, globals_dict, settings, info):
 
     Todo: there is some non-jax logic in here, which could be replaced with a static function
     """
-    data_out = jnp.empty((info["ncons"],), dtype=float)
-    nnodes = settings.get("nnodes")
-    ncons = info["ncons_pernode"]
-    model.run["actuator_model"](states_list.states, states_list.constants)  # Test full function
-
-    forces_act = model.run["actuator_model"](states_list.states, states_list.constants)[:nnodes]  # Get ground contact forces and moments
-    forces_model = states_list.states.model[:nnodes, model.forces["idx"] : model.forces["idx"] + model.forces["n"]]
-    data_out = (forces_act - forces_model).flatten().squeeze()
+    constants = model.default_constants
+    forces_act = model.run["actuator_model"](states_list, constants)
+    forces_model = states_list.tau
+    data_out = (forces_act - forces_model).flatten()
 
     if model.actuator_model.get_n_constraints(model, settings) > 0:
-        c_act = model.actuator_model.constraints((states_list.states, globals_dict), states_list.constants, model, settings)
-        data_out = jnp.concatenate((data_out, c_act.flatten().squeeze()), axis=0)
+        c_act = model.actuator_model.constraints((states_list, globals_dict), constants, model, settings)
+        data_out = jnp.concatenate((data_out, c_act.flatten()), axis=0)
     return data_out
 
 def jacobian(model, states_list, globals_dict, settings, info):
@@ -135,51 +131,37 @@ def jacobian(model, states_list, globals_dict, settings, info):
     nnodes_dur = settings.get("nnodes_dur")
     ncons = info["ncons_pernode"]
 
+    constants = model.default_constants
+
     # Vectorized computation for all nodes at once
     jac_all = jax.vmap(model.run["actuator_model_jacobian"], in_axes=(0, None))(
-        states_list[:nnodes].states, states_list.constants
-    )
+        states_list, constants
+    ).to_array()
 
-    # Extract model and actuator jacobians
-    jac_model_all = jac_all.model  # Shape: (nnodes, ncons, nvpn_model)
-    jac_actuators_all = jac_all.actuator_model  # Shape: (nnodes, ncons, nact)
-
-    # Add -1 to the forces and moments in the model jacobian
-    forces_rows = jnp.arange(info["n_forces"])
-    forces_cols = model.forces["idx"] + jnp.arange(info["n_forces"])
-    jac_model_all = jac_model_all.at[..., forces_rows, forces_cols].add(-1)
+    from biosym.utils.states import get_states_offsets
+    offsets = get_states_offsets(model.default_states)
+    tau_start = offsets["tau"]
+    forces_idx = jnp.arange(ncons)
+    jac_all = jac_all.at[..., forces_idx, tau_start + forces_idx].add(-1)
 
     # Create node indices for all blocks
     node_indices = jnp.arange(nnodes)
 
     # Model jacobian blocks
     row_blocks_model = node_indices[:, None] * ncons + jnp.arange(ncons)[None, :]
-    col_blocks_model = node_indices[:, None] * states_list[0].states.size() + jnp.arange(nvpn_model)[None, :]
+    col_blocks_model = node_indices[:, None] * nvpn + jnp.arange(nvpn)[None, :]
     
-    rows_model = jnp.repeat(row_blocks_model, nvpn_model, axis=1)
-    cols_model = jnp.tile(col_blocks_model, (1, ncons))
-    data_model = jac_model_all.reshape(nnodes, -1)
-
-    # Actuator jacobian blocks
-    row_blocks_act = node_indices[:, None] * ncons + jnp.arange(ncons)[None, :]
-    col_blocks_act = (node_indices[:, None] + 1) * states_list[0].states.size() - nact + jnp.arange(nact)[None, :]
-    
-    rows_act = jnp.repeat(row_blocks_act, nact, axis=1)
-    cols_act = jnp.tile(col_blocks_act, (1, ncons))
-    data_act = jac_actuators_all.reshape(nnodes, -1)
-
-    # Concatenate model and actuator parts
-    rows_out = jnp.concatenate([rows_model.flatten(), rows_act.flatten()])
-    cols_out = jnp.concatenate([cols_model.flatten(), cols_act.flatten()])
-    data_out = jnp.concatenate([data_model.flatten(), data_act.flatten()])
+    rows_out = jnp.repeat(row_blocks_model, nvpn, axis=1).flatten()
+    cols_out = jnp.tile(col_blocks_model, (1, ncons)).flatten()
+    data_out = jac_all.reshape(nnodes, -1).flatten()
 
 
     # Get actuator constraints jacobian if applicable
     if model.actuator_model.get_n_constraints(model, settings) > 0:
         rows_act_con, cols_act_con, data_act_con = model.actuator_model.jacobian(
-            (states_list.states, globals_dict), states_list.constants, model, settings
+            (states_list, globals_dict), constants, model, settings
         )
-        rows_act_con = rows_act_con + (info.get('ncons_pernode')*settings.get('nnodes')) # Shift row indices to avoid overlap
+        rows_act_con = rows_act_con + (info.get('ncons_pernode') * settings.get('nnodes'))  # Shift row indices to avoid overlap
         rows_out = jnp.concatenate([rows_out, rows_act_con], axis=0)
         cols_out = jnp.concatenate([cols_out, cols_act_con], axis=0)
         data_out = jnp.concatenate([data_out, data_act_con], axis=0)
