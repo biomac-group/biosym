@@ -21,7 +21,6 @@ class Objective(BaseObjective):
         """
         self.model = model
         self.settings = settings
-        self.settings["idx_acc"] = jnp.arange(model.accs["idx"], model.accs["idx"] + model.accs["n"])
 
     def _get_info(self):
         """
@@ -55,7 +54,7 @@ def objfun(states_list, globals_dict, settings, info):
     :param info: Information about the objective function.
     :return: The evaluated value of the objective function.
     """
-    # Goal: reduce jerk, e.g. diff(qd)
-    qd = states_list.states.model[:, settings["idx_acc"]]
-    jerk = jnp.diff(qd, axis=0)
+    # Goal: reduce jerk, e.g. diff(qdd)
+    qdd = states_list.qdd
+    jerk = jnp.diff(qdd, axis=0)
     return jnp.mean(jnp.square(jerk))

@@ -73,7 +73,7 @@ class Constraint(BaseConstraint):
 
         :return: The number of constraints.
         """
-        return self.nf * self.settings.get("nnodes") + self.model.actuators.get_n_constraints(self.model, self.settings)
+        return self.nf * self.settings.get("nnodes") + self.model.actuator_model.get_n_constraints(self.model, self.settings)
 
     def get_nnz(self):
         """
@@ -81,9 +81,9 @@ class Constraint(BaseConstraint):
 
         :return: The number of non-zero entries.
         """
-        if self.model.actuators.get_n_constraints(self.model, self.settings) > 0:
+        if self.model.actuator_model.get_n_constraints(self.model, self.settings) > 0:
             return (
-                self.model.actuators.get_nnz(self.model, self.settings)
+                self.model.actuator_model.get_nnz(self.model, self.settings)
                 + self.nf * self.settings.get("nvpn") * self.settings.get("nnodes")
             )
         else:   
@@ -103,8 +103,9 @@ def confun(model, states_list, globals_dict, settings, info):
     Todo: there is some non-jax logic in here, which could be replaced with a static function
     """
     constants = model.default_constants
-    forces_act = model.run["actuator_model"](states_list, constants)
-    forces_model = states_list.tau
+    nnodes = settings.get("nnodes")
+    forces_act = model.run["actuator_model"](states_list[:nnodes], constants)
+    forces_model = states_list[:nnodes].tau
     data_out = (forces_act - forces_model).flatten()
 
     if model.actuator_model.get_n_constraints(model, settings) > 0:
@@ -128,14 +129,13 @@ def jacobian(model, states_list, globals_dict, settings, info):
     nvpn_model = settings.get("nvpn_model")
     nact = settings.get("nact")
     nnodes = settings.get("nnodes")
-    nnodes_dur = settings.get("nnodes_dur")
     ncons = info["ncons_pernode"]
 
     constants = model.default_constants
 
     # Vectorized computation for all nodes at once
     jac_all = jax.vmap(model.run["actuator_model_jacobian"], in_axes=(0, None))(
-        states_list, constants
+        states_list[:nnodes], constants
     ).to_array()
 
     from biosym.utils.states import get_states_offsets

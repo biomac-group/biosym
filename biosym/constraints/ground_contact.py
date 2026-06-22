@@ -91,6 +91,7 @@ def confun(model, states_list, globals_dict, settings, info):
     :return: flattened residual vector of shape (nnodes * nf,)
     """
     constants = model.default_constants
+    nnodes = settings.get("nnodes")
 
     def _eval_single(states_):
         forces_gc, moments_gc = model.run["gc_model"](states_, constants)
@@ -98,7 +99,7 @@ def confun(model, states_list, globals_dict, settings, info):
         res_moments = moments_gc.flatten() - states_.ext_torques.flatten()
         return jnp.concatenate([res_forces, res_moments])
 
-    result = jax.vmap(_eval_single)(states_list)
+    result = jax.vmap(_eval_single)(states_list[:nnodes])
     return result.flatten()
 
 

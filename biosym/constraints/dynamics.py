@@ -6,6 +6,52 @@ import jax.numpy as jnp
 
 from biosym.constraints.base_constraint import BaseConstraint
 
+@partial(jax.custom_jvp, nondiff_argnums=(2,))
+def confun_mm_tau(states, constants,  model):
+    mm = model.run['mass_matrix'](states, constants)
+    forcing = model.run['forcing'](states, constants)
+    tau_des = jnp.linalg.solve(mm, forcing)
+
+    tau_model = states.tau
+    tau_indices = model.tau.combined_idx
+
+    tau_model_full = jnp.zeros_like(tau_des)
+    tau_model_full = tau_model_full.at[..., tau_indices].set(tau_model.squeeze(), unique_indices=True)
+    residuals = tau_des - tau_model_full
+    return residuals
+
+@confun_mm_tau.defjvp
+def jvpfun(model, primals, tangents):
+    states, constants = primals
+    dstates, dconstants = tangents
+
+    mm = model.run['mass_matrix'](states, constants)
+    forcing = model.run['forcing'](states, constants)
+    tau_des = jnp.linalg.solve(mm, forcing)
+
+    tau_model = states.tau
+    tau_indices = model.tau.combined_idx
+
+    tau_model_full = jnp.zeros_like(tau_des)
+    tau_model_full = tau_model_full.at[..., tau_indices].set(tau_model.squeeze(), unique_indices=True)
+    residuals = tau_des - tau_model_full
+
+    # Compute tangents using JVP of mass_matrix and forcing
+    def mm_and_forcing(s, c):
+        return model.run['mass_matrix'](s, c), model.run['forcing'](s, c)
+
+    _, (dmm, dforcing) = jax.jvp(mm_and_forcing, (states, constants), (dstates, dconstants))
+
+    dmm_tau = jnp.matmul(dmm, tau_des[..., None])[..., 0]
+    rhs = dforcing - dmm_tau
+    dtau_des = jnp.linalg.solve(mm, rhs)
+
+    dtau_model = dstates.tau
+    dtau_model_full = jnp.zeros_like(dtau_des)
+    dtau_model_full = dtau_model_full.at[..., tau_indices].set(dtau_model.squeeze(), unique_indices=True)
+    dresiduals = dtau_des - dtau_model_full
+
+    return residuals, dresiduals
 
 # any constraint needs to be named Constraint, otherwise it will not be found by the OCP class
 class Constraint(BaseConstraint):
@@ -30,6 +76,21 @@ class Constraint(BaseConstraint):
         self.nvar = settings.get("nvar")
         self.ncons_model = len(self.model.fr)
 
+        confun_type = args.get('dynamics_function')
+
+        if confun_type == "newton-euler":
+            confun_mm = partial(confun_mm_tau, model=self.model)
+            self.model._precompile_fn(confun_mm, (self.model.default_states, self.model.default_constants), "confun_mm", is_jax_fn=True)
+            self.model._precompile_fn(confun_mm, (self.model.default_states, self.model.default_constants), "confun_mm_jacobian", jacobian=True, is_jax_fn=True)
+            self.con_string = "confun_mm"
+        elif confun_type == 'kane':
+            self.con_string = "kane"
+        elif confun_type in ['rnea', 'aba']:
+            raise NotImplementedError("Dynamics function based on RNEA and ABA not implemented yet.")
+        else:
+            raise ValueError(f"Dynamics function {confun_type} not recognized.")
+        
+
     def _get_info(self):
         """
         Get information about the dynamics constraint.
@@ -52,7 +113,7 @@ class Constraint(BaseConstraint):
         :param states_list: Dictionary containing the current states.
         :return: The dynamics constraint function.
         """
-        return jax.jit(partial(confun, self.model.run["kane"], settings=self.settings, info=self._get_info(), model=self.model))
+        return jax.jit(partial(confun, self.model.run[self.con_string], settings=self.settings, info=self._get_info(), model=self.model))
 
     def get_jacobian(self):
         """
@@ -61,7 +122,7 @@ class Constraint(BaseConstraint):
         :param states_list: Dictionary containing the current states.
         :return: The Jacobian of the dynamics constraint function.
         """
-        return jax.jit(partial(jacobian, self.model.run["kane_jacobian"], settings=self.settings, info=self._get_info(), model=self.model))
+        return jax.jit(partial(jacobian, self.model.run[f"{self.con_string}_jacobian"], settings=self.settings, info=self._get_info(), model=self.model))
 
     def get_n_constraints(self):
         """

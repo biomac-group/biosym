@@ -447,7 +447,7 @@ class Hill2d(BaseActuator):
             return ((F_see - F_ce - F_pee) / F_max).T.reshape(-1)  # shape (n_actuators,)
 
         c_fun = jax.jit(jax.vmap(jax.jacobian(c1, argnums=0), in_axes=(0, None), out_axes=0))
-        jac = c_fun(states_dict[:nnodes], constants)[0]
+        jac = c_fun(states_dict[:nnodes], constants)
 
 
         ncons = self.get_n_constraints_per_node()

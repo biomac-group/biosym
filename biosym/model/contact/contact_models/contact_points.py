@@ -271,12 +271,12 @@ class ContactPoints(BaseContact):
 
         # Bincount is only 1D, therefore vmap it to 2D (note: vmap the whole model --> gpu version)
         def _bincount(arr, weights):
-            return jnp.bincount(arr.astype(jnp.int_), weights=weights, length=int(length))
+            return jnp.bincount(arr.astype(jnp.int_), weights=weights, length=length)
 
-        foot_forces = jax.vmap(_bincount)(self.body_mapping, cp_forces.T).T
+        foot_forces = jax.vmap(_bincount)(self.body_mapping.astype(jnp.int_), cp_forces.T).T
 
         moment_cps = jnp.cross(moment_arms, cp_forces)
-        foot_moments = jax.vmap(_bincount)(self.body_mapping, moment_cps.T).T
+        foot_moments = jax.vmap(_bincount)(self.body_mapping.astype(jnp.int_), moment_cps.T).T
         return foot_forces, foot_moments
 
     def reset(self) -> None:

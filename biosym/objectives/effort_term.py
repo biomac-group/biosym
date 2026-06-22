@@ -65,7 +65,6 @@ def objfun(states_list, globals_dict, settings, info):
     :param info: Information about the objective function.
     :return: The evaluated value of the objective function.
     """
-    print("effort",states_list)
     if globals_dict is not None:
         if info["speedweighting"]:
             # Apply speed weighting to the forces
