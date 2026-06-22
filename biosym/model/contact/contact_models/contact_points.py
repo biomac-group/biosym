@@ -232,7 +232,7 @@ class ContactPoints(BaseContact):
             Contact forces for all contact points in the global frame.
         """
         model_constants = jnp.concatenate([constants.g, constants.mass, constants.inertia, constants.com, constants.offset]) if hasattr(constants, "g") else constants.model
-        cp_forces = self.force_vector(*_get_flat_states(states, model), *model_constants)
+        cp_forces = self.force_vector(*states.filter('model').flatten(), *model_constants)
         return cp_forces
 
     def get_cp_moment_arms(self, states, constants, model, return_positions=False):
@@ -240,7 +240,7 @@ class ContactPoints(BaseContact):
         body_idx = np.array([list(model.rigid_bodies.keys()).index(p) for p in self.bodies])
         pos_bodies = model.run["FK"](states, constants)[body_idx]
         model_constants = jnp.concatenate([constants.g, constants.mass, constants.inertia, constants.com, constants.offset]) if hasattr(constants, "g") else constants.model
-        pos_cps = self.pos_vector(*_get_flat_states(states, model), *model_constants)
+        pos_cps = self.pos_vector(*states.filter('model').flatten(), *model_constants)
         if return_positions:
             return pos_cps, pos_bodies, body_idx
         return pos_cps - pos_bodies
@@ -271,7 +271,7 @@ class ContactPoints(BaseContact):
 
         # Bincount is only 1D, therefore vmap it to 2D (note: vmap the whole model --> gpu version)
         def _bincount(arr, weights):
-            return jnp.bincount(arr, weights=weights, length=length)
+            return jnp.bincount(arr, weights=weights, length=int(length))
 
         foot_forces = jax.vmap(_bincount)(self.body_mapping, cp_forces.T).T
 
