@@ -7,17 +7,14 @@ import jax.numpy as jnp
 from biosym.constraints.base_constraint import BaseConstraint
 
 @partial(jax.custom_jvp, nondiff_argnums=(2,))
-def confun_mm_tau(states, constants,  model):
+def confun_mm_tau(states, constants, model):
     mm = model.run['mass_matrix'](states, constants)
     forcing = model.run['forcing'](states, constants)
-    tau_des = jnp.linalg.solve(mm, forcing)
+    qdd = states.qdd
 
-    tau_model = states.tau
-    tau_indices = model.tau.combined_idx
-
-    tau_model_full = jnp.zeros_like(tau_des)
-    tau_model_full = tau_model_full.at[..., tau_indices].set(tau_model.squeeze(), unique_indices=True)
-    residuals = tau_des - tau_model_full
+    # R = M(q)*qdd - forcing
+    inertial_force = jnp.matmul(mm, qdd[..., None])[..., 0]
+    residuals = inertial_force - forcing
     return residuals
 
 @confun_mm_tau.defjvp
@@ -27,14 +24,11 @@ def jvpfun(model, primals, tangents):
 
     mm = model.run['mass_matrix'](states, constants)
     forcing = model.run['forcing'](states, constants)
-    tau_des = jnp.linalg.solve(mm, forcing)
+    qdd = states.qdd
+    dqdd = dstates.qdd
 
-    tau_model = states.tau
-    tau_indices = model.tau.combined_idx
-
-    tau_model_full = jnp.zeros_like(tau_des)
-    tau_model_full = tau_model_full.at[..., tau_indices].set(tau_model.squeeze(), unique_indices=True)
-    residuals = tau_des - tau_model_full
+    inertial_force = jnp.matmul(mm, qdd[..., None])[..., 0]
+    residuals = inertial_force - forcing
 
     # Compute tangents using JVP of mass_matrix and forcing
     def mm_and_forcing(s, c):
@@ -42,14 +36,9 @@ def jvpfun(model, primals, tangents):
 
     _, (dmm, dforcing) = jax.jvp(mm_and_forcing, (states, constants), (dstates, dconstants))
 
-    dmm_tau = jnp.matmul(dmm, tau_des[..., None])[..., 0]
-    rhs = dforcing - dmm_tau
-    dtau_des = jnp.linalg.solve(mm, rhs)
-
-    dtau_model = dstates.tau
-    dtau_model_full = jnp.zeros_like(dtau_des)
-    dtau_model_full = dtau_model_full.at[..., tau_indices].set(dtau_model.squeeze(), unique_indices=True)
-    dresiduals = dtau_des - dtau_model_full
+    dmm_qdd = jnp.matmul(dmm, qdd[..., None])[..., 0]
+    mm_dqdd = jnp.matmul(mm, dqdd[..., None])[..., 0]
+    dresiduals = dmm_qdd + mm_dqdd - dforcing
 
     return residuals, dresiduals
 
@@ -76,7 +65,8 @@ class Constraint(BaseConstraint):
         self.nvar = settings.get("nvar")
         self.ncons_model = len(self.model.fr)
 
-        confun_type = args.get('dynamics_function')
+        args = args or {}
+        confun_type = args.get('dynamics_function', "newton-euler")
 
         if confun_type == "newton-euler":
             confun_mm = partial(confun_mm_tau, model=self.model)
