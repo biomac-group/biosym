@@ -62,7 +62,7 @@ class General(BaseActuator):
     biosym.model.actuators.actuator_models.hill2d.Hill2D : Hill-type muscle model
     """
 
-    def __init__(self, xml_root):
+    def __init__(self, xml_root) -> None:
         super().__init__(xml_root)
         actuators = {}
         for actuator in xml_root.findall("general"):
@@ -77,7 +77,7 @@ class General(BaseActuator):
                     actuators[actuator_name][key] = value
         self.actuators = actuators
         self.n_actuators = len(actuators)
-        self.states = [f"torque_{i}" for i in self.actuators.keys()]
+        self.states = [f"torque_{i}" for i in self.actuators]
         self.bounds = {
             "states": {
                 "min": jnp.zeros(self.n_actuators) * -1e4,
@@ -137,7 +137,7 @@ class General(BaseActuator):
         """
         return self.get_n_actuators()
 
-    def get_n_constants(self):
+    def get_n_constants(self) -> int:
         """
         Get the number of constant parameters required by the actuator model.
 
@@ -149,7 +149,7 @@ class General(BaseActuator):
         """
         return 0
 
-    def is_torque_actuator(self):
+    def is_torque_actuator(self) -> bool:
         """
         Check if this is a torque-based actuator model.
 
@@ -160,7 +160,7 @@ class General(BaseActuator):
         """
         return True
 
-    def reset(self):
+    def reset(self) -> None:
         """
         Reset the actuator model to its initial state.
 
@@ -200,10 +200,8 @@ class General(BaseActuator):
         proper mapping between actuator outputs and joint inputs.
         """
         all_joints = jnp.zeros((len(states), model.coordinates["n"]))
-        all_joints = all_joints.at[:, jnp.array(model.forces["active_idx"])].set(
-            states.actuator_model
-        )
-        return all_joints if (states.model.ndim > 1) else all_joints[0]
+        all_joints = all_joints.at[:, jnp.array(model.forces["active_idx"])].set(states.actuator_model)
+        return all_joints if (states.q.ndim > 1) else all_joints[0]
 
 
 class GeneralMujoco(General):
@@ -231,7 +229,7 @@ class GeneralMujoco(General):
     General : Base general actuator implementation
     """
 
-    def __init__(self, actuator_list):
+    def __init__(self, actuator_list) -> None:
         self.actuators = {}
         for actuator in actuator_list:
             actuator_name = actuator.get("name", "actuator has no name")
@@ -241,10 +239,10 @@ class GeneralMujoco(General):
             for key, value in actuator.attrib.items():
                 self.actuators[actuator_name][key] = value
         self.n_actuators = len(actuator_list)
-        self.states = [f"torque_{i}" for i in self.actuators.keys()]
+        self.states = [f"torque_{i}" for i in self.actuators]
         self.bounds = {
             "states": {
-                "min": jnp.zeros(self.n_actuators)*-1e4,
-                "max": jnp.ones(self.n_actuators)*1e4,
+                "min": jnp.zeros(self.n_actuators) * -1e4,
+                "max": jnp.ones(self.n_actuators) * 1e4,
             }
         }

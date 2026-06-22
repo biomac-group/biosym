@@ -76,7 +76,5 @@ def get(file_path, body_weight=None, **kwargs):
         # This might not work for every model
         return general.GeneralMujoco(root.findall("motor"))
     if root.get("type") == "hill_2d":
-        return hill2d.Hill2d(
-            kwargs.get("joint_names"), root.findall("muscle"), root.find("default")
-        )
+        return hill2d.Hill2d(kwargs.get("joint_names"), root.findall("muscle"), root.find("default"))
     raise ValueError(f"Unknown actuator model type: {root.get('type')}")

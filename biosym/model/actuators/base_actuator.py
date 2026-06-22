@@ -37,7 +37,7 @@ class BaseActuator(ABC):
     biosym.model.actuators.actuator_models.passive_torques.PassiveTorques : Passive torques
     """
 
-    def __init__(self, xml_root):
+    def __init__(self, xml_root) -> None:
         self.xml_root = xml_root
         self.actuator = None
 
@@ -74,7 +74,7 @@ class BaseActuator(ABC):
         """
 
     @abstractmethod
-    def get_n_states(self):
+    def get_n_states(self) -> int:
         """
         Get the number of states associated with this actuator model.
 
@@ -108,7 +108,7 @@ class BaseActuator(ABC):
         - Passive elements may reset stored energy states
         """
 
-    def process_eom(self, model):
+    def process_eom(self, model) -> None:
         """
         Process the equations of motion for the actuator model.
 
@@ -132,7 +132,7 @@ class BaseActuator(ABC):
         - Internal state evolution equations
         """
 
-    def get_n_constraints(self, *args, **kwargs):
+    def get_n_constraints(self, *args, **kwargs) -> int:
         """
         Get the number of constraints defined by this actuator model.
 
@@ -149,7 +149,7 @@ class BaseActuator(ABC):
         """
         return 0
 
-    def get_nnz(self):
+    def get_nnz(self) -> int:
         """
         Get the number of non-zero entries in the Jacobian of the actuator model.
 

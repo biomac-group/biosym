@@ -14,7 +14,7 @@ The module includes:
 Contact models handle:
 - Ground reaction force calculation
 - Contact detection and penetration
-- Friction and normal force computation  
+- Friction and normal force computation
 - Contact state management during simulation
 
 Examples

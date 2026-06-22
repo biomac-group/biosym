@@ -10,12 +10,12 @@ from biosym.model.contact.base_contact import BaseContact
 class ContactPoints(BaseContact):
     """
     Point-based contact model for ground reaction force calculation.
-    
+
     This class implements a contact model based on discrete contact points
     attached to specified bodies. Each contact point can generate normal
     and friction forces when in contact with the ground, using a spring-damper
     model with Coulomb friction.
-    
+
     Parameters
     ----------
     xml_root : xml.etree.ElementTree.Element
@@ -24,7 +24,7 @@ class ContactPoints(BaseContact):
     body_weight : float, default=1
         Body weight in arbitrary units for scaling contact parameters.
         Contact stiffness and damping are scaled by body_weight * 9.81.
-        
+
     Attributes
     ----------
     cps : dict
@@ -35,7 +35,7 @@ class ContactPoints(BaseContact):
         Array mapping contact points to their parent bodies.
     k : list of float
         Contact stiffness values for each contact point.
-    b : list of float  
+    b : list of float
         Contact damping values for each contact point.
     mu : list of float
         Friction coefficients for each contact point.
@@ -43,7 +43,7 @@ class ContactPoints(BaseContact):
         Transition region sizes for position (penetration depth).
     v_cx_0 : list of float
         Transition region sizes for velocity (sliding).
-        
+
     Notes
     -----
     The contact model uses:
@@ -51,17 +51,17 @@ class ContactPoints(BaseContact):
     - Coulomb friction with smooth transitions
     - Penetration-based contact detection
     - Body-weight scaling for force parameters
-    
+
     Contact forces are calculated as:
     - Normal force: F_n = k * penetration * (1 + b * penetration_velocity)
     - Friction force: F_f = mu * F_n * tanh(velocity / v_cx_0)
-    
+
     XML Format
     ----------
     Expected XML structure:
-    
+
     .. code-block:: xml
-    
+
         <contact type="contact_points">
             <default>
                 <contact_point k="1000" b="10" mu="0.8"/>
@@ -69,40 +69,40 @@ class ContactPoints(BaseContact):
             <contact_point name="heel_r" body="foot_r" pos="0 0 -0.05"/>
             <contact_point name="toe_r" body="foot_r" pos="0.15 0 -0.05"/>
         </contact>
-        
+
     Examples
     --------
     Create contact model from XML:
-    
+
     >>> import xml.etree.ElementTree as ET
     >>> root = ET.parse("contact.xml").getroot()
     >>> contact = ContactPoints(root, body_weight=70.0)
-    
+
     Get contact information:
-    
+
     >>> bodies = contact.get_bodies()
     >>> n_points = len(contact.cps)
     >>> forces = contact.forward(states, constants, model)
-    
+
     See Also
     --------
     biosym.model.contact.base_contact.BaseContact : Base contact interface
     """
-    
-    def __init__(self, xml_root, body_weight=1):
+
+    def __init__(self, xml_root, body_weight=1) -> None:
         """
         Initialize the ContactPoints model from XML definition.
-        
+
         Parses XML contact point definitions and sets up contact parameters
         including positions, stiffness, damping, and friction coefficients.
-        
+
         Parameters
         ----------
         xml_root : xml.etree.ElementTree.Element
             Root element containing contact point definitions.
         body_weight : float, default=1
             Body weight for scaling contact parameters.
-            
+
         Raises
         ------
         ValueError
@@ -138,10 +138,8 @@ class ContactPoints(BaseContact):
         self.p_cy_0 = [1e-3] * len(self.k)  # Transition region size for position
         self.v_cx_0 = [1e-1] * len(self.k)  # Transition region size for velocity
 
-    def process_eom(self, model, **kwargs):
-        """
-        Build the eom for the contact model with symbolic variables.
-        """
+    def process_eom(self, model, **kwargs) -> None:
+        """Build the eom for the contact model with symbolic variables."""
         self.body_weight = kwargs.get("body_weight", 1)
         self.k = [k * self.body_weight * 9.81 for k in self.k]
         pos_vector, vel_vector = [], []
@@ -184,20 +182,20 @@ class ContactPoints(BaseContact):
             d = 0.5 * ((pos_vector[-1][1] ** 2 + self.p_cy_0[i] ** 2) ** 0.5 - pos_vector[-1][1])
             F_cy = (
                 self.k[i] * d * (1 - self.b[i] * vel_vector[-1][1]) - pos_vector[-1][1]
-            )  # small value to "point towards ground": -1 N/m 
+            )  # small value to "point towards ground": -1 N/m
             F_cx = -self.mu[i] * F_cy * vel_vector[-1][0] / (vel_vector[-1][0] ** 2 + self.v_cx_0[i] ** 2) ** 0.5
             F_cz = -self.mu[i] * F_cy * vel_vector[-1][2] / (vel_vector[-1][2] ** 2 + self.v_cx_0[i] ** 2) ** 0.5
             # Get F and M in the global frame
             force_vector.append([F_cx, F_cy, F_cz])
         force_vector = Matrix(force_vector)
-        self.force_vector = lambdify(model._v, force_vector, modules="jax", cse=True, docstring_limit=2)
+        self.force_vector = lambdify(model._symbols, force_vector, modules="jax", cse=True, docstring_limit=2)
         pos_vector = Matrix(pos_vector)
-        self.pos_vector = lambdify(model._v, pos_vector, modules="jax", cse=True, docstring_limit=2)
+        self.pos_vector = lambdify(model._symbols, pos_vector, modules="jax", cse=True, docstring_limit=2)
 
-    def get_n_states(self):
+    def get_n_states(self) -> int:
         return 0
 
-    def get_n_constants(self):
+    def get_n_constants(self) -> int:
         # All constants are hardcoded in the process_eom sympy functions - can be changed in the future
         return 0
 
@@ -208,15 +206,11 @@ class ContactPoints(BaseContact):
         return []
 
     def get_bodies(self):
-        """
-        Returns the list of bodies that can be in contact.
-        """
+        """Returns the list of bodies that can be in contact."""
         return np.unique(self.bodies)
 
     def get_n_bodies(self):
-        """
-        Returns the number of bodies that can be in contact.
-        """
+        """Returns the number of bodies that can be in contact."""
         return len(np.unique(self.bodies))
 
     def get_cp_forces(self, states, constants, model):
@@ -237,16 +231,16 @@ class ContactPoints(BaseContact):
         jax.Array
             Contact forces for all contact points in the global frame.
         """
-        cp_forces = self.force_vector(*states.model, *constants.model)
+        model_constants = jnp.concatenate([constants.g, constants.mass, constants.inertia, constants.com, constants.offset]) if hasattr(constants, "g") else constants.model
+        cp_forces = self.force_vector(*_get_flat_states(states, model), *model_constants)
         return cp_forces
 
     def get_cp_moment_arms(self, states, constants, model, return_positions=False):
-        """
-        Returns the moment arms for every contact point wrt to the body origin.
-        """
+        """Returns the moment arms for every contact point wrt to the body origin."""
         body_idx = np.array([list(model.rigid_bodies.keys()).index(p) for p in self.bodies])
         pos_bodies = model.run["FK"](states, constants)[body_idx]
-        pos_cps = self.pos_vector(*states.model, *constants.model)
+        model_constants = jnp.concatenate([constants.g, constants.mass, constants.inertia, constants.com, constants.offset]) if hasattr(constants, "g") else constants.model
+        pos_cps = self.pos_vector(*_get_flat_states(states, model), *model_constants)
         if return_positions:
             return pos_cps, pos_bodies, body_idx
         return pos_cps - pos_bodies
@@ -285,7 +279,7 @@ class ContactPoints(BaseContact):
         foot_moments = jax.vmap(_bincount)(self.body_mapping, moment_cps.T).T
         return foot_forces, foot_moments
 
-    def reset(self):
+    def reset(self) -> None:
         # No hidden states to reset
         pass
 
@@ -341,7 +335,7 @@ class ContactPoints(BaseContact):
                     cp_forces.append(self.get_cp_forces(states[i].states, states[i].constants, model))
                     # f = self.forward(states[i]['states'], states[i]['constants'], model)
                     # print("Forces: ", f[0], "moments:" ,f[1])
-            elif len(states.states.model.shape) == 1:
+            elif states.states.q.ndim == 1:
                 pcp, pbody, body_idx = self.get_cp_moment_arms(
                     states.states, states.constants, model, return_positions=True
                 )
@@ -550,3 +544,4 @@ class ContactPoints(BaseContact):
 
         else:
             raise ValueError("Invalid mode. Must be 'init' or 'update'.")
+        return None
