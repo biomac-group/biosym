@@ -22,9 +22,10 @@ os.makedirs((_cachedir), exist_ok=True)
 
 import cyipopt
 import jax
-jax.config.update('jax_enable_x64', False)
+jax.config.update('jax_enable_x64', True)
 import jax.numpy as jnp
 import yaml
+from collections import namedtuple
 
 from biosym.constraints import *
 from biosym.ocp import confun, objfun
@@ -348,6 +349,7 @@ class Collocation:
             with open(out_file, "wb") as f:
                 cloudpickle.dump(output, f)
         # Todo: Cleanup the result a bit nicer
-        return self.x, info
-
+        states_, globals_ = self.x
+        Solution = namedtuple("Solution", ["states", "globals", "info"])
+        return Solution(states_, globals_, info)
 

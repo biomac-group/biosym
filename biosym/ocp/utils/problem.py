@@ -262,31 +262,31 @@ class CyIpoptProblem:
         from jax.flatten_util import ravel_pytree
         from dataclasses import fields
 
-        # Save and set x64
-        original_x64 = jax.config.read("jax_enable_x64")
-        jax.config.update("jax_enable_x64", True)
+        ## Save and set x64
+        #original_x64 = jax.config.read("jax_enable_x64")
+        #jax.config.update("jax_enable_x64", True)
 
         if x is None:
             x = np.random.uniform(self.lb, self.ub)
 
-        x_64 = np.array(x, dtype=np.float64)
+        x_64 = np.array(x)
         n_vars = len(x_64)
 
         # Evaluate analytical value
-        grad_jax = np.array(self.gradient(x_64), dtype=np.float64)
+        grad_jax = np.array(self.gradient(x_64))
         
-        jac_jax_0 = np.array(self.jacobian(x_64), dtype=np.float64)
+        jac_jax_0 = np.array(self.jacobian(x_64))
         jacstruct = self.jacobianstructure()
         n_cons = self.cons.ncon
         
-        jac_jax = np.zeros((n_vars, n_cons), dtype=np.float64)
+        jac_jax = np.zeros((n_vars, n_cons))
         # jacstruct[1] corresponds to cols (variables), jacstruct[0] to rows (constraints)
         jac_jax[jacstruct[1], jacstruct[0]] = jac_jax_0
 
         # Numerical evaluations using central differences
 
-        grad_num = np.zeros_like(grad_jax, dtype=np.float64)
-        jac_num = np.zeros_like(jac_jax, dtype=np.float64)
+        grad_num = np.zeros_like(grad_jax)
+        jac_num = np.zeros_like(jac_jax)
         
         x0 = x_64.copy()
         start_time = time.time()
@@ -296,13 +296,13 @@ class CyIpoptProblem:
             x_perturbed = x0.copy()
             x_perturbed[i] += eps
             obj_plus = float(self.objective(x_perturbed))
-            con_plus = np.array(self.constraints(x_perturbed), dtype=np.float64)
+            con_plus = np.array(self.constraints(x_perturbed))
 
             # Negative perturbation
             x_perturbed = x0.copy()
             x_perturbed[i] -= eps
             obj_minus = float(self.objective(x_perturbed))
-            con_minus = np.array(self.constraints(x_perturbed), dtype=np.float64)
+            con_minus = np.array(self.constraints(x_perturbed))
 
             grad_num[i] = (obj_plus - obj_minus) / (2.0 * eps)
             jac_num[i] = (con_plus - con_minus) / (2.0 * eps)
@@ -426,7 +426,5 @@ class CyIpoptProblem:
             } if not jac_ok else None,
         }
 
-        # Restore original x64 config
-        jax.config.update("jax_enable_x64", original_x64)
 
         return res
