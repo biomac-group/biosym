@@ -90,6 +90,10 @@ class Constraints:
             partial(evaluate_jacobian, self.jacobian_functions, self.weights, self.nnz, self.c_start, self.nnz_start)
         )
         self.jacobian.__name__ = "evaluate_jacobian"
+        self.jacobian_data = jax.jit(
+            partial(evaluate_jacobian_data, self.jacobian_functions, self.weights, self.nnz, self.nnz_start)
+        )
+        self.jacobian_data.__name__ = "evaluate_jacobian_data"
 
     def add_constraint(self, name, weight, args=None):
         """
@@ -253,3 +257,17 @@ def evaluate_jacobian(jacobian_functions, weights, nnz, c_start, nnz_start, stat
         cols = cols.at[nnz_start[i] : nnz_start[i + 1]].set(c)
         data = data.at[nnz_start[i] : nnz_start[i + 1]].set(d * weights[i])
     return rows, cols, data
+
+
+def evaluate_jacobian_data(jacobian_functions, weights, nnz, nnz_start, states_list, globals_dict=None):
+    """
+    Evaluate only the values (data) of the constraint Jacobian.
+    
+    This function avoids constructing and returning the static row/column coordinate
+    indices, allowing JAX/XLA to optimize away coordinate computation via dead-code elimination.
+    """
+    data = jnp.empty((nnz,), dtype=float)
+    for i, jac in enumerate(jacobian_functions):
+        _, _, d = jac(states_list, globals_dict)
+        data = data.at[nnz_start[i] : nnz_start[i + 1]].set(d * weights[i])
+    return data

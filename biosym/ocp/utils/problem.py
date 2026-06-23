@@ -89,6 +89,21 @@ class CyIpoptProblem:
         self._current_x = None
         # Iteration callback (will be set by enable_logging)
         self._iteration_callback = None
+        # Caching de-vectorized states to avoid redundant x_to_states_dict calls
+        self._cached_x = None
+        self._cached_states = None
+        self._cached_globals = None
+
+    def _get_states(self, x):
+        """Helper to retrieve structured states, utilizing a fast cache if x is identical."""
+        if self._cached_x is not None and (x is self._cached_x or np.array_equal(x, self._cached_x)):
+            return self._cached_states, self._cached_globals
+        
+        states, globals_ = x_to_states_dict(x, self.template, self.globals_)
+        self._cached_x = x
+        self._cached_states = states
+        self._cached_globals = globals_
+        return states, globals_
     
     def intermediate(self, alg_mod, iter_count, obj_value, inf_pr, inf_du, mu,
                     d_norm, regularization_size, alpha_du, alpha_pr, ls_trials):
@@ -121,8 +136,8 @@ class CyIpoptProblem:
         """
         # Store current x for callback access
         self._current_x = x
-        x, globals_ = x_to_states_dict(x, self.template, self.globals_)
-        return self.objs.objfun(x, globals_)
+        states, globals_ = self._get_states(x)
+        return self.objs.objfun(states, globals_)
 
     def gradient(self, x):
         """
@@ -138,8 +153,8 @@ class CyIpoptProblem:
         jnp.ndarray
             Gradient vector with respect to optimization variables.
         """
-        x, globals_ = x_to_states_dict(x, self.template, self.globals_)
-        return states_dict_to_x(*self.objs.gradfun(x, globals_))
+        states, globals_ = self._get_states(x)
+        return states_dict_to_x(*self.objs.gradfun(states, globals_))
 
     def constraints(self, x):
         """
@@ -155,8 +170,8 @@ class CyIpoptProblem:
         jnp.ndarray
             Constraint violation vector (should be zero at optimum).
         """
-        x, globals_ = x_to_states_dict(x, self.template, self.globals_)
-        return self.cons.confun(x, globals_)
+        states, globals_ = self._get_states(x)
+        return self.cons.confun(states, globals_)
 
     def jacobian(self, x):
         """
@@ -172,9 +187,8 @@ class CyIpoptProblem:
         jnp.ndarray
             Sparse Jacobian matrix values at current point.
         """
-        x, globals_ = x_to_states_dict(x, self.template, self.globals_)
-        _, _, jac = self.cons.jacobian(x, globals_)
-        return jac[self.jac_indices]
+        states, globals_ = self._get_states(x)
+        return self._compiled_jacobian(states, globals_)
 
     def jacobianstructure(self):
         """
@@ -230,6 +244,13 @@ class CyIpoptProblem:
         self.jac_indices = np.nonzero(j0)
         self._init_jac = True
         self.jacstruct = rows[self.jac_indices[0]], cols[self.jac_indices[0]]
+        
+        # Compile a JAX JIT wrapper function that slices the Jacobian array on the backend
+        static_indices = jnp.array(self.jac_indices[0])
+        self._compiled_jacobian = jax.jit(
+            lambda states, globals_: self.cons.jacobian_data(states, globals_)[static_indices]
+        )
+        
         return self.jacstruct
 
     def check_derivatives(self, x: jnp.ndarray = None, eps=1e-5, rtol=1e-4, atol=1e-4):
