@@ -243,7 +243,7 @@ class Collocation:
         >>> df = problem.iteration_logger.get_dataframe()
         >>> print(df[['iteration', 'total_objective', 'track_markers']])
         """
-        from biosym.ocp.iteration_logger import IterationLogger
+        from biosym.ocp.logging.iteration_logger import IterationLogger
         
         # Create the iteration logger
         self.iteration_logger = IterationLogger(
@@ -262,7 +262,7 @@ class Collocation:
             import subprocess
             import threading
             import time
-            from biosym.ocp.dash_logger import create_dashboard_app
+            from biosym.ocp.logging.dash_logger import create_dashboard_app
 
             # Helper to check if port is in use
             def is_port_in_use(port: int) -> bool:
