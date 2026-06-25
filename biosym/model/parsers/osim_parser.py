@@ -274,9 +274,7 @@ class OsimParser(BaseParser):
             print(f"Detected {len(self.data['contact_geometries'])} contact geometries.")
             print(f"Detected {len(self.data['forces'])} forces.")
 
-    # ---------------------------------------------------------
-    # Getter Methods (Required by BaseParser contract)
-    # ---------------------------------------------------------
+    # Utility function for converting parsed Bodies
     def convert_body_frame(self, body):
         # Convert a body's origin to the joint origin to which it is a child
         
@@ -287,7 +285,7 @@ class OsimParser(BaseParser):
                 joint = j
                 break
         
-        # If there is not parent_joint return as is
+        # If there is no parent_joint return as is
         if not joint:
             body["body_offset"] = [0.0, 0.0, 0.0]
             body["body_orientation"] = [0.0, 0.0, 0.0]
@@ -319,8 +317,61 @@ class OsimParser(BaseParser):
         body["body_offset"] = joint.get("parent_offset", [0.0, 0.0, 0.0])
         body["body_orientation"] = joint.get("parent_orientation", [0.0, 0.0, 0.0])
 
-        return body
+        # Transform Outgoing Joints
+        # Since we moved this body's origin, any joint that considers this body as its "parent"
+        # must have its parent_offset and parent_orientation updated
+        for j_out in self.data["joints"]:
+            if j_out["parent"] == body["name"]:
+                # Get the old offset and orientation relative to the old body origin
+                parent_offset_old = np.array(j_out.get("parent_offset", [0.0, 0.0, 0.0]), dtype=float)
+                parent_orientation_old = np.array(j_out.get("parent_orientation", [0.0, 0.0, 0.0]))
 
+                # Calculate the new offset
+                parent_offset_new = (rot_joint_to_body.T) @ (parent_offset_old - child_offset)
+                parent_offset_new[np.abs(parent_offset_new) < 1e-7] = 0.0
+
+                # Calculate the new orientation
+                R_old = uf.rotation_matrix_xyz(parent_orientation_old)
+                R_new = (rot_joint_to_body.T) @ R_old
+                R_new[np.abs(R_new) < 1e-7] = 0.0
+                # Convert back to XYZ
+                parent_orientation_new = uf.rot_mat_to_xyz(R_new)
+                parent_orientation_new[np.abs(parent_orientation_new) < 1e-7] = 0.0
+
+                # Overwrite the outgoing joint's parent data
+                j_out["parent_offset"] = parent_offset_new.tolist()
+                j_out["parent_orientation"] = parent_orientation_new.tolist()
+
+        # Transform Contact Geometries
+        # Since we moved this body's origin, any contact geometry attached to this body must have its 
+        # location and orientation updated
+        for cg in self.data["contact_geometries"]:
+            if cg.get("parent_body") == body["name"]:
+                # Get the location and orientation relative to the old body origin
+                loc_old = np.array(cg.get("location", [0.0, 0.0, 0.0]), dtype=float)
+                orient_old = np.array(cg.get("orientation", [0.0, 0.0, 0.0]))
+
+                # Calculate the new location
+                loc_new = (rot_joint_to_body.T) @ (loc_old - child_offset)
+                loc_new[np.abs(loc_new) < 1e-7] = 0.0
+
+                # Calculate the new orientation
+                R_cg_old = uf.rotation_matrix_xyz(orient_old)
+                R_cg_new = (rot_joint_to_body.T) @ R_cg_old
+                R_cg_new[np.abs(R_cg_new) < 1e-7] = 0.0
+                # Convert back to XYZ
+                orient_new = uf.rot_mat_to_xyz(R_cg_new)
+                orient_new[np.abs(orient_new) < 1e-7] = 0.0
+
+                # Overwrite the contact geometry's data
+                cg["location"] = loc_new.tolist()
+                cg["orientation"] = orient_new.tolist()
+
+        return body
+    
+    # ---------------------------------------------------------
+    # Getter Methods (Required by BaseParser contract)
+    # ---------------------------------------------------------
     def get_n_bodies(self): # Returns the number of bodies in the model
         return len(self.data["bodies"])
     
@@ -342,10 +393,12 @@ class OsimParser(BaseParser):
     def get_gravity(self): # Returns the gravity vector in the model 
         return self.gravity
     
-    def get_n_external_forces(self): # Returns the number of external forces in the model
-        return len(self.data["contact_geometries"])
-        
-    def get_external_forces_bodies(self): # Returns the list of bodies with external forces in the model
+    def get_n_external_forces(self):
+        return len(self.get_external_forces_bodies()) * 3
+    
+    def get_external_forces_bodies(self):
+        if getattr(self, "external_forces_bodies", None) is not None:
+            return self.external_forces_bodies
         return list(set(cg["parent_body"] for cg in self.data["contact_geometries"] if cg.get("parent_body")))
     
     def get_n_internal_forces(self): # Returns the number of internal forces in the model (i.e. actuators)

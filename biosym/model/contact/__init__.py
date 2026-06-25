@@ -7,28 +7,20 @@ Contact models are essential for simulating locomotion and other activities
 where the model interacts with external surfaces.
 
 The module includes:
-- Base contact classes defining the common interface
-- Parsers for loading contact definitions from XML files
-- Specific contact model implementations (contact points, ground reaction forces)
+- Base contact classes defining the common interface for contact force laws
+- Base geometry classes defining the common interface for contact geometry definitions 
+- Parsers for loading contact definitions from XML/YAML files and OSIM-parsed structures
 
 Contact models handle:
 - Ground reaction force calculation
-- Contact detection and penetration
 - Friction and normal force computation  
+
+Contact geometries handle:
 - Contact state management during simulation
+- Contact detection and penetration
 
-Examples
---------
-Load contact model from an XML file:
-
->>> import biosym.model.contact.contact_parser as parser
->>> contact = parser.get("path/to/contact.xml", body_weight=70.0)
-
-Access contact properties:
-
->>> n_bodies = contact.get_n_bodies()
->>> contact_states = contact.get_n_states()
->>> bodies = contact.get_bodies()
+NOTE: If new contact geometries or contact models (force laws) are implemented, 
+the contact_parser.py code needs to be adjusted, accordingly!
 """
 
-__all__ = ["base_contact", "contact_parser"]
+__all__ = ["base_contact", "base_geometry", "multi_contact", "contact_parser"]

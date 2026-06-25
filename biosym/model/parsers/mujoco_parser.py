@@ -202,18 +202,6 @@ class MujocoParser(BaseParser):
         """
         return self.gravity
 
-    def get_bodies(self):
-        """
-        Returns the list of bodies in the model.
-        """
-        return self.data["bodies"]
-
-    def get_joints(self):
-        """
-        Returns the list of joints in the model.
-        """
-        return self.data["joints"]
-
     def has_actuators(self):
         """
         Returns True if the model has actuators, False otherwise.

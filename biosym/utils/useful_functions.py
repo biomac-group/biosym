@@ -53,6 +53,21 @@ def rotation_matrix_xyz(angles, force_2d=False):
     # Body-fixed XYZ: R = Rz * Ry * Rx
     return Rz @ Ry @ Rx
 
+def rot_mat_to_xyz(R):
+    """Extracts intrinsic Body-Fixed X-Y-Z Euler angles from a rotation matrix.
+    Inverse of the rotation_matrix_xyz"""
+    ry = np.arcsin(np.clip(-R[2, 0], -1.0, 1.0))
+    
+    # Handle Gimbal Lock edge cases
+    if np.abs(np.abs(ry) - np.pi/2) < 1e-6:
+        rx = 0.0
+        rz = np.sign(ry) * np.arctan2(R[0, 1], R[0, 2])
+    else:
+        rx = np.arctan2(R[2, 1], R[2, 2])
+        rz = np.arctan2(R[1, 0], R[0, 0])
+        
+    return np.array([rx, ry, rz])
+
 def rotate_xy(arr, *, angle_deg=None, angle_rad=None, x_col=0, y_col=1, copy=True):
     """Rotate an array in the XY-plane around the origin.
 
