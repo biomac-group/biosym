@@ -88,7 +88,7 @@ class BiosymModel:
         if definition_file.endswith(".xml"):
             parser = mujoco_parser.MujocoParser(definition_file)
             if parser.has_actuators():
-                self.actuators = actuator_parser.get(parser.get_actuators())
+                self.actuators = actuator_parser.get_from_xml(parser.get_actuators())
                 parser.actuators = self.actuators.get_actuators()
             if parser.has_contact_model():
                 self.gc_model = contact_parser.get_from_xml(parser.get_contact_model())
@@ -123,7 +123,7 @@ class BiosymModel:
                         os.path.dirname(definition_file),
                         cfg["model"]["additional_parameters"]["actuators"]["file"],
                     )
-                    self.actuators = actuator_parser.get(actuator_model_file, joint_names=[j["name"] for j in parser.get_joints()])
+                    self.actuators = actuator_parser.get_from_xml(actuator_model_file, joint_names=[j["name"] for j in parser.get_joints()])
                     if cfg["model"]["additional_parameters"]["actuators"]["replace_existing"] == True:
                         parser.actuators = self.actuators.get_actuators()
                     else:
@@ -165,6 +165,13 @@ class BiosymModel:
     def _translate_osim_to_biosym(self, parser):
         """Translates raw OpenSim parser output into the Biosym architecture."""
 
+        _JOINT_BUILDERS = {
+            "PinJoint":    pin_joint.PinJoint,
+            "PlanarJoint": planar_joint.PlanarJoint,
+            "WeldJoint":   weld_joint.WeldJoint,
+            # NOTE: register any newly implemented joint type here.
+            }
+
         # Translate bodies
         # Shift body origins to joint center, since the body origins in OpenSim models are not placed at the joints
         for body in parser.get_bodies():
@@ -175,25 +182,22 @@ class BiosymModel:
         new_joints = []
         for joint in parser.get_joints():
             joint_type = joint.get("type")
-            # Route the joint data into appropriate BaseJoint subclass 
-            # NOTE: add any newly implemented joint type here!
-            if joint_type == "PinJoint":
-                joint_conv = pin_joint.PinJoint(joint)
-            elif joint_type == "PlanarJoint":
-                joint_conv = planar_joint.PlanarJoint(joint)
-            elif joint_type == "WeldJoint":
-                joint_conv = weld_joint.WeldJoint(joint)
-            else:
-                raise NotImplementedError(f"Joint '{joint.get('name')}' of type '{joint_type}' is not yet supported by the translator.")
-            # extend the new_joints list with the flattened joints
-            new_joints.extend(joint_conv.flat_joints)
-        # Replace parser's joint list with the flattened joints
+            builder = _JOINT_BUILDERS.get(joint_type)
+            if builder is None:
+                raise NotImplementedError(
+                    f"Joint '{joint.get('name')}' of type '{joint_type}' is not yet "
+                    f"supported by the translator. Register it in _JOINT_BUILDERS."
+                )
+            new_joints.extend(builder(joint).flat_joints)
         parser.data["joints"] = new_joints
 
         # Translate Internal Forces (Actuators, Muscles, etc.)
-        # Placeholder for future implementation
         if parser.get_n_internal_forces() > 0:
-            pass
+            self.actuators = actuator_parser.get_from_osim(
+                parser.data["forces"],
+                parser.data["joints"],
+                joint_names=[j["name"] for j in parser.get_joints()],
+            )
 
         # Translate External Forces (Contact Geometries + Forces)
         # Build the contact model from the parsed OSIM contact geometries and

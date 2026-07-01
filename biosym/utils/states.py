@@ -59,10 +59,10 @@ class States:
     - Supports vectorized operations across time steps
     - Essential for representing trajectories in optimal control problems
     """
-    model: field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
-    gc_model: field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
-    actuator_model: field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
-    h: field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
+    model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
+    gc_model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
+    actuator_model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
+    h: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
 
     def __str__(self):
         return f"States(model={self.model.shape}, gc_model={self.gc_model.shape}, actuator_model={self.actuator_model.shape}, h={self.h.shape if self.h is not None else 'None'})"
@@ -173,9 +173,9 @@ class Constants:
     - Used for model parameterization and sensitivity analysis
     - Can be optimization variables in parameter identification problems
     """
-    model: field(default_factory=lambda: jnp.zeros((0,)))
-    gc_model: field(default_factory=lambda: jnp.zeros((0,)))
-    actuator_model: field(default_factory=lambda: jnp.zeros((0,)))
+    model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))
+    gc_model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))
+    actuator_model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))
 
     def __str__(self):
         return f"Constants(model={self.model.shape}, gc_model={self.gc_model.shape}, actuator_model={self.actuator_model.shape})"
