@@ -128,7 +128,10 @@ def get_from_osim(forces, joints, joint_names=None):
     """Build actuator(s) from the OpenSim parsed force set. `forces` is
     parser.data["forces"]; `joints` is parser.data["joints"] (available for
     future readers that need joint context)."""
-    return _assemble(_parse_osim(forces), joint_names)
+    groups = _parse_osim(forces)
+    if not groups:
+        return None
+    return _assemble(groups, joint_names)
 
 
 # ----------------------------------------------------------------------

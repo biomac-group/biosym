@@ -401,8 +401,6 @@ class OsimParser(BaseParser):
             return self.external_forces_bodies
         return list(set(cg["parent_body"] for cg in self.data["contact_geometries"] if cg.get("parent_body")))
     
-    # NOTE: revise these two functions; find a way to filter out the contact forces (for number of forces)
-    # for the forces themselves, it is fine because the actuator_parser code will filter for contacts later!
     def get_n_internal_forces(self): # Returns the number of internal forces in the model (i.e. actuators)
         return len(self.data["forces"])
         

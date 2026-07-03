@@ -193,11 +193,16 @@ class BiosymModel:
 
         # Translate Internal Forces (Actuators, Muscles, etc.)
         if parser.get_n_internal_forces() > 0:
-            self.actuators = actuator_parser.get_from_osim(
+            actuators = actuator_parser.get_from_osim(
                 parser.data["forces"],
                 parser.data["joints"],
                 joint_names=[j["name"] for j in parser.get_joints()],
             )
+            if actuators is not None:
+                self.actuators = actuators
+            else:
+                print("No actuators found in the OpenSim force set "
+                      "(only contact or other non-actuator forces present).")
 
         # Translate External Forces (Contact Geometries + Forces)
         # Build the contact model from the parsed OSIM contact geometries and
@@ -271,8 +276,12 @@ class BiosymModel:
         self.passive_actuators = passive_torques.PassiveTorques(self.dicts["joints"])
         passive_actuated_joints = self.passive_actuators.get_actuated_joints()
 
-        active_forces_dict = self.actuators.get_actuated_joints()
-        active_actuated_joints = list(active_forces_dict)
+        # Gaurding against no-active-actuator case
+        if hasattr(self, "actuators"):
+            active_actuated_joints = list(self.actuators.get_actuated_joints())
+        else:
+            active_actuated_joints = []
+        
         actuated_joints = list(dict.fromkeys(active_actuated_joints + passive_actuated_joints))
         all_joints = [joint["name"] for joint in self.dicts["joints"]]
         self.forces = {
