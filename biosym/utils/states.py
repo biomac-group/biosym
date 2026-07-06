@@ -4,655 +4,556 @@ Core data structures for biomechanical modeling and optimization in biosym.
 This module defines the fundamental data structures used throughout the biosym
 framework for representing states, constants, and global parameters in
 biomechanical simulations and optimal control problems. These structures are
-built on JAX and Flax for efficient computation and automatic differentiation.
-
-The module provides hierarchical data organization:
-- States: Time-varying model variables (positions, velocities, activations)
-- Constants: Time-invariant model parameters (masses, lengths, gains)
-- Globals: Problem-level parameters (duration, speed)
-- StatesDict: Container combining states and constants for complete model representation
+built on JAX for efficient computation and automatic differentiation.
 
 Key Features:
 - JAX-compatible data structures for efficient computation
-- Automatic differentiation support through Flax dataclasses
+- Decoupled physical state variables (q, dq, ddq, tau, etc.) and constants (g, masses, etc.)
+- Automatic differentiation support through custom PyTree registration
 - Vectorized operations for batch processing
 - Indexing and slicing operations for trajectory analysis
-- Utility functions for stacking, reducing, and converting data structures
+- Backward-compatible property interface for legacy model slicing
 """
 
-from dataclasses import field, replace
-from typing import Literal
+import dataclasses
+from dataclasses import dataclass, field
+from typing import Literal, Any
 
 import jax
 import jax.numpy as jnp
-from flax.struct import dataclass
+import numpy as np
 
 
-@dataclass
+class FrozenDict(dict):
+    def __hash__(self):
+        return hash(frozenset(self.items()))
+    def __repr__(self):
+        return f"FrozenDict({super().__repr__()})"
+
+
+def _freeze(x):
+    if isinstance(x, dict):
+        return FrozenDict({k: _freeze(v) for k, v in x.items()})
+    if isinstance(x, list):
+        return tuple(_freeze(v) for v in x)
+    return x
+
+
+def _thaw(x):
+    if isinstance(x, FrozenDict):
+        return {k: _thaw(v) for k, v in x.items()}
+    if isinstance(x, tuple):
+        return [_thaw(v) for v in x]
+    return x
+
+
+def _resample_array(arr, N):
+    if arr is None:
+        return None
+    arr = jnp.asarray(arr)
+    # If ndim is 1, treat it as a single node (length 1)
+    if arr.ndim == 1:
+        return jnp.tile(arr, (N, 1))
+    
+    M = arr.shape[0]
+    if M <= 1:
+        return jnp.tile(arr, (N, 1)) if arr.ndim > 1 else jnp.tile(arr[jnp.newaxis, :], (N, 1))
+        
+    # Standard resampling using interpolation
+    xp = jnp.linspace(0.0, 1.0, M)
+    x = jnp.linspace(0.0, 1.0, N)
+    
+    # We interpolate each coordinate/dimension independently
+    resampled = jnp.stack([jnp.interp(x, xp, arr[:, i]) for i in range(arr.shape[1])], axis=1)
+    return resampled
+
+
+@jax.tree_util.register_pytree_node_class
+@dataclass(frozen=True, init=False)
 class States:
     """
     Time-varying state variables for biomechanical models.
     
     This dataclass represents the dynamic state of a biomechanical system
-    at one or more time points. It contains arrays for different model
-    components that change over time during simulation or optimization.
-    
-    Attributes
-    ----------
-    model : jnp.ndarray
-        Primary model state variables (positions, velocities, accelerations).
-        Shape typically (n_timesteps, n_model_dofs).
-    gc_model : jnp.ndarray
-        Ground contact model state variables (contact forces, positions).
-        Shape typically (n_timesteps, n_gc_dofs).
-    actuator_model : jnp.ndarray
-        Actuator/muscle model state variables (activations, forces).
-        Shape typically (n_timesteps, n_actuator_dofs).
-    h : jnp.ndarray
-        Time step sizes for adaptive time stepping in optimization.
-        Shape typically (n_timesteps,) or (n_timesteps, 1).
-        
-    Notes
-    -----
-    - Uses Flax dataclass for JAX compatibility and automatic differentiation
-    - All fields default to empty arrays if not provided
-    - Supports vectorized operations across time steps
-    - Essential for representing trajectories in optimal control problems
+    at one or more time points. Natively stores physical components in separate arrays,
+    reducing tracing overhead during symbolic JAX lambdification.
     """
-    model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
-    gc_model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
-    actuator_model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
-    h: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))  # Default to empty array if not provided
+    # Separate physical vectors (optional, defaulting to None)
+    q: jnp.ndarray | None = None
+    qd: jnp.ndarray | None = None
+    qdd: jnp.ndarray | None = None
+    tau: jnp.ndarray | None = None
+    ext_forces: jnp.ndarray | None = None
+    ext_torques: jnp.ndarray | None = None
+
+    gc_model: jnp.ndarray = None
+    actuator_model: jnp.ndarray = None
+
+    # Metadata and names
+    names: list | None = None
+    metadata: dict | None = None
+
+    def __init__(
+        self,
+        q: jnp.ndarray | None = None,
+        qd: jnp.ndarray | None = None,
+        qdd: jnp.ndarray | None = None,
+        tau: jnp.ndarray | None = None,
+        ext_forces: jnp.ndarray | None = None,
+        ext_torques: jnp.ndarray | None = None,
+        gc_model: jnp.ndarray | None = None,
+        actuator_model: jnp.ndarray | None = None,
+        names: list | None = None,
+        metadata: dict | None = None,
+        **kwargs,
+    ):
+        if "h" in kwargs:
+            # TODO(deprecation): Remove states.h support in 0.3.0
+            import warnings
+            warnings.warn(
+                "Passing 'h' to States is deprecated. 'h' has been moved to Globals.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        object.__setattr__(self, "q", q)
+        object.__setattr__(self, "qd", qd)
+        object.__setattr__(self, "qdd", qdd)
+        object.__setattr__(self, "tau", tau)
+        object.__setattr__(self, "ext_forces", ext_forces)
+        object.__setattr__(self, "ext_torques", ext_torques)
+        object.__setattr__(self, "gc_model", gc_model)
+        object.__setattr__(self, "actuator_model", actuator_model)
+        # Make a list of the names, for each set attribute
+        n = []
+        if q is not None: n.append('q')
+        if qd is not None: n.append('qd')
+        if qdd is not None: n.append('qdd')
+        if tau is not None: n.append('tau')
+        if ext_forces is not None: n.append('ext_forces')
+        if ext_torques is not None: n.append('ext_torques')
+        if gc_model is not None: n.append('gc_model')
+        if actuator_model is not None: n.append('actuator_model')
+        object.__setattr__(self, "names", n)
+        object.__setattr__(self, "metadata", metadata)
+
+    @property
+    def h(self):
+        # TODO(deprecation): Remove states.h support in 0.3.0
+        import warnings
+        warnings.warn(
+            "Accessing 'h' from States is deprecated. 'h' has been moved to Globals.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return None
+
+    def __setstate__(self, state):
+        # Handle legacy dq/ddq
+        if "dq" in state and "qd" not in state:
+            state["qd"] = state.pop("dq")
+        if "ddq" in state and "qdd" not in state:
+            state["qdd"] = state.pop("ddq")
+
+        for k, v in state.items():
+            if k in ["slices", "h", "constants", "states"]:
+                continue
+            object.__setattr__(self, k, v)
+        for field_name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
+            if not hasattr(self, field_name):
+                object.__setattr__(self, field_name, None)
+        if not hasattr(self, "names"):
+            object.__setattr__(self, "names", None)
+        if not hasattr(self, "metadata"):
+            object.__setattr__(self, "metadata", None)
+
+    def replace(self, name=None, value=None, **kwargs) -> "States":
+        """Replace fields while keeping physical components structured."""
+        if name is not None and value is not None:
+            return dataclasses.replace(self, **{name:value})
+        else:
+            return dataclasses.replace(self, **kwargs)
+
+    def reshape(self, shape: tuple[int, ...] | int) -> "States":
+        """
+            Reshape a states-object to the requested shape. The last dimension is always retained, 
+            therefore the requested shape should only contain the first two desired dimensions.
+        """
+        if isinstance(shape, int):
+            shape = (shape,)
+
+        return self.replace(
+            q=self.q.reshape(shape + self.q.shape[-1:] if self.q is not None else None),
+            qd=self.qd.reshape(shape + self.qd.shape[-1:] if self.qd is not None else None),
+            qdd=self.qdd.reshape(shape + self.qdd.shape[-1:] if self.qdd is not None else None),
+            tau=self.tau.reshape(shape + self.tau.shape[-1:] if self.tau is not None else None),
+            ext_forces=self.ext_forces.reshape(shape + self.ext_forces.shape[-1:] if self.ext_forces is not None else None),
+            ext_torques=self.ext_torques.reshape(shape + self.ext_torques.shape[-1:] if self.ext_torques is not None else None),
+            gc_model=self.gc_model.reshape(shape + self.gc_model.shape[-1:] if self.gc_model is not None else None),
+            actuator_model=self.actuator_model.reshape(shape + self.actuator_model.shape[-1:] if self.actuator_model is not None else None),
+        )
+    
+    def shape(self):
+        """Returns the non-model-axis shape for the states-object.
+        """
+        return self.q.shape[:-1]
+
+    def squeeze(self):
+        """
+        Squeeze the states-object.
+        """
+        return self.replace(
+            q=self.q.squeeze() if self.q is not None else None,
+            qd=self.qd.squeeze() if self.qd is not None else None,
+            qdd=self.qdd.squeeze() if self.qdd is not None else None,
+            tau=self.tau.squeeze() if self.tau is not None else None,
+            ext_forces=self.ext_forces.squeeze() if self.ext_forces is not None else None,
+            ext_torques=self.ext_torques.squeeze() if self.ext_torques is not None else None,
+            gc_model=self.gc_model.squeeze() if self.gc_model is not None else None,
+            actuator_model=self.actuator_model.squeeze() if self.actuator_model is not None else None,
+        )
 
     def __str__(self):
-        return f"States(model={self.model.shape}, gc_model={self.gc_model.shape}, actuator_model={self.actuator_model.shape}, h={self.h.shape if self.h is not None else 'None'})"
+        parts = []
+        for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
+            val = getattr(self, name)
+            if val is not None:
+                parts.append(f"{name}={val.shape if hasattr(val, 'shape') else type(val)}")
+        return f"States({', '.join(parts)})"
+
+    def __repr__(self):
+        return self.__str__()
 
     def size(self):
-        """
-        Calculate the total number of elements across all state fields.
-        
-        Returns
-        -------
-        int
-            Total number of scalar elements in all arrays of this States instance.
-            
-        Notes
-        -----
-        Uses JAX tree utilities to efficiently count elements across all fields.
-        Useful for memory estimation and optimization problem sizing.
-        """
-        return sum(x.size for x in jax.tree_util.tree_leaves(self))
+        import builtins
+        return builtins.sum(x.size for x in jax.tree_util.tree_leaves(self))
 
     def flatten(self):
-        """
-        Flatten all state arrays into a single 1D array.
-        
-        Returns
-        -------
-        jnp.ndarray
-            1D array containing all state values concatenated together.
-            Order follows the field declaration order: model, gc_model, actuator_model, h.
-            
-        Notes
-        -----
-        Essential for interfacing with optimization algorithms that require
-        flat parameter vectors. The inverse operation can be performed using
-        model-specific unflatten methods.
-        """
         flat_states = jax.tree_util.tree_leaves(self)
         return jnp.concatenate([x.flatten() if isinstance(x, jnp.ndarray) else x for x in flat_states], axis=0)
 
-    def __getitem__(self, index):
-        """
-        Extract states at specific time indices.
-        
-        Parameters
-        ----------
-        index : int, slice, or array-like
-            Index or indices to extract from the time dimension.
-            
-        Returns
-        -------
-        States
-            New States instance containing only the specified time points.
-            
-        Notes
-        -----
-        Supports standard Python indexing including slices and boolean masks.
-        Essential for analyzing specific time points in optimization trajectories.
-        """
+    def filter(self, names: list[str]) -> "States":
+        """Filter states by name."""
+        if names=="model": names=['q','qd','qdd','tau','ext_forces','ext_torques']
+        return States(**{name: getattr(self, name) for name in names})
 
+    def resample(self, N: int) -> "States":
+        """Resample the States object to a new number of nodes N."""
+        kwargs = {}
+        kwargs["names"] = self.names
+        kwargs["metadata"] = self.metadata
+        
+        fields = ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]
+        for field in fields:
+            val = getattr(self, field)
+            if val is None:
+                kwargs[field] = None
+            else:
+                kwargs[field] = _resample_array(val, N)
+                    
+        return States(**kwargs)
+
+    def to_array(self):
+        return jnp.concatenate([getattr(self, name) for name in self.names if getattr(self, name) is not None], axis=-1)
+
+    def __getitem__(self, index):
+        if type(index)==str:
+            return getattr(self, index)
         def slice_fn(x):
-            return x[index] if isinstance(x, jnp.ndarray) else x
+            if isinstance(x, jnp.ndarray):
+                if x.shape[0] == 0:
+                    return x
+                return x[index]
+            return x
 
         return jax.tree_util.tree_map(slice_fn, self)
     
     def __len__(self):
-        """
-        Get the number of time steps in the trajectory.
-        
-        Returns
-        -------
-        int
-            Number of time steps, determined by the first dimension of state arrays.
-            Returns 1 for single-timestep data.
-            
-        Notes
-        -----
-        Based on the shape of the model field, which is assumed to be the primary
-        state variable defining trajectory length.
-        """
-        return self.model.shape[0] if self.model.ndim > 1 else 1
+        for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
+            val = getattr(self, name)
+            if val is not None and hasattr(val, "ndim"):
+                return val.shape[0] if val.ndim > 1 else 1
+        return 1
+
+    def get_n_states(self):
+        return self.to_array().shape[-1]
+
+    def tree_flatten(self):
+        active_fields = []
+        children = []
+        for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
+            val = getattr(self, name)
+            if val is not None:
+                active_fields.append(name)
+                children.append(val)
+        aux_data = (tuple(active_fields), _freeze(getattr(self, "names", None)), _freeze(getattr(self, "metadata", None)))
+        return tuple(children), aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        active_fields, names, metadata = aux_data
+        names = _thaw(names)
+        metadata = _thaw(metadata)
+
+        kwargs = {
+            "names": names,
+            "metadata": metadata,
+        }
+        for name, val in zip(active_fields, children):
+            kwargs[name] = val
+        return cls(**kwargs)
 
 
-@dataclass
+@jax.tree_util.register_pytree_node_class
+@dataclass(frozen=True, init=False)
 class Constants:
     """
     Time-invariant model parameters and constants.
     
-    This dataclass stores parameters that remain constant throughout
-    a simulation or optimization, such as masses, lengths, and gains.
-    These values define the physical properties and configuration
-    of the biomechanical model.
-    
-    Attributes
-    ----------
-    model : jnp.ndarray
-        Primary model constants (masses, lengths, inertias, gains).
-        Shape typically (n_model_constants,).
-    gc_model : jnp.ndarray
-        Ground contact model constants (stiffness, damping, friction).
-        Shape typically (n_gc_constants,).
-    actuator_model : jnp.ndarray
-        Actuator/muscle model constants (maximum forces, time constants).
-        Shape typically (n_actuator_constants,).
-        
-    Notes
-    -----
-    - Constants are typically shared across all time points in a trajectory
-    - Used for model parameterization and sensitivity analysis
-    - Can be optimization variables in parameter identification problems
+    Stores physical constants (gravity, masses, inertia, etc.) natively in separate arrays.
     """
-    model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))
-    gc_model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))
-    actuator_model: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))
+    # Separate physical constants
+    g: jnp.ndarray = None
+    mass: jnp.ndarray = None
+    inertia: jnp.ndarray = None
+    com: jnp.ndarray = None
+    offset: jnp.ndarray = None
+
+    gc_model: jnp.ndarray = None
+    actuator_model: jnp.ndarray = None
+
+    def __init__(
+        self,
+        g: jnp.ndarray = None,
+        mass: jnp.ndarray = None,
+        inertia: jnp.ndarray = None,
+        com: jnp.ndarray = None,
+        offset: jnp.ndarray = None,
+        gc_model: jnp.ndarray = None,
+        actuator_model: jnp.ndarray = None,
+        **kwargs
+    ):
+
+        if gc_model is None:
+            gc_model = jnp.zeros((0,))
+        if actuator_model is None:
+            actuator_model = jnp.zeros((0,))
+        if g is None:
+            g = jnp.zeros((0,))
+        if mass is None:
+            mass = jnp.zeros((0,))
+        if inertia is None:
+            inertia = jnp.zeros((0,))
+        if com is None:
+            com = jnp.zeros((0,))
+        if offset is None:
+            offset = jnp.zeros((0,))
+
+        object.__setattr__(self, "gc_model", gc_model)
+        object.__setattr__(self, "actuator_model", actuator_model)
+        object.__setattr__(self, "g", g)
+        object.__setattr__(self, "mass", mass)
+        object.__setattr__(self, "inertia", inertia)
+        object.__setattr__(self, "com", com)
+        object.__setattr__(self, "offset", offset)
+
+    def __setstate__(self, state):
+        for k, v in state.items():
+            object.__setattr__(self, k, v)
+        for field_name in ["g", "mass", "inertia", "com", "offset"]:
+            if not hasattr(self, field_name):
+                object.__setattr__(self, field_name, jnp.zeros((0,)))
+
+    def replace(self, name=None, value=None, **kwargs) -> "Constants":
+        """Replace fields while keeping model and separate physical components in sync."""
+        if name is not None and value is not None:
+            return dataclasses.replace(self, **{name:value})
+        else:
+            return dataclasses.replace(self, **kwargs)
 
     def __str__(self):
-        return f"Constants(model={self.model.shape}, gc_model={self.gc_model.shape}, actuator_model={self.actuator_model.shape})"
+        parts = []
+        for name in ["g", "mass", "inertia", "com", "offset", "gc_model", "actuator_model"]:
+            val = getattr(self, name)
+            if val is not None:
+                parts.append(f"{name}={val.shape if hasattr(val, 'shape') else type(val)}")
+        return f"Constants({', '.join(parts)})"
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __getitem__(self, index):
+        if type(index)==str:
+            return getattr(self, index)
 
     def multiply(self, other):
-        """
-        Element-wise multiplication of constants.
-        
-        Parameters
-        ----------
-        other : float or int
-            Scalar value to multiply with all constant arrays.
-            
-        Returns
-        -------
-        Constants
-            New Constants instance with all values multiplied by the scalar.
-            
-        Raises
-        ------
-        NotImplementedError
-            If other is not a scalar (int or float).
-            
-        Notes
-        -----
-        Useful for scaling model parameters or sensitivity analysis.
-        """
         if isinstance(other, (int, float)):
             return jax.tree_util.tree_map(lambda x: x * other, self)
         raise NotImplementedError("biosym.utils.states.Constants.multiply.notfloat")
+    
+    def filter(self, names: list[str]) -> "Constants":
+        """Filter states by name."""
+        if names=="model": names=['g','mass','inertia','com','offset']
+        return Constants(**{name: getattr(self, name) for name in names})
+
+    def tree_flatten(self):
+        active_fields = []
+        children = []
+        for name in ["g", "mass", "inertia", "com", "offset", "gc_model", "actuator_model"]:
+            val = getattr(self, name)
+            if val is not None:
+                active_fields.append(name)
+                children.append(val)
+        aux_data = (tuple(active_fields),)
+        return tuple(children), aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        active_fields, = aux_data
+        kwargs = {}
+        for name, val in zip(active_fields, children):
+            kwargs[name] = val
+        return cls(**kwargs)
+                
+    def flatten(self):
+        return jnp.concatenate([x.flatten() if isinstance(x, jnp.ndarray) else x for x in jax.tree_util.tree_leaves(self)], axis=0)
+
+    def to_array(self):
+        return jnp.concatenate([x if isinstance(x, jnp.ndarray) else x for x in jax.tree_util.tree_leaves(self)], axis=0)
 
 
-@dataclass
+@jax.tree_util.register_pytree_node_class
+@dataclass(frozen=True)
 class Globals:
     """
     Global optimization parameters for optimal control problems.
-    
-    This dataclass stores problem-level parameters that are optimized
-    globally across the entire trajectory, such as movement duration
-    and average speed. These parameters affect the entire motion pattern.
-    
-    Attributes
-    ----------
-    dur : jnp.ndarray
-        Movement duration in seconds. Shape typically (1,).
-        Controls the total time span of the optimized trajectory.
-    speed : jnp.ndarray
-        Average movement speed. Shape typically (1,).
-        Used for speed-based constraints and objectives.
-        
-    Notes
-    -----
-    - Global parameters are shared across all time points
-    - Essential for time-optimal and speed-constrained problems
-    - Often used as optimization variables in trajectory optimization
     """
     dur: jnp.ndarray = field(default_factory=lambda: jnp.zeros((1,)))
     speed: jnp.ndarray = field(default_factory=lambda: jnp.zeros((1,)))
+    h: jnp.ndarray = field(default_factory=lambda: jnp.zeros((0,)))
+
+    def replace(self, **updates) -> "Globals":
+        return dataclasses.replace(self, **updates)
 
     def size(self):
-        """
-        Calculate the total number of global parameters.
-        
-        Returns
-        -------
-        int
-            Total number of scalar elements in all global parameter arrays.
-            
-        Notes
-        -----
-        Typically returns 2 (duration + speed) for standard problems.
-        """
-        return sum(x.size for x in jax.tree_util.tree_leaves(self))
+        import builtins
+        return builtins.sum(x.size for x in jax.tree_util.tree_leaves(self))
 
     def multiply(self, other):
-        """
-        Element-wise multiplication of global parameters.
-        
-        Parameters
-        ----------
-        other : float or int
-            Scalar value to multiply with all global parameter arrays.
-            
-        Returns
-        -------
-        Globals
-            New Globals instance with all values multiplied by the scalar.
-            
-        Raises
-        ------
-        NotImplementedError
-            If other is not a scalar (int or float).
-            
-        Notes
-        -----
-        Used for scaling global parameters during optimization.
-        """
         if isinstance(other, (int, float)):
             return jax.tree_util.tree_map(lambda x: x * other, self)
-        raise NotImplementedError("biosym.utils.states.Constants.multiply.notfloat")
+        raise NotImplementedError("biosym.utils.states.Globals.multiply.notfloat")
+
+    def tree_flatten(self):
+        return (self.dur, self.speed, self.h), ()
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        dur, speed, h = children
+        return cls(dur=dur, speed=speed, h=h)
 
 
-@dataclass
-class StatesDict:
-    """
-    Complete representation of a biomechanical model's state and parameters.
+def get_states_offsets(states) -> dict:
+    offsets = {}
+    current = 0
+    for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]:
+        val = getattr(states, name)
+        if val is not None:
+            offsets[name] = current
+            current += val.size
+        else:
+            offsets[name] = None
+    return offsets
+
+
+def concatenate(states_list: list[States]) -> States:
+    """Concatenate a list of States objects along the time dimension."""
+    if not states_list:
+        raise ValueError("Cannot concatenate an empty list of States.")
     
-    This is the primary data structure in biosym, combining time-varying states
-    with time-invariant constants to provide a complete model representation.
-    It serves as the main interface for simulations, optimizations, and analysis.
+    kwargs = {}
+    kwargs["names"] = states_list[0].names
+    kwargs["metadata"] = states_list[0].metadata
     
-    Attributes
-    ----------
-    states : States
-        Time-varying state variables (positions, velocities, activations, etc.).
-        Contains trajectory data with shape (n_timesteps, n_dofs_per_field).
-    constants : States
-        Time-invariant model parameters (masses, lengths, gains, etc.).
-        Contains constant values used throughout the simulation/optimization.
-        
-    Notes
-    -----
-    - Primary data structure for all biosym operations
-    - Supports vectorized operations for efficient batch processing
-    - Compatible with JAX transformations (jit, grad, vmap)
-    - Essential for optimal control problem formulation
-    - Provides unified interface for states and parameters
-    
-    Examples
-    --------
-    >>> # Create a StatesDict for a 10-timestep trajectory
-    >>> states = States(model=jnp.zeros((10, 6)), gc_model=jnp.zeros((10, 3)))
-    >>> constants = States(model=jnp.ones((20,)), gc_model=jnp.ones((5,)))
-    >>> states_dict = StatesDict(states=states, constants=constants)
-    >>> print(len(states_dict))  # Returns 10 (number of timesteps)
-    """
-    states: States
-    constants: States
-
-    def __getitem__(self, index):
-        """
-        Extract data at specific time indices.
-        
-        Parameters
-        ----------
-        index : int, slice, or array-like
-            Index or indices to extract from the time dimension.
+    fields = ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques", "gc_model", "actuator_model"]
+    for field in fields:
+        vals = [getattr(s, field) for s in states_list]
+        if all(v is None for v in vals):
+            kwargs[field] = None
+            continue
             
-        Returns
-        -------
-        StatesDict
-            New StatesDict containing only the specified time points.
-            Constants are preserved (first element taken if multi-dimensional).
+        processed_vals = []
+        for v in vals:
+            if v is None:
+                continue
+            arr = jnp.asarray(v)
+            if arr.ndim == 1:
+                arr = jnp.expand_dims(arr, axis=0)
+            processed_vals.append(arr)
             
-        Notes
-        -----
-        Essential for trajectory analysis and extracting specific time points.
-        Constants are handled specially to maintain their time-invariant nature.
-        """
-
-        def slice_fn(x):
-            return x[index] if isinstance(x, jnp.ndarray) else x
-
-        sliced_states = jax.tree_util.tree_map(slice_fn, self.states)
-        sliced_constants = jax.tree_util.tree_map(lambda x: x[0, :] if x.ndim > 1 else x, self.constants)
-        return StatesDict(states=sliced_states, constants=sliced_constants)
-
-    def multiply(self, other):
-        """
-        Element-wise multiplication with another StatesDict or scalar.
-        
-        Parameters
-        ----------
-        other : StatesDict, float, or int
-            Value to multiply with. If StatesDict, performs element-wise 
-            multiplication. If scalar, multiplies all arrays by the scalar.
+        if processed_vals:
+            kwargs[field] = jnp.concatenate(processed_vals, axis=0)
+        else:
+            kwargs[field] = None
             
-        Returns
-        -------
-        StatesDict
-            New StatesDict with multiplied values.
-            
-        Notes
-        -----
-        Used for scaling operations, sensitivity analysis, and mathematical
-        operations on state trajectories. Preserves the structure of both
-        states and constants.
-        """
-        if isinstance(other, (int, float)):
-            return jax.tree_util.tree_map(lambda x: x * other, self)
-        if isinstance(other, StatesDict):
-            return jax.tree_util.tree_map(lambda x, y: x * y, self, other)
-
-    def size(self):
-        """
-        Calculate total number of elements in states and constants.
-        
-        Returns
-        -------
-        int
-            Total number of scalar elements across all arrays in the StatesDict.
-            
-        Notes
-        -----
-        Includes both time-varying states and time-invariant constants.
-        Useful for memory estimation and optimization problem sizing.
-        """
-        return sum(x.size for x in jax.tree_util.tree_leaves(self))
-
-    def __len__(self):
-        """
-        Get the number of time steps in the trajectory.
-        
-        Returns
-        -------
-        int
-            Number of time steps, determined by the first dimension of state arrays.
-            Returns 1 for single-timestep data.
-            
-        Notes
-        -----
-        Based on the shape of the model field in states, which is assumed
-        to be the primary state variable defining trajectory length.
-        """
-        return self.states.model.shape[0] if self.states.model.ndim > 1 else 1
-
-    def flat_at(self, idx):
-        """
-        Get a flattened view of all data at a specific time index.
-        
-        Parameters
-        ----------
-        idx : int
-            Time index to extract and flatten.
-            
-        Returns
-        -------
-        jnp.ndarray
-            1D array containing all state values at the specified time point.
-            
-        Notes
-        -----
-        Useful for interfacing with optimization algorithms that require
-        flat parameter vectors at specific time points.
-        """
-        curr_state = self[idx]
-        flat_states = jax.tree_util.tree_leaves(curr_state)
-        return jnp.concatenate([x[idx] for x in flat_states if isinstance(x, jnp.ndarray)], axis=0)
-
-    def replace_vector(self, section: Literal["states", "constants"], name: str, value: jnp.ndarray) -> "StatesDict":
-        """
-        Replace a specific field with a new value.
-        
-        Parameters
-        ----------
-        section : {"states", "constants"}
-            Which section to modify (time-varying states or constants).
-        name : str
-            Name of the field to replace (e.g., "model", "gc_model").
-        value : jnp.ndarray
-            New array value to assign to the field.
-            
-        Returns
-        -------
-        StatesDict
-            New StatesDict with the specified field updated.
-            
-        Raises
-        ------
-        ValueError
-            If the specified field name doesn't exist in the section.
-            
-        Notes
-        -----
-        Creates a new instance rather than modifying in-place, following
-        functional programming principles. Essential for updating specific
-        model components during optimization or simulation.
-        """
-        target = getattr(self, section)
-        if not hasattr(target, name):
-            raise ValueError(f"'{name}' is not a field of {section}.")
-        updated = replace(target, **{name: value})
-        return replace(self, **{section: updated})
-
-    def add(self, scalar):
-        """
-        Add a scalar value to all arrays in the StatesDict.
-        
-        Parameters
-        ----------
-        scalar : float or int
-            Scalar value to add to all arrays.
-            
-        Returns
-        -------
-        StatesDict
-            New StatesDict with the scalar added to all array elements.
-            
-        Notes
-        -----
-        Useful for bias operations and mathematical transformations.
-        Applied to both states and constants uniformly.
-        """
-        return jax.tree_util.tree_map(lambda x: x + scalar, self)
-
-    def __str__(self):
-        s0 = "StatesDict:\n\tStates:\n"
-        s1 = f"\t\tmodel: {self.states.model.shape}\n"
-        s2 = f"\t\tgc_model: {self.states.gc_model.shape}\n"
-        s3 = f"\t\tactuator_model: {self.states.actuator_model.shape}\n"
-        s4 = f"\t\th: {self.states.h.shape if self.states.h is not None else 'None'}\n"
-        s5 = "\tConstants:\n"
-        s6 = f"\t\tmodel: {self.constants.model.shape}\n"
-        s7 = f"\t\tgc_model: {self.constants.gc_model.shape}\n"
-        s8 = f"\t\tactuator_model: {self.constants.actuator_model.shape}\n"
-        return s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8
+    return States(**kwargs)
 
 
-def stack_dataclasses(instances):
-    """
-    Stack multiple StatesDict instances into a single batched instance.
-    
-    This function combines individual time points or single-state instances
-    into a batched trajectory representation. Essential for creating
-    optimization problems from collections of states.
-    
+def resample(states_obj: States, N: int) -> States:
+    """Resample a States object to a new number of nodes N."""
+    if not isinstance(states_obj, States):
+        raise TypeError(f"Expected States object, got {type(states_obj)}")
+    return states_obj.resample(N)
+
+
+def sum(obj, weights: jnp.ndarray | None = None):
+    """Sum a pytree (States, Constants, Globals, …) over axis 0.
+
     Parameters
     ----------
-    instances : list or tuple
-        List of StatesDict instances to stack along the time dimension.
-        All instances must have compatible shapes for stacking.
-        
+    obj : any JAX-registered pytree
+        The object to reduce.  All array leaves are summed along axis 0.
+    weights : array_like of shape ``(N,)``, optional
+        Per-node weights.  Each leaf is multiplied by the weight vector
+        (broadcast to the leaf shape) before summing, giving a
+        **weighted sum**.
+
     Returns
     -------
-    StatesDict
-        New StatesDict with states stacked along the first dimension.
-        Constants are taken from the first instance (assumed identical).
-        
-    Raises
-    ------
-    ValueError
-        If the input list is empty.
-    TypeError
-        If input is not a list or tuple of dataclass instances.
-        
-    Notes
-    -----
-    - Only the first instance's constants are used (others assumed identical)
-    - Essential for trajectory construction in optimal control problems
-    - Used to convert lists of individual states into batch format
-    
-    Examples
-    --------
-    >>> # Stack 3 individual states into a trajectory
-    >>> state_list = [state1, state2, state3]
-    >>> trajectory = stack_dataclasses(state_list)
-    >>> print(len(trajectory))  # Returns 3
+    Same type as *obj*, with the node axis removed from every leaf.
     """
-    if not instances:
-        raise ValueError("Cannot stack an empty list")
-    if type(instances) not in [list, tuple]:
-        raise TypeError("Input must be a list of dataclass instances")
+    import builtins
 
-    # jax.tree_util.tree_map applies a function over the corresponding fields
-    dict_0 = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *instances)
-    constants = instances[0].constants
-    return StatesDict(dict_0.states, constants)
+    def _reduce(*args):
+        w = jnp.asarray(weights) if weights is not None else jnp.ones(len(args))
+        return builtins.sum(w[i] * args[i] for i in range(len(args)))
+
+    return jax.tree.map(_reduce, *obj)
 
 
-def reduce_dataclasses(instances, fn=None, weights=None):
-    """
-    Apply reduction operations across multiple dataclass instances.
-    
-    This function combines multiple StatesDict instances using mathematical
-    operations like sum, mean, or max. Useful for ensemble operations,
-    weighted averaging, and statistical analysis of trajectories.
-    
+def mean(obj, weights: jnp.ndarray | None = None):
+    """Mean of a pytree (States, Constants, Globals, …) over axis 0.
+
     Parameters
     ----------
-    instances : list
-        List of StatesDict instances to reduce.
-    fn : callable, optional
-        Reduction function to apply (e.g., jnp.mean, jnp.sum, jnp.max).
-        If None, returns weighted instances without reduction.
-    weights : list, optional
-        Weighting factors for each instance. If None, uses equal weights.
-        Must match the length of instances if provided.
-        
+    obj : any JAX-registered pytree
+        The object to reduce.  All array leaves are averaged along axis 0.
+    weights : array_like of shape ``(N,)``, optional
+        Per-node weights.  The result is ``Σ wᵢ·xᵢ / Σ wᵢ`` for each leaf
+        (weighted mean).  Implemented by normalising *weights* and delegating
+        to :func:`sum`.
+
     Returns
     -------
-    StatesDict or list
-        If fn is provided, returns a single reduced StatesDict.
-        If fn is None, returns list of weighted instances.
-        
-    Raises
-    ------
-    ValueError
-        If instances is empty or weights length doesn't match instances.
-        
-    Notes
-    -----
-    - Weights are applied before reduction operation
-    - Useful for ensemble methods and statistical analysis
-    - Supports any JAX-compatible reduction function
-    
-    Examples
-    --------
-    >>> # Compute weighted average of multiple trajectories
-    >>> trajectories = [traj1, traj2, traj3]
-    >>> weights = [0.5, 0.3, 0.2]
-    >>> avg_traj = reduce_dataclasses(trajectories, jnp.mean, weights)
+    Same type as *obj*, with the node axis removed from every leaf.
     """
-    if not instances:
-        raise ValueError("Cannot reduce an empty list")
-    if weights is None:
-        weights = [1] * len(instances)
-    else:
-        if len(weights) != len(instances):
-            raise ValueError("Weights must match the number of instances")
-        for i, weight in enumerate(weights):
-            instances[i] = instances[i].multiply(weight)
-    if fn is None:
-        return instances
+    if weights is not None:
+        w = jnp.asarray(weights)
+        return sum(obj, weights=w / jnp.sum(w))
 
-    # Stack all corresponding fields: shape becomes (N, ...)
-    stacked = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *instances)
+    def _reduce(x):
+        if not isinstance(x, jnp.ndarray) or x.ndim == 0:
+            return x
+        return jnp.mean(x, axis=0, keepdims=True)
 
-    # Apply reduction function along axis 0
-    return jax.tree_util.tree_map(lambda x: fn(x, axis=0), stacked)
-
-
-def dict_to_dataclass(states_dict):
-    """
-    Convert a dictionary representation to StatesDict dataclass.
-    
-    This function provides backwards compatibility and conversion from
-    dictionary-based state representations to the structured dataclass format.
-    Handles missing fields gracefully by setting them to None.
-    
-    Parameters
-    ----------
-    states_dict : dict
-        Dictionary containing nested state and constant data.
-        Expected structure: {"states": {...}, "constants": {...}}
-        
-    Returns
-    -------
-    StatesDict
-        Converted dataclass representation with proper structure.
-        Missing fields are set to None for graceful handling.
-        
-    Notes
-    -----
-    - Provides conversion from legacy dictionary formats
-    - Handles missing fields gracefully with None defaults
-    - Essential for data loading and compatibility layers
-    - Nested dictionary access is handled safely
-    """
-
-    def get_value(d, *keys):
-        """Safely get a nested value or return None."""
-        for key in keys:
-            d = d.get(key, None)
-            if d is None:
-                return None
-        return d
-
-    states = States(
-        model=get_value(states_dict, "states", "model"),
-        gc_model=get_value(states_dict, "states", "gc_model"),
-        actuator_model=get_value(states_dict, "states", "actuator_model"),
-        h=get_value(states_dict, "states", "h"),
-    )
-    constants = States(
-        model=get_value(states_dict, "constants", "model"),
-        gc_model=get_value(states_dict, "constants", "gc_model"),
-        actuator_model=get_value(states_dict, "constants", "actuator_model"),
-        h=get_value(states_dict, "constants", "h"),
-    )
-    return StatesDict(states=states, constants=constants)
+    return jax.tree_util.tree_map(_reduce, obj)

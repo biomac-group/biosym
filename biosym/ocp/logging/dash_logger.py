@@ -36,7 +36,13 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
     >>> app = create_dashboard_app(problem.iteration_logger)
     >>> app.run(debug=False)
     """
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    
     app = Dash(__name__)
+
+
     
     app.layout = html.Div([
         html.H1("Optimization Progress", style={'textAlign': 'center'}),
@@ -69,12 +75,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
         
         dcc.Interval(
             id='interval-component',
-            interval=2000,  # Update every 2 seconds
+            interval=500,  # Poll twice per second for smoother streaming
             n_intervals=0
         ),
         
         html.Div(id='stats-div', style={'marginTop': 20, 'textAlign': 'center'}),
-        dcc.Store(id='last-update-iteration', data=0)
+        dcc.Store(id='last-update-iteration', data={'iteration': 0, 'rows': 0})
     ], style={'backgroundColor': '#111111', 'color': '#FFFFFF'})
 
     @app.callback(
@@ -86,7 +92,7 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
          Input('scale-selector', 'value')],
         [State('last-update-iteration', 'data')]
     )
-    def update_graph(n, scale_type, last_update_iter):
+    def update_graph(n, scale_type, last_update_state):
         """
         Update the plot with latest logged data.
         
@@ -97,9 +103,9 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
         ctx = callback_context
         
         if not ctx.triggered:
-            return no_update
-
-        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            trigger_id = ''
+        else:
+            trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
         if iteration_logger is None or not iteration_logger.log_data:
             # Return empty plots if no data
@@ -127,33 +133,38 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
             )
             return empty_fig, empty_fig, "Empty log", no_update
             
-        current_iter = df['iteration'].iloc[-1]
+        current_iter = int(df['iteration'].iloc[-1])
+        current_rows = len(df)
+
+        if isinstance(last_update_state, dict):
+            last_update_iter = int(last_update_state.get('iteration', 0))
+            last_update_rows = int(last_update_state.get('rows', 0))
+        elif isinstance(last_update_state, (int, float)):
+            last_update_iter = int(last_update_state)
+            last_update_rows = 0
+        else:
+            last_update_iter = 0
+            last_update_rows = 0
         
         # Determine if we should update
         should_update = False
-        new_last_iter = no_update
+        new_last_state = no_update
         
         if trigger_id != 'interval-component':
             # Always update on manual interaction (scale change)
             should_update = True
-            # Do NOT update the last_update_iteration to preserve the 100-step interval rhythm
+            new_last_state = {'iteration': current_iter, 'rows': current_rows}
         else:
-            # Interval trigger
-            if current_iter < last_update_iter:
-                # Optimization restarted
+            # Interval trigger: redraw whenever the logged snapshot changed.
+            if current_iter < last_update_iter or current_rows < last_update_rows:
                 should_update = True
-                new_last_iter = current_iter
-            elif current_iter - last_update_iter >= 100:
-                # 100 iterations passed
+                new_last_state = {'iteration': current_iter, 'rows': current_rows}
+            elif current_iter != last_update_iter or current_rows != last_update_rows:
                 should_update = True
-                new_last_iter = current_iter
-            elif last_update_iter == 0 and current_iter > 0:
-                # Ensure we show the first data point
-                should_update = True
-                new_last_iter = current_iter
+                new_last_state = {'iteration': current_iter, 'rows': current_rows}
         
         if not should_update:
-            return no_update
+            return no_update, no_update, no_update, no_update
         
         # Separate objective and constraint columns
         all_cols = [col for col in df.columns if col != 'iteration']
@@ -169,9 +180,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
             
             # Add a trace for each objective column
             for col in objective_cols:
+                y_val = df[col]
+                if scale_type == 'log':
+                    y_val = np.maximum(y_val, 1e-8)
                 fig_obj.add_trace(go.Scatter(
                     x=df['iteration'],
-                    y=df[col],
+                    y=y_val,
                     mode='lines+markers',
                     name=col,
                     line=dict(width=2),
@@ -179,9 +193,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
                 ))
             
             # Add Total Objective trace
+            y_total = df['Total_Obj']
+            if scale_type == 'log':
+                y_total = np.maximum(y_total, 1e-8)
             fig_obj.add_trace(go.Scatter(
                 x=df['iteration'],
-                y=df['Total_Obj'],
+                y=y_total,
                 mode='lines+markers',
                 name='Total Objective',
                 line=dict(width=4, color='white'),
@@ -217,9 +234,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
             for col in constraint_cols:
                 # Remove "Constraint_" prefix for cleaner legend
                 display_name = col.replace("Constraint_", "")
+                y_val = df[col]
+                if scale_type == 'log':
+                    y_val = np.maximum(y_val, 1e-8)
                 fig_cons.add_trace(go.Scatter(
                     x=df['iteration'],
-                    y=df[col],
+                    y=y_val,
                     mode='lines+markers',
                     name=display_name,
                     line=dict(width=2),
@@ -227,9 +247,12 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
                 ))
                 
             # Add Total Constraint Violation trace
+            y_total_cons = df['Total_Cons']
+            if scale_type == 'log':
+                y_total_cons = np.maximum(y_total_cons, 1e-8)
             fig_cons.add_trace(go.Scatter(
                 x=df['iteration'],
-                y=df['Total_Cons'],
+                y=y_total_cons,
                 mode='lines+markers',
                 name='Total Violation',
                 line=dict(width=4, color='white'),
@@ -257,7 +280,7 @@ def create_dashboard_app(iteration_logger=None, port: int = 8050):
         stats_text = f"Iteration: {df['iteration'].iloc[-1]}"
         
         # Return the new iteration count to store it
-        return fig_obj, fig_cons, stats_text, new_last_iter
+        return fig_obj, fig_cons, stats_text, new_last_state
     
     return app
 

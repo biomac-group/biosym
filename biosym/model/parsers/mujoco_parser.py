@@ -6,10 +6,10 @@ from biosym.model.parsers.base_parser import BaseParser
 class MujocoParser(BaseParser):
     """
     Parser for Mujoco model files.
-    Currently, this only builds the structure, but we also want to have the parameters
+    Currently, this only builds the structure, but we also want to have the parameters.
     """
 
-    def __init__(self, model_file, verbose=False):
+    def __init__(self, model_file, verbose=False) -> None:
         super().__init__(model_file)
         self.xml_tree = ET.parse(model_file)
         self.root = self.xml_tree.getroot()
@@ -20,8 +20,8 @@ class MujocoParser(BaseParser):
         }
         self._parse(verbose)
 
-    def _parse(self, verbose=False):
-        def parse_body(body_element, parent_name=None):
+    def _parse(self, verbose=False) -> None:
+        def parse_body(body_element, parent_name=None) -> None:
             # Parsing basic properties of body
             body_name = body_element.get("name")
             if verbose:
@@ -136,92 +136,72 @@ class MujocoParser(BaseParser):
                 print(f"  Body: {body['name']}, Offset: {body_offset}")
 
     def get_n_bodies(self):
-        """
-        Returns the number of bodies in the model.
-        """
+        """Returns the number of bodies in the model."""
         return len(self.data["bodies"])
 
     def get_n_joints(self):
-        """
-        Returns the number of joints in the model.
-        """
+        """Returns the number of joints in the model."""
         return len(self.data["joints"])
 
     def get_bodies(self):
-        """
-        Returns the list of bodies in the model.
-        """
+        """Returns the list of bodies in the model."""
         return self.data["bodies"]
 
     def get_joints(self):
-        """
-        Returns the list of joints in the model.
-        """
+        """Returns the list of joints in the model."""
         return self.data["joints"]
 
     def get_n_sites(self):
-        """
-        Returns the number of sites in the model.
-        """
+        """Returns the number of sites in the model."""
         return len(self.data["sites"])
 
     def get_sites(self):
-        """
-        Returns the list of sites in the model.
-        """
+        """Returns the list of sites in the model."""
         return self.data["sites"]
 
     def get_n_external_forces(self):
         """
         Returns the number of bodies, where external forces can be applied.
-        In mujoco, ground contact isn't explicitly stated, so that should be in a config somewhere
+        In mujoco, ground contact isn't explicitly stated, so that should be in a config somewhere.
         """
         return len(self.external_forces_bodies) * 3
 
     def get_external_forces_bodies(self):
-        """
-        Returns the list of bodies, where external forces can be applied.
-        """
+        """Returns the list of bodies, where external forces can be applied."""
         return self.external_forces_bodies
 
     def get_n_internal_forces(self):
-        """
-        Returns the number of internal forces in the model.
-        """
-        return len(self.actuator_elements) if self.actuator_elements is not None else 0
+        """Returns the number of internal forces in the model."""
+        return len(self.actuators) if self.actuators is not None else 0
 
     def get_internal_forces(self):
-        """
-        Returns the list of internal forces in the model.
-        """
-        return self.actuator_elements
+        """Returns the list of internal forces in the model."""
+        return self.actuators
 
     def get_gravity(self):
-        """
-        Returns the gravity vector in the model.
-        """
+        """Returns the gravity vector in the model."""
         return self.gravity
 
+    def get_bodies(self):
+        """Returns the list of bodies in the model."""
+        return self.data["bodies"]
+
+    def get_joints(self):
+        """Returns the list of joints in the model."""
+        return self.data["joints"]
+
     def has_actuators(self):
-        """
-        Returns True if the model has actuators, False otherwise.
-        """
+        """Returns True if the model has actuators, False otherwise."""
         return self.actuator_elements is not None
 
     def get_actuators(self):
-        """
-        Returns the xml entries for the actuators in the model
-        """
+        """Returns the xml entries for the actuators in the model."""
         return self.actuator_elements
 
     def has_contact_model(self):
-        """
-        Returns True if the model has a contact model, False otherwise.
-        """
+        """Returns True if the model has a contact model, False otherwise."""
         return self.contact_elements is not None
 
     def get_contact_model(self):
-        """
-        Returns the xml entries for the contact model in the model.
-        """
+        """Returns the xml entries for the contact model in the model."""
         return self.contact_elements
