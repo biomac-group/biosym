@@ -77,7 +77,7 @@ class ContactHalfSpace(BaseGeometry):
         # actually "up" for a given model. We reuse uf.rotation_matrix_xyz here.
         local_normal = uf.rotation_matrix_xyz(self.orientation) @ np.array([-1.0, 0.0, 0.0])
         self.normal_expr = self._direction_kinematics(model, local_normal)
-        self.normal_fn = lambdify(model._v, self.normal_expr, modules="jax", cse=True, docstring_limit=2)
+        self.normal_fn = lambdify(model._symbols, self.normal_expr, modules="jax", cse=True, docstring_limit=2)
 
     def get_parameters(self):
         """A half-space is infinite and has no shape parameters beyond its
@@ -94,4 +94,4 @@ class ContactHalfSpace(BaseGeometry):
                 f"Geometry '{self.name}' kinematics have not been built yet. "
                 "build_kinematics(model) must be called before get_normal()."
             )
-        return self.normal_fn(*states.model, *constants.model)
+        return self.normal_fn(*states.filter('model').flatten(), *constants.filter('model').flatten())

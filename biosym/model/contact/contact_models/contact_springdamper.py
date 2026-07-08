@@ -105,8 +105,8 @@ class SpringDamper(BaseContact):
 
         force_matrix = Matrix.vstack(*[f.T for f in force_exprs])
         pos_matrix = Matrix.vstack(*[p.T for p in pos_exprs])
-        self.force_fn = lambdify(model._v, force_matrix, modules="jax", cse=True, docstring_limit=2)
-        self.pos_fn = lambdify(model._v, pos_matrix, modules="jax", cse=True, docstring_limit=2)
+        self.force_fn = lambdify(model._symbols, force_matrix, modules="jax", cse=True, docstring_limit=2)
+        self.pos_fn = lambdify(model._symbols, pos_matrix, modules="jax", cse=True, docstring_limit=2)
 
         self._contrib_body_slot = np.array(contrib_body_slot)
         self._contrib_fk_idx = np.array(contrib_fk_idx)
@@ -115,8 +115,10 @@ class SpringDamper(BaseContact):
     # Numeric evaluation (pure JAX -- differentiated & jitted upstream).
     # ------------------------------------------------------------------
     def forward(self, states, constants, model):
-        forces = self.force_fn(*states.model, *constants.model)
-        positions = self.pos_fn(*states.model, *constants.model)
+        s_flat = states.filter('model').flatten()
+        c_flat = constants.filter('model').flatten()
+        forces = self.force_fn(*s_flat, *c_flat)
+        positions = self.pos_fn(*s_flat, *c_flat)
 
         body_positions = model.run["FK"](states, constants)[self._contrib_fk_idx]
         moment_arms = positions - body_positions
@@ -134,8 +136,10 @@ class SpringDamper(BaseContact):
     # ------------------------------------------------------------------
     def plot(self, states, model, mode, ax, **kwargs):
         s, c = states.states, states.constants
-        positions = np.asarray(self.pos_fn(*s.model, *c.model))
-        forces = np.asarray(self.force_fn(*s.model, *c.model))
+        s_flat = s.filter('model').flatten()
+        c_flat = c.filter('model').flatten()
+        positions = np.asarray(self.pos_fn(*s_flat, *c_flat))
+        forces = np.asarray(self.force_fn(*s_flat, *c_flat))
         factor = kwargs.get("force_scale", 1e-3)
 
         if mode == "init":

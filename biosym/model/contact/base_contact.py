@@ -187,7 +187,7 @@ class BaseContact(ABC):
                  force on `feature` (and its reaction on `other`, where that
                  body moves)
           3. stack the per-pair force expressions and lambdify once (over
-             model._v, plus the gc_model constant symbols if any are exposed),
+             model._symbols, plus the gc_model constant symbols if any are exposed),
              for fast evaluation in forward(). Geometry kinematics are
              functions of the main model vector; force parameters, if exposed,
              come from the gc_model constants.
@@ -209,7 +209,7 @@ class BaseContact(ABC):
         Static, structure-derived integer index arrays are fine.
 
         Reads: geometry kinematics via the lambdified expressions over the main
-        model vector (states.model / constants.model); any exposed force
+        model vector (s_flat / c_flat); any exposed force
         parameters via the contact sub-vector (constants.gc_model).
 
         Expected algorithm: evaluate the lambdified per-pair forces; form

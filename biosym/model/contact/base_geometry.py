@@ -192,8 +192,8 @@ class BaseGeometry(ABC):
         Lambdify symbolic position/velocity expressions and store the
         resulting callables as self.position_fn / self.velocity_fn.
         """
-        self.position_fn = lambdify(model._v, pos_expr, modules="jax", cse=True, docstring_limit=2)
-        self.velocity_fn = lambdify(model._v, vel_expr, modules="jax", cse=True, docstring_limit=2)
+        self.position_fn = lambdify(model._symbols, pos_expr, modules="jax", cse=True, docstring_limit=2)
+        self.velocity_fn = lambdify(model._symbols, vel_expr, modules="jax", cse=True, docstring_limit=2)
 
     # ------------------------------------------------------------------
     # Abstract / overridable interface
@@ -252,7 +252,7 @@ class BaseGeometry(ABC):
                 f"Geometry '{self.name}' kinematics have not been built yet. "
                 "build_kinematics(model) must be called before get_position()."
             )
-        return self.position_fn(*states.model, *constants.model)
+        return self.position_fn(*states.filter('model').flatten(), *constants.filter('model').flatten())
 
     def get_velocity(self, states, constants):
         """
@@ -275,7 +275,7 @@ class BaseGeometry(ABC):
                 f"Geometry '{self.name}' kinematics have not been built yet. "
                 "build_kinematics(model) must be called before get_velocity()."
             )
-        return self.velocity_fn(*states.model, *constants.model)
+        return self.velocity_fn(*states.filter('model').flatten(), *constants.filter('model').flatten())
 
     def get_n_constants(self):
         """
