@@ -234,6 +234,13 @@ class BiosymModel:
             new_joints.extend(builder(joint).flat_joints)
         parser.data["joints"] = new_joints
 
+        # Also update each body's nested joint list to the flattened joints,
+        # since _create_sympy_model's frame-builder reads body["joints"]. Without
+        # this, bodies keep their original PlanarJoint/WeldJoint/PinJoint entries
+        # and the frame-builder finds no hinges/slides.
+        for body in parser.data["bodies"]:
+            body["joints"] = [j for j in new_joints if j["child"] == body["name"]]
+
         # Translate Internal Forces (Actuators, Muscles, etc.)
         if parser.get_n_internal_forces() > 0:
             actuators = actuator_parser.get_from_osim(
@@ -592,6 +599,14 @@ class BiosymModel:
                         hinge_idx += 1
                     idx_h += 1
 
+                if n_hinges == 0:
+                    # No rotational DOF (weld joint, or a body with only slides):
+                    # the body's frame is fixed in orientation to its parent.
+                    # Orient as identity (zero rotation) so v2pt_theory has a
+                    # defined angular-velocity path.
+                    body_frame.orient(parent_frame, "Axis", (0, parent_frame.z))
+                    body_frame.set_ang_vel(parent_frame, 0)    
+                
                 self.reference_frames[body_name] = body_frame
                 build_reference_frames(children, body_frame, body_origin)
 
