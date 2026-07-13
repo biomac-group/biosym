@@ -9,7 +9,7 @@ genuine MuJoCo-vs-OSIM naming difference: MuJoCo's "motor"/"general" map onto
 Registries, all keyed on type:
   _OSIM_READERS      : type -> reader(force_dict) -> reader output
   _XML_READERS       : type -> (child element tag(s), reader(el) -> reader output)
-  _ACTUATOR_BUILDERS : type -> builder(items, joint_names, defaults) -> BaseActuator
+  _ACTUATOR_BUILDERS : type -> builder(items, joints, joint_names, defaults) -> BaseActuator
 
 A reader's output need only match what that type's builder/constructor expects;
 it does not have to be uniform across types. The coordinate/torque readers
@@ -108,30 +108,31 @@ _XML_READERS = {
 # NOTE: register any new actuator implementation here.
 # ----------------------------------------------------------------------
 _ACTUATOR_BUILDERS = {
-    "CoordinateActuator": lambda items, jn, defaults: coordinate_actuator.CoordinateActuator(items),
-    "TorqueActuator":     lambda items, jn, defaults: torque_actuator.TorqueActuator(items),
-    "hill_2d":            lambda items, jn, defaults: hill2d.Hill2d(jn, items, defaults),
+    "CoordinateActuator": lambda items, joints, jn, defaults: coordinate_actuator.CoordinateActuator(items),
+    "TorqueActuator":     lambda items, joints, jn, defaults: torque_actuator.TorqueActuator(items, joints),
+    "hill_2d":            lambda items, joints, jn, defaults: hill2d.Hill2d(jn, items, defaults),
 }
 
 
 # ----------------------------------------------------------------------
 # Public entry points
 # ----------------------------------------------------------------------
-def get_from_xml(source, joint_names=None):
+def get_from_xml(source, joints=None, joint_names=None):
     """Build actuator(s) from a MuJoCo/standalone XML actuator block (an Element)
-    or a path to an actuator XML file."""
+    or a path to an actuator XML file. `joints` is the flattened joint list,
+    needed by TorqueActuator for body-chain resolution."""
     root = ET.parse(source).getroot() if isinstance(source, str) else source
-    return _assemble(_parse_xml(root), joint_names)
+    return _assemble(_parse_xml(root), joints, joint_names)
 
 
 def get_from_osim(forces, joints, joint_names=None):
     """Build actuator(s) from the OpenSim parsed force set. `forces` is
-    parser.data["forces"]; `joints` is parser.data["joints"] (available for
-    future readers that need joint context)."""
+    parser.data["forces"]; `joints` is parser.data["joints"], passed to actuators
+    (TorqueActuator) that resolve body chains from it."""
     groups = _parse_osim(forces)
     if not groups:
         return None
-    return _assemble(groups, joint_names)
+    return _assemble(groups, joints, joint_names)
 
 
 # ----------------------------------------------------------------------
@@ -190,12 +191,11 @@ def _parse_axis(axis_val):
     return [float(x) for x in axis_val]
 
 
-def _assemble(groups, joint_names):
+def _assemble(groups, joints, joint_names):
     """Build each (type, items, defaults) group into its actuator object. One
-    group -> that object; several -> a MultiActuator wrapper, so model.py always
-    sees one self.actuators."""
+    group -> that object; several -> a MultiActuator wrapper."""
     if not groups:
         raise ValueError("No actuators could be built from the provided source.")
-    models = [_ACTUATOR_BUILDERS[ctype](items, joint_names, defaults)
+    models = [_ACTUATOR_BUILDERS[ctype](items, joints, joint_names, defaults)
               for ctype, items, defaults in groups]
     return models[0] if len(models) == 1 else MultiActuator(models)

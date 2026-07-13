@@ -6,7 +6,7 @@ from biosym.model.actuators.base_actuator import BaseActuator
 
 
 class Hill2d(BaseActuator):
-    r"""
+    """
     A reimplementation of the 2D Hill muscle model as in gait2d.
     This model is purpose-built for 2D models with rotational joints.
     It is also purpose-built for direct collocation, and needs adjustments to work in a forward simulation setting,
@@ -124,7 +124,7 @@ class Hill2d(BaseActuator):
 
     def get_actuated_joints(self):
         """Returns the list of actuated joints."""
-        return self.actuated_joints
+        return list(self.actuated_joints)
 
     def get_n_states(self):
         return len(self.state_vector)
