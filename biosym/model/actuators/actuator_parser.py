@@ -157,23 +157,41 @@ def _parse_osim(forces):
 
 
 def _parse_xml(root):
-    declared = _canonical(root.get("type") or "")
-    defaults = root.find("default")   # root-level <default> block (hill_2d uses it)
+    defaults = root.find("default")   # root-level <default> block
     groups = {}  # type -> list of reader outputs
 
-    if declared not in _XML_READERS:
-        raise ValueError(
-            f"actuator_parser: XML actuator type '{root.get('type')}' has no XML "
-            f"reader. Register one in _XML_READERS (and a builder in "
-            f"_ACTUATOR_BUILDERS) for this type."
-        )
+    # Build a reverse map: child tag -> (canonical type, reader). This lets us
+    # read the type from each CHILD's tag (MuJoCo style: <general>/<motor>/
+    # <muscle> directly under <actuator>, with no type on the wrapper).
+    tag_to_type = {}
+    for ctype, (tags, reader) in _XML_READERS.items():
+        for tag in tags:
+            tag_to_type[tag] = (ctype, reader)
 
-    tags, reader = _XML_READERS[declared]
-    elements = []
-    for tag in tags:
-        elements += root.findall(tag)
-    for el in elements:
-        groups.setdefault(declared, []).append(reader(el))
+    # If the ROOT declares a type (standalone-file style), we still support it:
+    declared = _canonical(root.get("type") or "")
+    for el in root:
+        if el.tag == "default":
+            continue
+        # Prefer the child's own tag; fall back to the root-declared type.
+        if el.tag in tag_to_type:
+            ctype, reader = tag_to_type[el.tag]
+        elif declared in _XML_READERS:
+            ctype = declared
+            _, reader = _XML_READERS[declared]
+        else:
+            raise ValueError(
+                f"actuator_parser: actuator element <{el.tag}> has no XML reader. "
+                f"Its tag isn't a known actuator tag and the root declares no "
+                f"known type. Register the tag in _XML_READERS (and a builder in "
+                f"_ACTUATOR_BUILDERS)."
+            )
+        groups.setdefault(ctype, []).append(reader(el))
+
+    if not groups:
+        raise ValueError(
+            f"actuator_parser: no actuator elements found under <{root.tag}>."
+        )
 
     # Carry the defaults block alongside each group so the builder can use it.
     return [(ctype, items, defaults) for ctype, items in groups.items()]

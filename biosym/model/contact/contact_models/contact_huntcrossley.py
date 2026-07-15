@@ -152,33 +152,60 @@ class HuntCrossley(BaseContact):
     # Basic visualization: each contribution's point + force arrow.
     # ------------------------------------------------------------------
     def plot(self, states, model, mode, ax, **kwargs):
-        s, c = states.states, states.constants
-        s_flat = s.filter('model').flatten()
+        factor = kwargs.get("force_scale", 1e-3)
+        case = kwargs.get("case", "3D")
+        non_zero_axes = kwargs.get("non_zero_axes", [0, 1])
+        frame = kwargs.get("frame", 0)
+
+        if mode == "init":
+            # Store the full sequence + constants so update can slice by frame
+            # (update is called with states=False).
+            s = states.states if hasattr(states, "states") else states
+            c = states.constants if hasattr(states, "constants") else model.default_constants
+            self._plot_states = s
+            self._plot_constants = c
+
+        # Pick one frame from the stored sequence.
+        s = self._plot_states
+        c = self._plot_constants
+        s_frame = s[frame] if np.asarray(s.q).ndim > 1 else s
+
+        s_flat = s_frame.filter('model').flatten()
         c_flat = c.filter('model').flatten()
         positions = np.asarray(self.pos_fn(*s_flat, *c_flat))
         forces = np.asarray(self.force_fn(*s_flat, *c_flat))
-        factor = kwargs.get("force_scale", 1e-3)
 
         if mode == "init":
             self._plot_markers, self._plot_force_lines = [], []
             for i in range(positions.shape[0]):
-                (m,) = ax.plot([positions[i, 0]], [positions[i, 1]], [positions[i, 2]],
-                               c="k", marker="o")
                 tip = positions[i] + factor * forces[i]
-                (fl,) = ax.plot([positions[i, 0], tip[0]],
-                                [positions[i, 1], tip[1]],
-                                [positions[i, 2], tip[2]], c="darkgreen")
+                if case == "2D":
+                    a0, a1 = non_zero_axes
+                    (m,) = ax.plot([positions[i, a0]], [positions[i, a1]], c="k", marker="o")
+                    (fl,) = ax.plot([positions[i, a0], tip[a0]],
+                                    [positions[i, a1], tip[a1]], c="darkgreen")
+                else:
+                    (m,) = ax.plot([positions[i, 0]], [positions[i, 1]], [positions[i, 2]],
+                                   c="k", marker="o")
+                    (fl,) = ax.plot([positions[i, 0], tip[0]],
+                                    [positions[i, 1], tip[1]],
+                                    [positions[i, 2], tip[2]], c="darkgreen")
                 self._plot_markers.append(m)
                 self._plot_force_lines.append(fl)
             return self._plot_markers, self._plot_force_lines
 
         if mode == "update":
             for i, (m, fl) in enumerate(zip(self._plot_markers, self._plot_force_lines)):
-                m.set_data([positions[i, 0]], [positions[i, 1]])
-                m.set_3d_properties(positions[i, 2])
                 tip = positions[i] + factor * forces[i]
-                fl.set_data([positions[i, 0], tip[0]], [positions[i, 1], tip[1]])
-                fl.set_3d_properties([positions[i, 2], tip[2]])
+                if case == "2D":
+                    a0, a1 = non_zero_axes
+                    m.set_data([positions[i, a0]], [positions[i, a1]])
+                    fl.set_data([positions[i, a0], tip[a0]], [positions[i, a1], tip[a1]])
+                else:
+                    m.set_data([positions[i, 0]], [positions[i, 1]])
+                    m.set_3d_properties(positions[i, 2])
+                    fl.set_data([positions[i, 0], tip[0]], [positions[i, 1], tip[1]])
+                    fl.set_3d_properties([positions[i, 2], tip[2]])
             return
 
         raise ValueError("Invalid mode. Must be 'init' or 'update'.")
