@@ -126,7 +126,11 @@ class BiosymModel:
         if definition_file.endswith(".xml"):
             parser = mujoco_parser.MujocoParser(definition_file)
             if parser.has_actuators():
-                self.actuators = actuator_parser.get_from_xml(parser.get_actuators())
+                self.actuators = actuator_parser.get_from_xml(
+                    parser.get_actuators(),
+                    joints=parser.get_joints(),
+                    joint_names=[j["name"] for j in parser.get_joints()],
+                )
                 parser.actuators = self.actuators.get_actuators()
             if parser.has_contact_model():
                 self.gc_model = contact_parser.get_from_xml(parser.get_contact_model())
@@ -161,7 +165,11 @@ class BiosymModel:
                         os.path.dirname(definition_file),
                         cfg["model"]["additional_parameters"]["actuators"]["file"],
                     )
-                    self.actuators = actuator_parser.get_from_xml(actuator_model_file, joint_names=[j["name"] for j in parser.get_joints()])
+                    self.actuators = actuator_parser.get_from_xml(
+                        actuator_model_file,
+                        joints=parser.get_joints(),
+                        joint_names=[j["name"] for j in parser.get_joints()],
+                    )
                     if cfg["model"]["additional_parameters"]["actuators"]["replace_existing"] == True:
                         parser.actuators = self.actuators.get_actuators()
                     else:
@@ -192,7 +200,7 @@ class BiosymModel:
             self._register_contact_model(self.gc_model)
         if hasattr(self, "actuators"):
             self.actuators.process_eom(self)
-            self._register_actuator_model(self.actuators)
+        self._register_actuator_model(getattr(self, "actuators", None))
 
         if self.compile_eom:
             self._create_eom()
@@ -200,6 +208,7 @@ class BiosymModel:
 
         self._create_variable_dataframe()
 
+        # ABA fails on bodies with zero inertia components (e.g. thin toe bodies); Kane path unaffected
         self._register_aba_rnea()
 
         # self._create_FK(parser)
@@ -233,6 +242,13 @@ class BiosymModel:
                 )
             new_joints.extend(builder(joint).flat_joints)
         parser.data["joints"] = new_joints
+
+        # Also update each body's nested joint list to the flattened joints,
+        # since _create_sympy_model's frame-builder reads body["joints"]. Without
+        # this, bodies keep their original PlanarJoint/WeldJoint/PinJoint entries
+        # and the frame-builder finds no hinges/slides.
+        for body in parser.data["bodies"]:
+            body["joints"] = [j for j in new_joints if j["child"] == body["name"]]
 
         # Translate Internal Forces (Actuators, Muscles, etc.)
         if parser.get_n_internal_forces() > 0:
@@ -329,9 +345,9 @@ class BiosymModel:
             names=[f"t_{joint}" for joint in all_joints if joint in actuated_joints],
             n=len(actuated_joints),
             symbols=Matrix(symbols([f"tau_{joint}" for joint in all_joints if joint in actuated_joints])),
-            passive_idx=jnp.array([i for i, j in enumerate(all_joints) if j in passive_actuated_joints]),
-            active_idx=jnp.array([i for i, j in enumerate(all_joints) if j in active_actuated_joints]),
-            combined_idx=jnp.array([i for i, j in enumerate(all_joints) if j in actuated_joints]),
+            passive_idx=jnp.array([i for i, j in enumerate(all_joints) if j in passive_actuated_joints], dtype=jnp.int32),
+            active_idx=jnp.array([i for i, j in enumerate(all_joints) if j in active_actuated_joints], dtype=jnp.int32),
+            combined_idx=jnp.array([i for i, j in enumerate(all_joints) if j in actuated_joints], dtype=jnp.int32),
         )
         # The first representation of external forces is a list of bodies, where the forces can be applied
         n_ext_forces = parser.get_n_external_forces()
@@ -592,6 +608,14 @@ class BiosymModel:
                         hinge_idx += 1
                     idx_h += 1
 
+                if n_hinges == 0:
+                    # No rotational DOF (weld joint, or a body with only slides):
+                    # the body's frame is fixed in orientation to its parent.
+                    # Orient as identity (zero rotation) so v2pt_theory has a
+                    # defined angular-velocity path.
+                    body_frame.orient(parent_frame, "Axis", (0, parent_frame.z))
+                    body_frame.set_ang_vel(parent_frame, 0)    
+                
                 self.reference_frames[body_name] = body_frame
                 build_reference_frames(children, body_frame, body_origin)
 
@@ -1025,16 +1049,20 @@ class BiosymModel:
         self.contact_model = contact_model
 
     def _register_actuator_model(self, actuator_model: Any) -> None:
-        """TODO: Refactor the _register functions, they are almost identical."""
-        self.default_states = self.default_states.replace(actuator_model=np.zeros(actuator_model.get_n_states()))
-        self.default_constants = self.default_constants.replace(
-            actuator_model=np.zeros(actuator_model.get_n_constants())
-        )
+        n_states = actuator_model.get_n_states() if actuator_model is not None else 0
+        n_consts = actuator_model.get_n_constants() if actuator_model is not None else 0
+        self.default_states = self.default_states.replace(actuator_model=np.zeros(n_states))
+        self.default_constants = self.default_constants.replace(actuator_model=np.zeros(n_consts))
 
-        actuator_function = actuator_model.forward
+        has_active = actuator_model is not None
 
         def lambda_func(states: Any, constants: Any, model: Any) -> Any:
-            f = actuator_function(states, constants, model) + self.passive_actuators.forward(states, constants, model)
+            passive = self.passive_actuators.forward(states, constants, model)
+            if has_active:
+                f = actuator_model.forward(states, constants, model) + passive
+            else:
+                f = passive
+            # f is full-DOF; extract the actuated-joint slots for tau.
             return f[self.tau.combined_idx] if f.ndim == 1 else f[:, self.tau.combined_idx]
 
         self.actuator_model = actuator_model
@@ -1221,8 +1249,7 @@ class BiosymModel:
         # 3. Ground contact and actuator models
         if hasattr(self, "gc_model"):
             self._register_contact_model(self.gc_model)
-        if hasattr(self, "actuators"):
-            self._register_actuator_model(self.actuators)
+        self._register_actuator_model(getattr(self, "actuators", None))
 
 
 def _slice(dictionary: dict[str, Any]) -> slice:

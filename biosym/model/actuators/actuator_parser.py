@@ -9,7 +9,7 @@ genuine MuJoCo-vs-OSIM naming difference: MuJoCo's "motor"/"general" map onto
 Registries, all keyed on type:
   _OSIM_READERS      : type -> reader(force_dict) -> reader output
   _XML_READERS       : type -> (child element tag(s), reader(el) -> reader output)
-  _ACTUATOR_BUILDERS : type -> builder(items, joint_names, defaults) -> BaseActuator
+  _ACTUATOR_BUILDERS : type -> builder(items, joints, joint_names, defaults) -> BaseActuator
 
 A reader's output need only match what that type's builder/constructor expects;
 it does not have to be uniform across types. The coordinate/torque readers
@@ -108,30 +108,31 @@ _XML_READERS = {
 # NOTE: register any new actuator implementation here.
 # ----------------------------------------------------------------------
 _ACTUATOR_BUILDERS = {
-    "CoordinateActuator": lambda items, jn, defaults: coordinate_actuator.CoordinateActuator(items),
-    "TorqueActuator":     lambda items, jn, defaults: torque_actuator.TorqueActuator(items),
-    "hill_2d":            lambda items, jn, defaults: hill2d.Hill2d(jn, items, defaults),
+    "CoordinateActuator": lambda items, joints, jn, defaults: coordinate_actuator.CoordinateActuator(items),
+    "TorqueActuator":     lambda items, joints, jn, defaults: torque_actuator.TorqueActuator(items, joints),
+    "hill_2d":            lambda items, joints, jn, defaults: hill2d.Hill2d(jn, items, defaults),
 }
 
 
 # ----------------------------------------------------------------------
 # Public entry points
 # ----------------------------------------------------------------------
-def get_from_xml(source, joint_names=None):
+def get_from_xml(source, joints=None, joint_names=None):
     """Build actuator(s) from a MuJoCo/standalone XML actuator block (an Element)
-    or a path to an actuator XML file."""
+    or a path to an actuator XML file. `joints` is the flattened joint list,
+    needed by TorqueActuator for body-chain resolution."""
     root = ET.parse(source).getroot() if isinstance(source, str) else source
-    return _assemble(_parse_xml(root), joint_names)
+    return _assemble(_parse_xml(root), joints, joint_names)
 
 
 def get_from_osim(forces, joints, joint_names=None):
     """Build actuator(s) from the OpenSim parsed force set. `forces` is
-    parser.data["forces"]; `joints` is parser.data["joints"] (available for
-    future readers that need joint context)."""
+    parser.data["forces"]; `joints` is parser.data["joints"], passed to actuators
+    (TorqueActuator) that resolve body chains from it."""
     groups = _parse_osim(forces)
     if not groups:
         return None
-    return _assemble(groups, joint_names)
+    return _assemble(groups, joints, joint_names)
 
 
 # ----------------------------------------------------------------------
@@ -156,23 +157,41 @@ def _parse_osim(forces):
 
 
 def _parse_xml(root):
-    declared = _canonical(root.get("type") or "")
-    defaults = root.find("default")   # root-level <default> block (hill_2d uses it)
+    defaults = root.find("default")   # root-level <default> block
     groups = {}  # type -> list of reader outputs
 
-    if declared not in _XML_READERS:
-        raise ValueError(
-            f"actuator_parser: XML actuator type '{root.get('type')}' has no XML "
-            f"reader. Register one in _XML_READERS (and a builder in "
-            f"_ACTUATOR_BUILDERS) for this type."
-        )
+    # Build a reverse map: child tag -> (canonical type, reader). This lets us
+    # read the type from each CHILD's tag (MuJoCo style: <general>/<motor>/
+    # <muscle> directly under <actuator>, with no type on the wrapper).
+    tag_to_type = {}
+    for ctype, (tags, reader) in _XML_READERS.items():
+        for tag in tags:
+            tag_to_type[tag] = (ctype, reader)
 
-    tags, reader = _XML_READERS[declared]
-    elements = []
-    for tag in tags:
-        elements += root.findall(tag)
-    for el in elements:
-        groups.setdefault(declared, []).append(reader(el))
+    # If the ROOT declares a type (standalone-file style), we still support it:
+    declared = _canonical(root.get("type") or "")
+    for el in root:
+        if el.tag == "default":
+            continue
+        # Prefer the child's own tag; fall back to the root-declared type.
+        if el.tag in tag_to_type:
+            ctype, reader = tag_to_type[el.tag]
+        elif declared in _XML_READERS:
+            ctype = declared
+            _, reader = _XML_READERS[declared]
+        else:
+            raise ValueError(
+                f"actuator_parser: actuator element <{el.tag}> has no XML reader. "
+                f"Its tag isn't a known actuator tag and the root declares no "
+                f"known type. Register the tag in _XML_READERS (and a builder in "
+                f"_ACTUATOR_BUILDERS)."
+            )
+        groups.setdefault(ctype, []).append(reader(el))
+
+    if not groups:
+        raise ValueError(
+            f"actuator_parser: no actuator elements found under <{root.tag}>."
+        )
 
     # Carry the defaults block alongside each group so the builder can use it.
     return [(ctype, items, defaults) for ctype, items in groups.items()]
@@ -190,12 +209,11 @@ def _parse_axis(axis_val):
     return [float(x) for x in axis_val]
 
 
-def _assemble(groups, joint_names):
+def _assemble(groups, joints, joint_names):
     """Build each (type, items, defaults) group into its actuator object. One
-    group -> that object; several -> a MultiActuator wrapper, so model.py always
-    sees one self.actuators."""
+    group -> that object; several -> a MultiActuator wrapper."""
     if not groups:
         raise ValueError("No actuators could be built from the provided source.")
-    models = [_ACTUATOR_BUILDERS[ctype](items, joint_names, defaults)
+    models = [_ACTUATOR_BUILDERS[ctype](items, joints, joint_names, defaults)
               for ctype, items, defaults in groups]
     return models[0] if len(models) == 1 else MultiActuator(models)

@@ -13,15 +13,17 @@ class CoordinateActuator(BaseActuator):
         {"name": str, "joint": str, "min": float, "max": float, ...}
     -- source-agnostic, so the same class serves xml, mujoco, and osim inputs.
 
-    Produces a "coordinate" load (the default): joint torques placed at the
-    actuated joints' indices.
+    forward() returns a joint-sized torque array with this actuator's commanded
+    torque placed at its actuated joints, zero elsewhere. model.py sums these
+    across actuators and applies each joint's net torque as +M on child /
+    -M on parent.
     """
 
     def __init__(self, actuator_dicts):
         super().__init__()
-        # actuator_dicts: list of normalized dicts from the parser.
         self.actuators = {a["name"]: a for a in actuator_dicts}
         self.n_actuators = len(self.actuators)
+        self._defs = list(actuator_dicts)  # ordered, matches actuator_model order
         self.states = [f"torque_{name}" for name in self.actuators.keys()]
         self.state_vector = self.states
         self.bounds = {
@@ -38,7 +40,7 @@ class CoordinateActuator(BaseActuator):
         return self.n_actuators
 
     def get_actuated_joints(self):
-        return [a["joint"] for a in self.actuators.values() if a.get("joint") is not None]
+        return [a["joint"] for a in self._defs if a.get("joint") is not None]
 
     def get_n_states(self):
         return self.get_n_actuators()
@@ -46,44 +48,25 @@ class CoordinateActuator(BaseActuator):
     def get_n_constants(self):
         return 0
 
-    def is_torque_actuator(self):
-        return True
-
     def reset(self):
         pass
 
     def forward(self, states, constants, model):
-        # Identical to the old General.
         """
-        Evaluate the actuator model to compute joint torques.
-
-        This method maps actuator states (torque commands) to the appropriate
-        joints in the biomechanical model.
-
-        Parameters
-        ----------
-        states : object
-            Current state values containing actuator_model attribute with
-            torque values for each actuator.
-        constants : object
-            Current constant parameter values (unused for general actuators).
-        model : biosym.model.model.BiosymModel
-            The biomechanical model containing joint and force information.
-
-        Returns
-        -------
-        jax.Array
-            Array of joint torques with shape (n_coordinates,). Torques are
-            placed at the indices specified by model.forces["active_idx"].
-
-        Notes
-        -----
-        The method creates a zero array for all coordinates and fills in
-        the actuator torques at the active joint indices. This ensures
-        proper mapping between actuator outputs and joint inputs.
+        Return a joint-sized torque array: this actuator's commanded torques
+        placed at their joints' coordinate indices, zero elsewhere.
         """
-        all_joints = jnp.zeros((len(states), model.coordinates["n"]))
-        all_joints = all_joints.at[:, jnp.array(model.forces["active_idx"])].set(
-            states.actuator_model
-        )
-        return all_joints if (states.model.ndim > 1) else all_joints[0]
+        # Position of each actuator's joint in the model's coordinate list.
+        joint_names = [j["name"] for j in model.dicts["joints"]]
+        joint_idx = jnp.array([joint_names.index(a["joint"]) for a in self._defs])
+
+        n_dof = model.coordinates.n
+        commanded = states.actuator_model  # one value per actuator, in _defs order
+
+        if commanded.ndim == 1:
+            out = jnp.zeros(n_dof)
+            return out.at[joint_idx].set(commanded)
+        else:
+            # batched: (n_samples, n_actuators) -> (n_samples, n_dof)
+            out = jnp.zeros((commanded.shape[0], n_dof))
+            return out.at[:, joint_idx].set(commanded)
