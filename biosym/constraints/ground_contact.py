@@ -10,11 +10,10 @@ from biosym.constraints.base_constraint import BaseConstraint
 # any constraint needs to be named Constraint, otherwise it will not be found by the OCP class
 class Constraint(BaseConstraint):
     """
-    Base class for dynamics constraints in the biosym package.
+    Ground contact constraint for biosym OCP.
 
-    This class provides a template for implementing specific dynamics constraints.
-    It includes methods for evaluating the constraint function, computing the Jacobian,
-    and retrieving information about the constraint.
+    Enforces that the model's external forces and moments equal those computed
+    by the ground contact model: gc_model(states) - ext_forces = 0.
     """
 
     def __init__(self, model, settings, args):
@@ -26,16 +25,21 @@ class Constraint(BaseConstraint):
         """
         self.model = model
         self.settings = settings.copy()
-        self.settings["nvpn"] = len(model.state_vector)
+        self.settings["nvpn_model"] = len(model.state_vector)
+        self.settings["nvpn_gc_model"] = model.gc_model.get_n_states()
+        self.settings["nvpn_actuator_model"] = model.actuators.get_n_states()
+        self.settings["nvpn"] = (
+            self.settings["nvpn_model"]
+            + self.settings["nvpn_gc_model"]
+            + self.settings["nvpn_actuator_model"]
+        )
         self.nvar = settings.get("nvar")
-        self.nf = model.ext_forces["n"] + model.ext_torques["n"]
+        self.nf = model.ext_forces.n + model.ext_torques.n
         self.ncons_model = len(self.model.fr)
 
     def _get_info(self):
         """
-        Get information about the dynamics constraint.
-
-        This method can be overridden in subclasses to provide specific information.
+        Get information about the ground contact constraint.
         """
         return {
             "name": os.path.splitext(os.path.basename(__file__))[0],
@@ -44,100 +48,160 @@ class Constraint(BaseConstraint):
             "nnz": self.get_nnz(),
             "ncons": self.get_n_constraints(),
             "ncons_pernode": self.nf,
-            "idx_ext_forces": self.model.ext_forces["idx"],
-            "idx_ext_torques": self.model.ext_torques["idx"],
-            "n_ext_forces": self.model.ext_forces["n"],
-            "n_ext_torques": self.model.ext_torques["n"],
+            "n_ext_forces": self.model.ext_forces.n,
+            "n_ext_torques": self.model.ext_torques.n,
         }
 
     def get_confun(self):
         """
-        Evaluate the dynamics constraint function.
-
-        :param states_list: Dictionary containing the current states.
-        :return: The dynamics constraint function.
+        Return the JIT-compiled constraint function.
         """
         return jax.jit(partial(confun, self.model, settings=self.settings, info=self._get_info()))
 
     def get_jacobian(self):
         """
-        Get the Jacobian of the dynamics constraint function.
-
-        :param states_list: Dictionary containing the current states.
-        :return: The Jacobian of the dynamics constraint function.
+        Return the JIT-compiled Jacobian function.
         """
         return jax.jit(partial(jacobian, self.model, settings=self.settings, info=self._get_info()))
 
     def get_n_constraints(self):
         """
-        Get the number of constraints defined by this dynamics constraint.
-
-        :return: The number of constraints.
+        Get the number of constraints (nf * nnodes).
         """
         return self.nf * self.settings.get("nnodes")
 
     def get_nnz(self):
         """
-        Get the number of non-zero entries in the Jacobian of the dynamics constraint.
-
-        :return: The number of non-zero entries.
+        Get the number of non-zero entries in the Jacobian.
         """
         return self.get_n_constraints() * self.settings.get("nvpn")
 
 
 def confun(model, states_list, globals_dict, settings, info):
     """
-    Placeholder for the constraint function.
+    Evaluate the ground contact constraint.
 
-    This function should be implemented in subclasses to evaluate the dynamics constraints.
+    Computes: gc_model(states) - ext_forces = 0 for forces and moments.
 
-    :param states_list: List containing the current states.
-    :param settings: Dictionary containing settings for the dynamics constraint.
-    :param info: Information about the constraint function.
-    :return: The evaluated value of the constraint function.
-
-    Todo: there is some non-jax logic in here, which could be replaced with a static function
+    :param model: BiosymModel
+    :param states_list: batched States object of shape (nnodes, ...)
+    :param globals_dict: global variables (unused)
+    :param settings: constraint settings dict
+    :param info: constraint info dict
+    :return: flattened residual vector of shape (nnodes * nf,)
     """
-    data_out = jnp.empty((info["ncons"],), dtype=float)
+    constants = model.default_constants
     nnodes = settings.get("nnodes")
-    ncons = info["ncons_pernode"]
 
-    def body_fun(n, carry):
-        data_out = carry
-        state_ = states_list[n]
-        forces_gc, moments_gc = model.run["gc_model"](
-            state_.states, state_.constants
-        )  # Get ground contact forces and moments
-        # Find forces and moments in the model
-        forces_model = state_.states.model[model.ext_forces["idx"] : model.ext_forces["idx"] + model.ext_forces["n"]]
-        moments_model = state_.states.model[
-            model.ext_torques["idx"] : model.ext_torques["idx"] + model.ext_torques["n"]
-        ]
+    def _eval_single(states_):
+        forces_gc, moments_gc = model.run["gc_model"](states_, constants)
+        res_forces = forces_gc.flatten() - states_.ext_forces.flatten()
+        res_moments = moments_gc.flatten() - states_.ext_torques.flatten()
+        return jnp.concatenate([res_forces, res_moments])
 
-        val = jnp.concatenate((forces_gc.flatten() - forces_model, moments_gc.flatten() - moments_model), axis=0)
-        start = n * ncons
-        data_out = jax.lax.dynamic_update_slice(data_out, val, (start,))
-        return data_out
+    result = jax.vmap(_eval_single)(states_list[:nnodes])
+    return result.flatten()
 
-    data_out = jax.lax.fori_loop(0, nnodes, body_fun, data_out)
-    return data_out
 
 
 def jacobian(model, states_list, globals_dict, settings, info):
     """
-    Placeholder for the Jacobian of the constraint function.
+    Compute the sparse COO Jacobian of the ground contact constraint.
 
-    This function should be implemented in subclasses to compute the Jacobian of the dynamics constraints.
+    Uses model.run["gc_model_jacobian"] for the gc_model contribution, then
+    adds the -I contribution for ext_forces and ext_torques.
 
-    param states_list: List containing the current states.
-    :param settings: Dictionary containing settings for the dynamics constraint.
-    :param info: Information about the constraint function.
-    :return: The Jacobian of the constraint function.
+    :param model: BiosymModel
+    :param states_list: batched States object of shape (nnodes, ...)
+    :return: (rows, cols, data) sparse COO arrays
     """
     nnz = info["nnz"]
     nvpn = settings.get("nvpn")
+    nvpn_model = settings.get("nvpn_model")
+    nvpn_gc_model = settings.get("nvpn_gc_model")
+    nvpn_actuator_model = settings.get("nvpn_actuator_model")
     nnodes = settings.get("nnodes")
     ncons = info["ncons_pernode"]
+    n_ext_forces = info["n_ext_forces"]
+    n_ext_torques = info["n_ext_torques"]
+
+    constants = model.default_constants
+
+    def _jac_single(n, states_):
+        """Compute the COO jacobian block for node n."""
+        # gc_model jacobian w.r.t. states: returns (jac_forces, jac_moments) — each a States pytree
+        # with fields of shape (n_bodies_per_force_dim, field_dim)
+        jac = model.run["gc_model_jacobian"](states_, constants)
+        jac_forces, jac_moments = jac  # each is a States with shape (..., field_dim)
+
+        # Assemble dense jacobian blocks from model-state fields
+        def _concat_model_fields(jac_struct):
+            parts = []
+            for name in ["q", "qd", "qdd", "tau", "ext_forces", "ext_torques"]:
+                val = getattr(jac_struct, name)
+                if val is not None:
+                    parts.append(val.reshape(-1, val.shape[-1]))
+            return jnp.concatenate(parts, axis=-1)  # (n_force_components, nvpn_model)
+
+        jac_model_forces = _concat_model_fields(jac_forces)   # (n_ext_forces, nvpn_model)
+        jac_model_moments = _concat_model_fields(jac_moments)  # (n_ext_torques, nvpn_model)
+
+        # Stack forces and moments: (ncons, nvpn_model)
+        jac_model = jnp.vstack([jac_model_forces, jac_model_moments])
+
+        # gc_model states contribution (if any)
+        if nvpn_gc_model > 0:
+            jac_gc_forces = jac_forces.gc_model.reshape(-1, jac_forces.gc_model.shape[-1])
+            jac_gc_moments = jac_moments.gc_model.reshape(-1, jac_moments.gc_model.shape[-1])
+            jac_gc = jnp.vstack([jac_gc_forces, jac_gc_moments])  # (ncons, nvpn_gc_model)
+
+        # actuator_model contribution (if any)
+        if nvpn_actuator_model > 0:
+            jac_act_forces = jac_forces.actuator_model.reshape(-1, jac_forces.actuator_model.shape[-1])
+            jac_act_moments = jac_moments.actuator_model.reshape(-1, jac_moments.actuator_model.shape[-1])
+            jac_act = jnp.vstack([jac_act_forces, jac_act_moments])  # (ncons, nvpn_actuator_model)
+
+        node_offset = n * nvpn
+        row_block = n * ncons + jnp.arange(ncons)
+
+        rows_blocks = []
+        cols_blocks = []
+        data_blocks = []
+
+        # Model state jacobian block (also subtract -I on ext_forces/ext_torques columns)
+        # The -ext_forces and -ext_torques terms contribute -I in the model part
+        # ext_forces start at: nvpn_model - n_ext_forces - n_ext_torques
+        # ext_torques start at: nvpn_model - n_ext_torques
+        ef_start = nvpn_model - n_ext_forces - n_ext_torques
+        et_start = nvpn_model - n_ext_torques
+        jac_model = jac_model.at[:n_ext_forces, ef_start:ef_start + n_ext_forces].add(
+            -jnp.eye(n_ext_forces)
+        )
+        jac_model = jac_model.at[n_ext_forces:, et_start:et_start + n_ext_torques].add(
+            -jnp.eye(n_ext_torques)
+        )
+
+        rows_blocks.append(jnp.repeat(row_block, nvpn_model))
+        cols_blocks.append(jnp.tile(node_offset + jnp.arange(nvpn_model), ncons))
+        data_blocks.append(jac_model.flatten())
+
+        if nvpn_gc_model > 0:
+            rows_blocks.append(jnp.repeat(row_block, nvpn_gc_model))
+            cols_blocks.append(jnp.tile(node_offset + nvpn_model + jnp.arange(nvpn_gc_model), ncons))
+            data_blocks.append(jac_gc.flatten())
+
+        if nvpn_actuator_model > 0:
+            rows_blocks.append(jnp.repeat(row_block, nvpn_actuator_model))
+            cols_blocks.append(
+                jnp.tile(node_offset + nvpn_model + nvpn_gc_model + jnp.arange(nvpn_actuator_model), ncons)
+            )
+            data_blocks.append(jac_act.flatten())
+
+        rows_block = jnp.concatenate(rows_blocks)
+        cols_block = jnp.concatenate(cols_blocks)
+        data_block = jnp.concatenate(data_blocks)
+        return rows_block, cols_block, data_block
+
     rows_out = jnp.empty((nnz,), dtype=int)
     cols_out = jnp.empty((nnz,), dtype=int)
     data_out = jnp.empty((nnz,), dtype=float)
@@ -147,43 +211,11 @@ def jacobian(model, states_list, globals_dict, settings, info):
     def body_fun(n, carry):
         rows_out, cols_out, data_out = carry
         state_ = states_list[n]
-        jac = model.run["gc_model_jacobian"](state_.states, state_.constants)
-
-        jac_model = jnp.vstack((jac[0].model, jac[1].model))
-        jac_gc_model = jnp.vstack((jac[0].gc_model, jac[1].gc_model))
-
-        if jac_gc_model.shape[-1] != 0:
-            raise NotImplementedError("Jacobian for ground contact model states not implemented yet.")
-
-        # Jacobian block for the model
-        row_block = n * ncons + jnp.arange(ncons)
-        col_block = state_.states.size() * n + jnp.arange(nvpn)
-
-        rows_block = jnp.repeat(row_block, nvpn)  # Shape: (ncons * nvpn,)
-        cols_block = jnp.tile(col_block, ncons)  # Shape: (ncons * nvpn,)
-
-        # Add -1 to the forces and moments in the model
-        # Forces
-        rows = jnp.repeat(jnp.arange(info["n_ext_forces"] // 3), 3)  # [0, 0, 0, 1, 1, 1] for gait2d
-        cols = jnp.tile(jnp.arange(info["n_ext_forces"] // 2), 2)  # [0, 1, 2, 0, 1, 2] for gait2d
-        depth = model.ext_forces["idx"] + jnp.arange(6)
-        jac_model = jac_model.at[rows, cols, depth].add(-1)  # Subtract 1 from the forces and moments in the model
-        # Moments
-        rows = (
-            jnp.repeat(jnp.arange(info["n_ext_torques"] // 3), 3) + info["n_ext_forces"] // 3
-        )  # [0, 0, 0, 1, 1, 1] for gait2d
-        cols = jnp.tile(jnp.arange(info["n_ext_torques"] // 2), 2)  # [0, 1, 2, 0, 1, 2] for gait2d
-        depth = model.ext_torques["idx"] + jnp.arange(6)
-        jac_model = jac_model.at[rows, cols, depth].add(-1)
-
-        data_block = jac_model.flatten()  # Flatten the block
-
-        start = n * block_size  # Calculate where to insert this block
-
+        rows_block, cols_block, data_block = _jac_single(n, state_)
+        start = n * block_size
         rows_out = jax.lax.dynamic_update_slice(rows_out, rows_block, (start,))
         cols_out = jax.lax.dynamic_update_slice(cols_out, cols_block, (start,))
         data_out = jax.lax.dynamic_update_slice(data_out, data_block, (start,))
-
         return (rows_out, cols_out, data_out)
 
     rows_out, cols_out, data_out = jax.lax.fori_loop(0, nnodes, body_fun, (rows_out, cols_out, data_out))

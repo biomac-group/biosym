@@ -37,8 +37,8 @@ class Objective(BaseObjective):
             "name": os.path.splitext(os.path.basename(__file__))[0],
             "description": "Objective term for minimizing effort.",
             "required_variables": {"states": ["model"], "constants": ["model"]},
-            "idx_int_forces": self.model.forces["idx"],
-            "n_int_forces": self.model.forces["n"],
+            "idx_int_forces": self.model.tau.combined_idx,
+            "n_int_forces": self.model.tau.n,
             "range_actuators": self.model.actuators.idx["a"],
             "exponent": self.exponent,
             "speedweighting": self.speedweighting,
@@ -69,7 +69,7 @@ def objfun(states_list, globals_dict, settings, info):
         if info["speedweighting"]:
             # Apply speed weighting to the forces
             forces = (
-                states_list.states.actuator_model[
+                states_list.actuator_model[
                     : settings["nnodes"], info["range_actuators"]
                 ]
                 / settings["nnodes"]
@@ -78,7 +78,7 @@ def objfun(states_list, globals_dict, settings, info):
             )
         else:
             forces = (
-                states_list.states.actuator_model[
+                states_list.actuator_model[
                     : settings["nnodes"], info["range_actuators"]
                 ]
                 / settings["nnodes"]
@@ -86,7 +86,7 @@ def objfun(states_list, globals_dict, settings, info):
             )
     else:
         forces = (
-            states_list.states.actuator_model[
+            states_list.actuator_model[
                 : settings["nnodes"], info["range_actuators"]
             ]
             / settings["nnodes"]

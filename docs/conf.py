@@ -14,40 +14,44 @@ import os
 #
 import re
 import sys
+import tomllib as toml
 from datetime import datetime
 from pathlib import Path
 
-import toml
+CONF_FILE = Path(__file__).resolve()
+DOCS_DIR = CONF_FILE.parent
+ROOT_DIR = DOCS_DIR.parent
+ON_RTD = os.environ.get("READTHEDOCS") == "True"
+ON_GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
+USE_COMMITTED_GALLERY = ON_RTD or ON_GITHUB_ACTIONS or os.environ.get("BIOSYM_USE_COMMITTED_GALLERY") == "1"
 
-HERE = Path(__file__)
-
-sys.path.insert(0, str(HERE.parent))
-sys.path.insert(0, str(HERE.parent.parent))
+sys.path.insert(0, str(DOCS_DIR))
+sys.path.insert(0, str(ROOT_DIR))
 
 
-URL = "https://github.com/mad-lab-fau/biosym"
+URL = "https://github.com/biomac-group/biosym"
 
 # -- Project information -----------------------------------------------------
 
 # Info from pyproject.toml config:
-info = toml.load("../pyproject.toml")["project"]
+with (ROOT_DIR / "pyproject.toml").open("rb") as pyproject_file:
+    info = toml.load(pyproject_file)["project"]
 
 project = info["name"]
 author = "biosym contributors"  # No authors field in project config
 release = info["version"]
 
-copyright = f"2021 - {datetime.now().year}, MaD Lab, FAU"
+copyright = f"2025 - {datetime.now().year}, BioMAC group, FAU"
 
 # -- Copy the README and Changelog and fix image path --------------------------------------
-HERE = Path(__file__).parent
-with (HERE.parent / "README.md").open() as f:
+with (ROOT_DIR / "README.md").open() as f:
     out = f.read()
-with (HERE / "README.md").open("w+") as f:
+with (DOCS_DIR / "README.md").open("w+") as f:
     f.write(out)
 
-with (HERE.parent / "CHANGELOG.md").open() as f:
+with (ROOT_DIR / "CHANGELOG.md").open() as f:
     out = f.read()
-with (HERE / "CHANGELOG.md").open("w+") as f:
+with (DOCS_DIR / "CHANGELOG.md").open("w+") as f:
     f.write(out)
 
 # -- General configuration ---------------------------------------------------
@@ -58,7 +62,7 @@ with (HERE / "CHANGELOG.md").open("w+") as f:
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    "numpydoc",
+    "sphinx.ext.napoleon",
     # "sphinx.ext.linkcode",  # Temporarily disabled due to Constants.actuator_model issue
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
@@ -67,9 +71,40 @@ extensions = [
     "recommonmark",
 ]
 
+if not ON_RTD:
+    extensions.append("numpydoc")
+
+autodoc_mock_imports = []
+if ON_RTD:
+    autodoc_mock_imports = [
+        "absl",
+        "absl.logging",
+        "cloudpickle",
+        "cyipopt",
+        "dash",
+        "dash_ag_grid",
+        "flax",
+        "flatbuffers",
+        "jax",
+        "jax.export",
+        "jax.numpy",
+        "matplotlib",
+        "matplotlib.pyplot",
+        "numpy",
+        "numpy.linalg",
+        "pandas",
+        "sympy",
+        "sympy.physics",
+        "sympy.physics.mechanics",
+        "tqdm",
+        "yaml",
+    ]
+
 # this is needed for some reason...
 # see https://github.com/numpy/numpydoc/issues/69
 numpydoc_class_members_toctree = False
+napoleon_numpy_docstring = True
+napoleon_google_docstring = False
 
 # Taken from sklearn config
 # For maths, use mathjax by default and svg if NO_MATHJAX env variable is set
@@ -145,18 +180,28 @@ intersphinx_mapping = {
     **intersphinx_module_mapping,
 }
 
+gallery_reference_url = {
+    "biosym": None,
+    **{k: v[0] for k, v in intersphinx_module_mapping.items()},
+}
+gallery_doc_module = ("biosym",)
+
+if USE_COMMITTED_GALLERY:
+    # RTD and GitHub docs builds reuse committed gallery artefacts, so skip the
+    # post-build code-link embedding step that relies on writable dbm caches.
+    gallery_reference_url = {}
+    gallery_doc_module = ()
+
 # Sphinx Gallary
 sphinx_gallery_conf = {
     "examples_dirs": ["../examples"],
     "gallery_dirs": ["./auto_examples"],
-    "reference_url": {
-        "biosym": None,
-        **{k: v[0] for k, v in intersphinx_module_mapping.items()},
-    },
+    "reference_url": gallery_reference_url,
     # 'default_thumb_file': 'fig/logo.png',
     "backreferences_dir": "modules/generated/backreferences",
-    "doc_module": ("biosym",),
+    "doc_module": gallery_doc_module,
     "filename_pattern": re.escape(os.sep),
+    "plot_gallery": not USE_COMMITTED_GALLERY,
     "remove_config_comments": True,
     "show_memory": True,
 }
@@ -166,5 +211,5 @@ from sphinxext.githublink import make_linkcode_resolve
 
 linkcode_resolve = make_linkcode_resolve(
     "biosym",
-    "https://github.com/mad-lab-fau/biosym/blob/{revision}/{package}/{path}#L{lineno}",
+    "https://github.com/biomac-group/biosym/blob/{revision}/{package}/{path}#L{lineno}",
 )

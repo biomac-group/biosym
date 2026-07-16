@@ -20,7 +20,7 @@ class Constraint(BaseConstraint):
         self.model = model
         self.settings = settings.copy()
         self.args = args
-        self.settings["nvpn"] = len(model.default_inputs.states.flatten())
+        self.settings["nvpn"] = len(model.default_states.flatten())
         self.nvar = settings.get("nvar")
 
         # We exclude certain dimensions from the periodicity constraint
@@ -103,7 +103,7 @@ def confun(states_list, _, dims, id_symmetry):
     :return: The evaluated constraint function.
     """
     return (
-        states_list[0].states.flatten()[dims] - states_list[-1].states.flatten()[id_symmetry][dims]
+        states_list[0].flatten()[dims] - states_list[-1].flatten()[id_symmetry][dims]
     )  # Example: periodicity constraint between first and last state
 
 
@@ -122,7 +122,7 @@ def jacobian_per(states_list, _, dims, id_symmetry, nnodes_dur, settings):
     c = jnp.concatenate(
         (
             jnp.array(dims, dtype=int),
-            id_symmetry[dims] + states_list[0].states.size() * (nnodes_dur - 1),
+            id_symmetry[dims] + states_list[0].size() * (nnodes_dur - 1),
         )
     )
     d = jnp.concatenate((jnp.ones(len(dims), dtype=float), -jnp.ones(len(dims), dtype=float)))

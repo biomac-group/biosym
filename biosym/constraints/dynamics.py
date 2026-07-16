@@ -6,6 +6,49 @@ import jax.numpy as jnp
 
 from biosym.constraints.base_constraint import BaseConstraint
 
+@partial(jax.custom_jvp, nondiff_argnums=(2,))
+def confun_mm_tau(states, constants, model):
+    mm = model.run['mass_matrix'](states, constants)
+    forcing = model.run['forcing'](states, constants)
+    qdd = states.qdd
+
+    # R = M(q)*qdd - forcing
+    inertial_force = jnp.matmul(mm, qdd[..., None])[..., 0]
+    residuals = inertial_force - forcing
+    return residuals
+
+@confun_mm_tau.defjvp
+def jvpfun(model, primals, tangents):
+    states, constants = primals
+    dstates, dconstants = tangents
+
+    mm = model.run['mass_matrix'](states, constants)
+    forcing = model.run['forcing'](states, constants)
+    qdd = states.qdd
+    dqdd = dstates.qdd
+
+    inertial_force = jnp.matmul(mm, qdd[..., None])[..., 0]
+    residuals = inertial_force - forcing
+
+    # Compute d(M(q)*qdd) and dforcing using JVP of vector-valued functions.
+    # This avoids computing the tangent of the full mass matrix (O(n^2)) 
+    # and instead computes the tangent of the contracted vector (O(n)).
+    def mm_qdd_and_forcing(s, c):
+        M = model.run['mass_matrix'](s, c)
+        F = model.run['forcing'](s, c)
+        M_qdd = jnp.matmul(M, qdd[..., None])[..., 0]
+        return M_qdd, F
+
+    _, (dmm_qdd, dforcing) = jax.jvp(
+        lambda s, c: mm_qdd_and_forcing(s, c),
+        (states, constants),
+        (dstates, dconstants)
+    )
+
+    mm_dqdd = jnp.matmul(mm, dqdd[..., None])[..., 0]
+    dresiduals = dmm_qdd + mm_dqdd - dforcing
+
+    return residuals, dresiduals
 
 # any constraint needs to be named Constraint, otherwise it will not be found by the OCP class
 class Constraint(BaseConstraint):
@@ -30,6 +73,22 @@ class Constraint(BaseConstraint):
         self.nvar = settings.get("nvar")
         self.ncons_model = len(self.model.fr)
 
+        args = args or {}
+        confun_type = args.get('dynamics_function', "newton-euler")
+
+        if confun_type == "newton-euler":
+            confun_mm = partial(confun_mm_tau, model=self.model)
+            self.model._precompile_fn(confun_mm, (self.model.default_states, self.model.default_constants), "confun_mm", is_jax_fn=True)
+            self.model._precompile_fn(confun_mm, (self.model.default_states, self.model.default_constants), "confun_mm_jacobian", jacobian=True, is_jax_fn=True)
+            self.con_string = "confun_mm"
+        elif confun_type == 'kane':
+            self.con_string = "kane"
+        elif confun_type in ['rnea', 'aba']:
+            raise NotImplementedError("Dynamics function based on RNEA and ABA not implemented yet.")
+        else:
+            raise ValueError(f"Dynamics function {confun_type} not recognized.")
+        
+
     def _get_info(self):
         """
         Get information about the dynamics constraint.
@@ -39,7 +98,7 @@ class Constraint(BaseConstraint):
         return {
             "name": os.path.splitext(os.path.basename(__file__))[0],
             "description": "Base dynamics constraint class for biosym constraints.",
-            "required_variables": {"states": ["model"], "constants": ["model"]},
+            "required_variables": {"states": ["q","qd","qdd","tau","ext_forces","ext_torques"], "constants": ["model"]},
             "nnz": self.get_nnz(),
             "ncons": self.get_n_constraints(),
             "ncons_pernode": self.ncons_model,
@@ -52,7 +111,7 @@ class Constraint(BaseConstraint):
         :param states_list: Dictionary containing the current states.
         :return: The dynamics constraint function.
         """
-        return jax.jit(partial(confun, self.model.run["confun"], settings=self.settings, info=self._get_info()))
+        return jax.jit(partial(confun, self.model.run[self.con_string], settings=self.settings, info=self._get_info(), model=self.model))
 
     def get_jacobian(self):
         """
@@ -61,7 +120,7 @@ class Constraint(BaseConstraint):
         :param states_list: Dictionary containing the current states.
         :return: The Jacobian of the dynamics constraint function.
         """
-        return jax.jit(partial(jacobian, self.model.run["jacobian"], settings=self.settings, info=self._get_info()))
+        return jax.jit(partial(jacobian, self.model.run[f"{self.con_string}_jacobian"], settings=self.settings, info=self._get_info(), model=self.model))
 
     def get_n_constraints(self):
         """
@@ -80,75 +139,57 @@ class Constraint(BaseConstraint):
         return self.get_n_constraints() * self.settings.get("nvpn")
 
 
-# @partial(jax.grad, argnums=(1, 2))
-# @partial(jax.jit, static_argnums=(0))
-def confun(modelfn, states_list, globals_dict, settings, info):
+def confun(modelfn, states_list, globals_dict, settings, info, model):
     """
-    Placeholder for the constraint function.
+    Evaluate the dynamics constraint (equations of motion residuals).
 
-    This function should be implemented in subclasses to evaluate the dynamics constraints.
+    Calls the model-provided Kane function which handles batching internally.
 
-    :param states_list: List containing the current states.
+    :param modelfn: model.run["kane"] — takes (states, constants) → residuals
+    :param states_list: batched States object of shape (nnodes, ...)
     :param settings: Dictionary containing settings for the dynamics constraint.
     :param info: Information about the constraint function.
-    :return: The evaluated value of the constraint function.
+    :return: Flattened residual vector of shape (nnodes * ncons_model,)
     """
-    data_out = jnp.empty((info["ncons"],), dtype=float)
     nnodes = settings.get("nnodes")
-    ncons_sympy = info["ncons_pernode"]
-
-    def body_fun(n, carry):
-        data_out = carry
-        state_ = states_list[n]
-        val = modelfn(state_.states, state_.constants).squeeze()
-        start = n * ncons_sympy
-        data_out = jax.lax.dynamic_update_slice(data_out, val, (start,))
-        return data_out
-
-    data_out = jax.lax.fori_loop(0, nnodes, body_fun, data_out)
-    return data_out
+    return modelfn(states_list[:nnodes], model.default_constants).flatten()
 
 
-def jacobian(modelfn, states_list, globals_dict, settings, info):
+def jacobian(modelfn, states_list, globals_dict, settings, info, model):
     """
-    Placeholder for the Jacobian of the constraint function.
+    Compute the sparse COO Jacobian of the dynamics constraint.
 
-    This function should be implemented in subclasses to compute the Jacobian of the dynamics constraints.
+    Uses model.run["kane_jacobian"] which returns a States-shaped jacobian
+    (jacobian of residuals w.r.t. model states, vmapped over nodes).
 
-    :param states_list: List containing the current states.
-    :param settings: Dictionary containing settings for the dynamics constraint.
-    :param info: Information about the constraint function.
-    :return: The Jacobian of the constraint function.
+    :param modelfn: model.run["kane_jacobian"] — takes (states, constants) → States-shaped jac
+    :param states_list: batched States object of shape (nnodes, ...)
+    :return: (rows, cols, data) sparse COO arrays
     """
     nnz = info["nnz"]
-    nvpn = settings.get("nvpn")
+    nvpn = settings.get("nvpn")            # model-only state count (q,qd,qdd,tau,f,m)
+    nvpn_total = states_list[0].size()     # full state per node (model + gc + actuator)
     nnodes = settings.get("nnodes")
-    ncons_sympy = info["ncons_pernode"]
-    rows_out = jnp.empty((nnz,), dtype=int)
-    cols_out = jnp.empty((nnz,), dtype=int)
-    data_out = jnp.empty((nnz,), dtype=float)
+    ncons_pernode = info["ncons_pernode"]
 
-    block_size = ncons_sympy * nvpn
+    # jac is a States-shaped pytree; each field has shape (nnodes, ncons_pernode, field_dim)
+    # (or squeezed to (ncons_pernode, field_dim) for nnodes=1)
+    jac = modelfn(states_list[:nnodes], model.default_constants).to_array().flatten()
+    # Build COO indices
+    node_indices = jnp.arange(nnodes)
 
-    def body_fun(n, carry):
-        rows_out, cols_out, data_out = carry
-        state_ = states_list[n]
-        jac = modelfn(state_.states, state_.constants)
+    # Row indices: for node n, constraints are [n*ncons_pernode, ..., (n+1)*ncons_pernode - 1]
+    row_base = node_indices[:, jnp.newaxis] * ncons_pernode + jnp.arange(ncons_pernode)[jnp.newaxis, :]
+    # col indices: node stride is nvpn_total (full state), but dynamics only touches the
+    # first nvpn (model) columns within each node block.
+    col_base = node_indices[:, jnp.newaxis] * nvpn_total + jnp.arange(nvpn)[jnp.newaxis, :]
 
-        row_block = n * ncons_sympy + jnp.arange(ncons_sympy)
-        col_block = state_.states.size() * n + jnp.arange(nvpn)
+    # Expand to (nnodes, ncons_pernode, nvpn)
+    rows = jnp.repeat(row_base[:, :, jnp.newaxis], nvpn, axis=2)      # (nnodes, ncons_pernode, nvpn)
+    cols = jnp.repeat(col_base[:, jnp.newaxis, :], ncons_pernode, axis=1)  # (nnodes, ncons_pernode, nvpn)
 
-        rows_block = jnp.repeat(row_block, nvpn)  # Shape: (ncons_sympy * nvpn,)
-        cols_block = jnp.tile(col_block, ncons_sympy)  # Shape: (ncons_sympy * nvpn,)
-        data_block = jac.model.flatten()  # Flatten the block
+    rows_out = rows.flatten()
+    cols_out = cols.flatten()
+    data_out = jac
 
-        start = n * block_size  # Calculate where to insert this block
-
-        rows_out = jax.lax.dynamic_update_slice(rows_out, rows_block, (start,))
-        cols_out = jax.lax.dynamic_update_slice(cols_out, cols_block, (start,))
-        data_out = jax.lax.dynamic_update_slice(data_out, data_block, (start,))
-
-        return (rows_out, cols_out, data_out)
-
-    rows_out, cols_out, data_out = jax.lax.fori_loop(0, nnodes, body_fun, (rows_out, cols_out, data_out))
     return rows_out, cols_out, data_out

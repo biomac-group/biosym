@@ -35,7 +35,7 @@ class Constraint(BaseConstraint):
             "required_variables": {"states": ["model"], "constants": ["model"]},
             "nnz": self.get_nnz(),
             "ncons": self.get_n_constraints(),
-            "speed_var_idx": self.model.speeds["idx"],
+            "speed_var_idx": self.model.coordinates.n,
         }
 
     def get_confun(self):
@@ -82,8 +82,15 @@ def confun(states_list, globals_dict, settings, info):
     :param info: Information about the constraint function.
     :return: The evaluated constraint function.
     """
+    qd_idx = info["speed_var_idx"] - settings.get("nvpn_model", 0) # Wait, nvpn_model is len(model.state_vector) which is 2 * coordinates.n + ...
+    # But wait, speeds start at coordinates.n, let's just get coordinate count from settings or model
+    # Wait, coordinate count is model.coordinates["n"]
+    # So: qd_idx = info["speed_var_idx"] - states_list.q.shape[-1]
+    # Let's get model coordinate count. Since model is not passed directly, we can get it from states_list.q
+    q_len = states_list.q.shape[-1]
+    qd_idx = info["speed_var_idx"] - q_len
     return globals_dict.speed - jnp.mean(
-        states_list.states.model[: settings.get("nnodes_dur") - 1, info["speed_var_idx"]]
+        states_list.qd[: settings.get("nnodes_dur") - 1, qd_idx]
     )  # Ensure the sum of step sizes equals the total duration
 
 
@@ -100,9 +107,9 @@ def jacobian(states_list, globals_dict, settings, info):
     """
     r = jnp.zeros((info["nnz"],), dtype=int)
     c = (
-        jnp.arange(info["nnz"], dtype=int) * states_list[0].states.size() + info["speed_var_idx"] - 1
+        jnp.arange(info["nnz"], dtype=int) * states_list[0].size() + info["speed_var_idx"] - 1
     )  # The -1 seems pretty wrong, but we keep it here
-    c = c.at[-1].set(settings.get("nnodes_dur") * states_list[0].states.size()) + 1
+    c = c.at[-1].set(settings.get("nnodes_dur") * states_list[0].size()) + 1
     d = -jnp.ones((info["nnz"],), dtype=float) / (settings.get("nnodes_dur") - 1)
     d = d.at[-1].set(1.0)  # The last entry corresponds to the total duration constraint
     return r, c, d
