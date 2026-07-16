@@ -29,13 +29,12 @@ class TestModel(unittest.TestCase):
         print("========= Test Sympy Functions =========")
         for testmodel in testmodellist:
             m = model.load_model(testmodel, force_rebuild=False)
-            mock_input = m.default_inputs
             for func in m.run:
                 if func.endswith("uncompiled"):
                     print(f"Skipping uncompiled function: {func}.")
                     continue
                 start_time = time.time()
-                m.run[func](mock_input.states, mock_input.constants)
+                m.run[func](m.default_states, m.default_constants)
                 end_time = time.time()
                 print(f"Function {func}: jit took {end_time - start_time:.3f} seconds.")
         print("========= Test Sympy Functions Done =========")
@@ -54,7 +53,6 @@ class TestModel(unittest.TestCase):
         for testmodel in testmodellist:
             m = model.load_model(testmodel, force_rebuild=False)
 
-            default_inputs = m.default_inputs
             for func in m.run:
                 if func.endswith("uncompiled"):
                     print(f"Skipping uncompiled function: {func}.")
@@ -62,11 +60,11 @@ class TestModel(unittest.TestCase):
                 # Measure the time taken to run the function
 
                 start_time = time.time()
-                m.run[func](default_inputs.states, default_inputs.constants)
+                m.run[func](m.default_states, m.default_constants)
                 end_time = time.time()
                 print(f"JIT/Caching of {func} took {end_time - start_time:.6f} seconds.")
                 time_ = timeit.timeit(
-                    lambda m=m, f=func, s=default_inputs.states, c=default_inputs.constants: m.run[f](s, c),
+                    lambda m=m, f=func, s=m.default_states, c=m.default_constants: m.run[f](s, c),
                     number=1000,
                 )
                 print(f"Running {func} runs in {time_ / 1000:.6f} seconds.")

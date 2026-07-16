@@ -4,7 +4,10 @@ import unittest
 
 import matplotlib
 
-# Set the backend before importing any other matplotlib modules
+# Use a non-interactive backend so plotting never opens a blocking GUI window
+# during automated test runs (must be set before pyplot is imported anywhere).
+matplotlib.use("Agg")
+
 import numpy as np
 from tqdm import tqdm
 
@@ -37,8 +40,7 @@ class TestPlotting(unittest.TestCase):
         def test_(modelfile: str) -> None:
             print("Testing single state stick figure plotting.")
             m = model.load_model(modelfile, force_rebuild=True)
-            print("Please close the stick figure window to continue.")
-            stickfigure.plot_stick_figure(m, (m.default_inputs, None), 0.01)
+            stickfigure.plot_stick_figure(m, (m.default_states, None), 0.01)
             x = "y"  # x = input("Was this the correct stick figure? [y]")
             assert x in [
                 "y",
@@ -63,7 +65,6 @@ class TestPlotting(unittest.TestCase):
                 states.append(s_)
             b = time.time()
             print(f"Simulation took {b - a:.2f} seconds.")
-            print("Please close the stick figure window to continue.")
             stickfigure.plot_stick_figure(m, (states, None), 0.01)
             # x = input("Was this the correct stick figure animation? [y]")
             x = "y"
@@ -76,8 +77,6 @@ class TestPlotting(unittest.TestCase):
             ], "The stick figure animation is not correct!"
 
         print("========= Test Show Stick Neutral =========")
-        # This test should be run with a GUI backend, e.g. TkAgg or Qt5Agg
-        # Backend is already set at the top of the file
         print(f"Using matplotlib backend: {matplotlib.get_backend()}")
 
         for testmodel in test_modellist:

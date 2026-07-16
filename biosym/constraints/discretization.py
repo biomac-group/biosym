@@ -310,6 +310,9 @@ def jacobian_q(states_list, globals_dict, settings, info):
         if not info["adaptive_h"]:
             d = d.at[duration_indices].multiply(1 / (nnodes - 1))
             c = c.at[duration_indices].set(settings.get("nnodes_dur") * states_list[n].size())
+        else:
+            # h is stored per node-interval in globals_dict.h, appended after all node state blocks.
+            c = c.at[duration_indices].set(nnodes * states_list[n].size() + n)
         start = n * 4 * info['ncons_per_node']  # Calculate where to insert this block
 
         rows_out = jax.lax.dynamic_update_slice(rows_out, r, (start,))
