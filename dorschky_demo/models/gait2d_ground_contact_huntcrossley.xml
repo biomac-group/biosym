@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Same heel/toe contact points as gait2d_ground_contact.xml, but using the
+  HuntCrossley force law (OpenSim/Simbody-style smooth sphere contact)
+  instead of SpringDamper, matching the contact formulation used in
+  Afschrift et al. 2025 (benchmarking predictive simulation of gait).
+
+  Parameter values below are the standard OpenSim gait2392-style
+  HuntCrossleyForce defaults (stiffness/dissipation/friction/transition
+  velocity) as placeholders, to be replaced with the paper's reported
+  values once available.
+-->
+<ground_contact_model force_law="huntcrossley">
+  <default>
+    <contact_point name="default" body="default" pos="0 0 0"
+      stiffness="1e6" dissipation="2.0"
+      static_friction="0.8" dynamic_friction="0.8" viscous_friction="0.5"
+      transition_velocity="0.2"></contact_point>
+  </default>
+  <contact_point name="heel_r" body="foot_r" pos="-0.06 -0.0702 0"></contact_point>
+  <contact_point name="toe_r" body="foot_r" pos="0.1636 -0.0702 0"></contact_point>
+  <contact_point name="heel_l" body="foot_l" pos="-0.06 -0.0702 0"></contact_point>
+  <contact_point name="toe_l" body="foot_l" pos="0.1636 -0.0702 0"></contact_point>
+</ground_contact_model>

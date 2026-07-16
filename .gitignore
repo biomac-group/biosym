@@ -257,3 +257,10 @@ tests/test_markers_order.py
 example_data/P01
 example_data/P02
 tests/models/untracked
+
+# dorschky_demo: participant data + run outputs are regenerable/local-only
+dorschky_demo/data/
+dorschky_demo/result/
+dorschky_demo/scratch/
+dorschky_demo/notebooks/testing.ipynb
+dorschky_demo/**/fontlist-*.json
