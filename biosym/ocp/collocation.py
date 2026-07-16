@@ -31,7 +31,7 @@ from biosym.constraints import *
 from biosym.ocp import confun, objfun
 from biosym.ocp import utils
 from biosym.ocp.utils import process_collocation_settings, CyIpoptProblem
-from biosym.ocp.logging import IterationLogger, create_dashboard_app
+from biosym.ocp.logging import IterationLogger
 from biosym.utils import states
 from biosym.visualization import stickfigure
 
