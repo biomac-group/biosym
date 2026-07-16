@@ -969,7 +969,7 @@ class BiosymModel:
         This approach doesn't seem slower than normal jax.jit.
         """
 
-        def _jit_function_template(function_: Callable, _input_names: tuple[str, ...] = ("model",), jacobian:bool=False, is_jax_fn: bool = False) -> Callable:
+        def _jit_function_template(function_: Callable, jacobian:bool=False, is_jax_fn: bool = False) -> Callable:
             def wrapped(states: Any, constants: Any) -> Any:
                 states = states.filter('model')
                 constants = constants.filter('model')
