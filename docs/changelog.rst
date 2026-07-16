@@ -173,3 +173,10 @@ It may be that there is a periodic_expand function that mimics the creation of t
 * Corrected plotting & framerate in stickfigure
 * Performance optimizations in confun
 * ``constraints.dynamics`` is set up to hold RNEA, ABA, Kane's method options for the future.
+
+10. Contact & Actuator Model refactor
+------------------------
+
+* Now supports multiple contact point and multiple actuator models to be mixed.
+* The base classes, ``ContactModel`` and ``ActuatorModel``, have been refactored (...)
+* Contact is split into ``contact_geometries`` and ``contact_models``.
