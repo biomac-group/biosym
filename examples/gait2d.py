@@ -4,7 +4,6 @@ Predictive Gait Simulation in 2D
 
 This is a recreation of "gait2d", or 2D gait simulations in general
 """
-# %%
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -16,7 +15,6 @@ import os
 import os
 import sys
 # For documentation builds, handle __file__ not being defined
-# %%
 
 # Find the .git root directory, then set that as current dir
 def _find_git_root(start_path):

@@ -74,20 +74,20 @@ print(f"Model has {model.n_states} states and {model.n_constants} constants")
 # Create batches of movement data
 
 # Initialize state vector (positions, velocities, accelerations, forces, etc.)
-states_dict_0 = model.default_inputs
+states_dict_0 = model.default_states
 print(states_dict_0)
 
 # Create a batch of 1000 identical state vectors
 batch_size = 1000
-states_ = states.stack_dataclasses([states_dict_0] * batch_size)
+states_ = states.concatenate([states_dict_0] * batch_size)
 print(states_)
 
 # For any function in the model, you can now pass in the batched states using jax.vmap
 # e.g. here compute the output of the dynamics (constraint) function
 # The input axes are defined as (0, None) meaning the first argument (states) is batched
 # while the second argument (constants) is not batched
-dynamics_fn = jax.vmap(model.run["confun"], in_axes=(0, None))
-dynamics_output = dynamics_fn(states_.states, states_.constants)
+dynamics_fn = jax.vmap(model.run["kane"], in_axes=(0, None))
+dynamics_output = dynamics_fn(states_, model.default_constants)
 print("Dynamics output shape with batching:", dynamics_output.shape)
 
 ###############################################################################
@@ -97,12 +97,12 @@ print("Dynamics output shape with batching:", dynamics_output.shape)
 
 print("Available devices:", jax.devices())
 start_time = time.time()
-dynamics_output = dynamics_fn(states_.states, states_.constants)
+dynamics_output = dynamics_fn(states_, model.default_constants)
 end_time = time.time()
 print(f"Computed dynamics for batch of size {batch_size} in {end_time - start_time:.4f} seconds")
 
 start_time = time.time()
 for i in range(batch_size):
-    dynamics_output_single = model.run["confun"](states_.states[i], states_.constants)
+    dynamics_output_single = model.run["kane"](states_[i], model.default_constants)
 end_time = time.time()
 print(f"Computed dynamics for batch of size {batch_size} without batching in {end_time - start_time:.4f} seconds")
