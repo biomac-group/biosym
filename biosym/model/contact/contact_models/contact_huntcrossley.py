@@ -18,11 +18,14 @@ class HuntCrossley(BaseContact):
     Other contacts, such as those involving triangle meshes, are ignored.
 
     Normal force (Hertzian elastic + Hunt-Crossley dissipation):
-        f_n = k * x_+^(3/2) * (1 + (3/2) * c * xdot)
+        f_n = k * x_+^(3/2) * (1 + (3/2) * c * xdot) + grad_bias * x
     x is penetration depth, xdot its rate, k the stiffness (used as-is: the
     OpenSim value is already a physical k, NOT body-weight scaled), c the
     dissipation. x_+ is a smoothed positive part of x so the law switches
-    on/off differentiably.
+    on/off differentiably. The grad_bias * x term is a small linear-in-raw-
+    depth bias (legacy "point towards ground" term) that keeps a nonzero
+    force gradient even where the smoothed x_+ has flattened out away from
+    contact.
 
     Friction (smoothed three-coefficient model):
         F_f = -f_n * [ blend * vt / sqrt(|vt|^2 + v_t^2) + uv * vt ]
@@ -33,6 +36,12 @@ class HuntCrossley(BaseContact):
 
     Parameters map directly onto the OSIM HuntCrossleyForce_ContactParameters
     (stiffness, dissipation, static/dynamic/viscous_friction, transition_velocity).
+    The values in gait2d_ground_contact_huntcrossley.xml match the
+    SmoothSphereHalfSpaceForce parameters of Falisse et al. 2022's OpenSim
+    model (PLoS ONE 17(1):e0256311, per
+    Subjects/Falisse_et_al_2022/Falisse_et_al_2022.osim in
+    github.com/KULeuvenNeuromechanics/PredSim), the contact formulation
+    Afschrift et al. 2025 builds on.
 
     Parameters are hardcoded into the symbolic expression, so this law adds no
     states and no constants to the optimization.
@@ -40,7 +49,7 @@ class HuntCrossley(BaseContact):
 
     def __init__(self, pairs, stiffness, dissipation,
                  static_friction, dynamic_friction, viscous_friction,
-                 transition_velocity=0.01, eps_depth=1e-4, **kwargs):
+                 transition_velocity=0.01, eps_depth=1e-4, grad_bias=1e-1, **kwargs):
         super().__init__(pairs, **kwargs)
         self.k = float(stiffness)
         self.c = float(dissipation)
@@ -49,6 +58,7 @@ class HuntCrossley(BaseContact):
         self.uv = float(viscous_friction)
         self.v_t = float(transition_velocity)
         self.eps_depth = float(eps_depth)
+        self.grad_bias = float(grad_bias)
 
     # ------------------------------------------------------------------
     # States / constants: all parameters hardcoded.
@@ -79,8 +89,11 @@ class HuntCrossley(BaseContact):
         # Smooth positive depth: ~x when penetrating, ~0 when clear.
         x_pos = 0.5 * (sqrt(x ** 2 + self.eps_depth ** 2) + x)
 
-        # Hertzian elastic term with Hunt-Crossley dissipation.
-        f_n = self.k * x_pos ** 1.5 * (1 + 1.5 * self.c * xdot)
+        # Hertzian elastic term with Hunt-Crossley dissipation, plus a small
+        # bias linear in raw (unsmoothed) depth so a nonzero gradient toward
+        # contact survives even where x_pos has flattened out to ~0 (legacy
+        # "point towards ground" term).
+        f_n = self.k * x_pos ** 1.5 * (1 + 1.5 * self.c * xdot) + self.grad_bias * x
         force_normal = f_n * normal
 
         # Smoothed static/dynamic Coulomb blend + viscous friction.
@@ -174,6 +187,7 @@ class HuntCrossley(BaseContact):
         c_flat = c.filter('model').flatten()
         positions = np.asarray(self.pos_fn(*s_flat, *c_flat))
         forces = np.asarray(self.force_fn(*s_flat, *c_flat))
+        body_positions = np.asarray(model.run["FK"](s_frame, c))[self._contrib_fk_idx]
 
         if mode == "init":
             self._plot_markers, self._plot_force_lines = [], []
@@ -192,7 +206,49 @@ class HuntCrossley(BaseContact):
                                     [positions[i, 2], tip[2]], c="darkgreen")
                 self._plot_markers.append(m)
                 self._plot_force_lines.append(fl)
-            return self._plot_markers, self._plot_force_lines
+
+            # Link each contact point to its parent body (e.g. ankle).
+            self._plot_body_lines = []
+            for i in range(positions.shape[0]):
+                if case == "2D":
+                    a0, a1 = non_zero_axes
+                    (bl,) = ax.plot([body_positions[i, a0], positions[i, a0]],
+                                    [body_positions[i, a1], positions[i, a1]], c="k")
+                else:
+                    (bl,) = ax.plot([body_positions[i, 0], positions[i, 0]],
+                                     [body_positions[i, 1], positions[i, 1]],
+                                     [body_positions[i, 2], positions[i, 2]], c="k")
+                self._plot_body_lines.append(bl)
+
+            # Link contact points that share the same parent body (e.g. heel/toe).
+            self._plot_cp_lines, self._cp_line_pairs = [], []
+            for i in range(positions.shape[0]):
+                for j in range(i + 1, positions.shape[0]):
+                    if self._contrib_body_slot[i] != self._contrib_body_slot[j]:
+                        continue
+                    if case == "2D":
+                        a0, a1 = non_zero_axes
+                        (cl,) = ax.plot([positions[i, a0], positions[j, a0]],
+                                        [positions[i, a1], positions[j, a1]], c="k")
+                    else:
+                        (cl,) = ax.plot([positions[i, 0], positions[j, 0]],
+                                        [positions[i, 1], positions[j, 1]],
+                                        [positions[i, 2], positions[j, 2]], c="k")
+                    self._plot_cp_lines.append(cl)
+                    self._cp_line_pairs.append((i, j))
+
+            # Static ground floor at y=0, spanning the current view.
+            if case == "2D":
+                ax.fill_between(ax.get_xlim(), min(ax.get_ylim()[0], -1), 0,
+                                 color="grey", alpha=0.3)
+            else:
+                x = np.linspace(*ax.get_xlim(), 10)
+                y = np.linspace(*ax.get_ylim(), 10)
+                X, Y = np.meshgrid(x, y)
+                Z = np.zeros(X.shape)
+                ax.plot_surface(X, Y, Z, color="grey", alpha=0.3)
+
+            return self._plot_markers, self._plot_force_lines, self._plot_body_lines, self._plot_cp_lines
 
         if mode == "update":
             for i, (m, fl) in enumerate(zip(self._plot_markers, self._plot_force_lines)):
@@ -206,6 +262,24 @@ class HuntCrossley(BaseContact):
                     m.set_3d_properties(positions[i, 2])
                     fl.set_data([positions[i, 0], tip[0]], [positions[i, 1], tip[1]])
                     fl.set_3d_properties([positions[i, 2], tip[2]])
+
+            for i, bl in enumerate(self._plot_body_lines):
+                if case == "2D":
+                    a0, a1 = non_zero_axes
+                    bl.set_data([body_positions[i, a0], positions[i, a0]],
+                                [body_positions[i, a1], positions[i, a1]])
+                else:
+                    bl.set_data([body_positions[i, 0], positions[i, 0]], [body_positions[i, 1], positions[i, 1]])
+                    bl.set_3d_properties([body_positions[i, 2], positions[i, 2]])
+
+            for cl, (i, j) in zip(self._plot_cp_lines, self._cp_line_pairs):
+                if case == "2D":
+                    a0, a1 = non_zero_axes
+                    cl.set_data([positions[i, a0], positions[j, a0]],
+                                [positions[i, a1], positions[j, a1]])
+                else:
+                    cl.set_data([positions[i, 0], positions[j, 0]], [positions[i, 1], positions[j, 1]])
+                    cl.set_3d_properties([positions[i, 2], positions[j, 2]])
             return
 
         raise ValueError("Invalid mode. Must be 'init' or 'update'.")
