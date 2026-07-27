@@ -12,9 +12,12 @@ class SpringDamper(BaseContact):
     friction -- the law the legacy yaml-based ContactPoints used.
 
     Normal force (linear in depth):
-        f_n = k_eff * x_+ * (1 + b * xdot)
+        f_n = k_eff * x_+ * (1 + b * xdot) + grad_bias * x
     Friction (single-coefficient smoothed Coulomb):
         F_f = -mu * f_n * vt / sqrt(|vt|^2 + v_reg^2)
+    The grad_bias * x term is a small linear-in-raw-depth bias (legacy
+    "point towards ground" term) that keeps a nonzero force gradient even
+    where the smoothed x_+ has flattened out away from contact.
 
     Stiffness is body-weight scaled (k_eff = k * body_weight * 9.81) at
     process_eom time, matching the legacy code -- the yaml k values are
@@ -25,13 +28,14 @@ class SpringDamper(BaseContact):
     states and no constants to the optimization.
     """
 
-    def __init__(self, pairs, k, b, mu, eps_depth=1e-3, v_reg=1e-2, **kwargs):
+    def __init__(self, pairs, k, b, mu, eps_depth=1e-3, v_reg=1e-2, grad_bias=1e-1, **kwargs):
         super().__init__(pairs, **kwargs)
         self.k = float(k)
         self.b = float(b)
         self.mu = float(mu)
         self.eps_depth = float(eps_depth)
         self.v_reg = float(v_reg)
+        self.grad_bias = float(grad_bias)
         self.k_eff = self.k        # set for real in process_eom (body-weight scaled)
 
     # ------------------------------------------------------------------
@@ -63,8 +67,11 @@ class SpringDamper(BaseContact):
         # Smooth positive depth: ~x when penetrating, ~0 when clear.
         x_pos = 0.5 * (sqrt(x ** 2 + self.eps_depth ** 2) + x)
 
-        # Linear elastic term with linear (velocity-proportional) damping.
-        f_n = self.k_eff * x_pos * (1 + self.b * xdot)
+        # Linear elastic term with linear (velocity-proportional) damping,
+        # plus a small bias linear in raw (unsmoothed) depth so a nonzero
+        # gradient toward contact survives even where x_pos has flattened
+        # out to ~0 (legacy "point towards ground" term).
+        f_n = self.k_eff * x_pos * (1 + self.b * xdot) + self.grad_bias * x
         force_normal = f_n * normal
 
         # Smoothed single-coefficient Coulomb friction.
