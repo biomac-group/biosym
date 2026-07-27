@@ -23,7 +23,19 @@ def make_initial_guess(model, settings, initial_guess):
 
     elif isinstance(initial_guess, dict):
         if initial_guess["type"] == "random":
-            pass
+            if isinstance(settings["bounds"]["min"], states.States):
+                states_min = settings["bounds"]["min"]
+                states_max = settings["bounds"]["max"]
+                initial_guess_states = states.States(
+                    **{
+                        name: np.random.uniform(low=states_min[name], high=states_max[name], size=(states_max[name].shape))
+                        for name in states_min.__dict__['names']
+                    }
+                )
+            else: 
+                raise NotImplementedError(
+                    "Bounds for states must be provided as a States object when using random initial guess. This might not cover gait problems where this is a tuple"
+                )
         elif initial_guess["type"] == "default":
             initial_guess_states = states.concatenate(
                 [model.default_states] * settings["nnodes_dur"]

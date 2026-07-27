@@ -124,7 +124,7 @@ class IterationLogger:
         states, globals_dict = utils.x_to_states_dict(
             x,
             self.initial_guess_states,
-            self.problem.globals if hasattr(self.problem, 'globals') else None
+            self.problem.globals_ if hasattr(self.problem, 'globals_') else None
         )
         
         # Evaluate each objective at current x
