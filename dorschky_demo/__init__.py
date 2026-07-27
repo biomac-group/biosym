@@ -1,1 +1,0 @@
-# Dorschky demo utilities
