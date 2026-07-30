@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import tomllib as toml
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -53,6 +54,31 @@ with (ROOT_DIR / "CHANGELOG.md").open() as f:
     out = f.read()
 with (DOCS_DIR / "CHANGELOG.md").open("w+") as f:
     f.write(out)
+
+# -- Bundle downloadable model files for the docs -----------------------------
+
+DOWNLOADS_DIR = DOCS_DIR / "_generated_downloads"
+DOWNLOADS_DIR.mkdir(exist_ok=True)
+
+MODEL_BUNDLES = {
+    "gait2d.zip": [
+        ROOT_DIR / "tests" / "models" / "gait2d" / "gait2d.yaml",
+        ROOT_DIR / "tests" / "models" / "gait2d" / "gait2d.xml",
+        ROOT_DIR / "tests" / "models" / "gait2d" / "gait2d_actuators.xml",
+        ROOT_DIR / "tests" / "models" / "gait2d" / "gait2d_ground_contact.xml",
+    ],
+    "gait2d_huntcrossley.zip": [
+        ROOT_DIR / "dorschky_demo" / "models" / "gait2d_huntcrossley.yaml",
+        ROOT_DIR / "dorschky_demo" / "models" / "gait2d.xml",
+        ROOT_DIR / "dorschky_demo" / "models" / "gait2d_actuators.xml",
+        ROOT_DIR / "dorschky_demo" / "models" / "gait2d_ground_contact_huntcrossley.xml",
+    ],
+}
+
+for archive_name, files in MODEL_BUNDLES.items():
+    with zipfile.ZipFile(DOWNLOADS_DIR / archive_name, "w", zipfile.ZIP_DEFLATED) as archive:
+        for file_path in files:
+            archive.write(file_path, arcname=file_path.name)
 
 # -- General configuration ---------------------------------------------------
 

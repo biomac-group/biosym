@@ -137,6 +137,7 @@ docs/_build/
 docs/generated/
 docs/auto_examples/
 docs/modules/generated/
+docs/_generated_downloads/
 
 # PyBuilder
 .pybuilder/
