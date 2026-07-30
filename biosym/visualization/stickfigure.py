@@ -2,6 +2,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import warnings
 import numpy as np
+import jax.numpy as jnp
 from matplotlib import animation
 
 
@@ -21,23 +22,25 @@ def _pad_state_for_fk(model, state):
     callables expect q, dq, ddq, tau, ext_forces, ext_torques to be
     present, so we pad missing parts with zeros.
     """
+    # Use jnp.zeros (not np.zeros): these fields are sliced later via
+    # States.__getitem__, which only recognizes jnp.ndarray leaves.
     ndim = getattr(state.q, "ndim", 1)
-    z = (lambda n: np.zeros(n, dtype=state.q.dtype if (state.q is not None and hasattr(state.q, "dtype")) else float)) if ndim == 1 else \
-        (lambda n: np.zeros((state.q.shape[0], n), dtype=state.q.dtype if (state.q is not None and hasattr(state.q, "dtype")) else float))
+    z = (lambda n: jnp.zeros(n, dtype=state.q.dtype if (state.q is not None and hasattr(state.q, "dtype")) else float)) if ndim == 1 else \
+        (lambda n: jnp.zeros((state.q.shape[0], n), dtype=state.q.dtype if (state.q is not None and hasattr(state.q, "dtype")) else float))
 
-    q = state.q if getattr(state, "q", None) is not None else z(model.coordinates["n"])
-    qd = state.qd if getattr(state, "qd", None) is not None else z(model.speeds["n"])
-    qdd = state.qdd if getattr(state, "qdd", None) is not None else z(model.accs["n"])
-    tau = state.tau if getattr(state, "tau", None) is not None else z(model.forces["n"])
+    q = state.q if getattr(state, "q", None) is not None else z(model.coordinates.n)
+    qd = state.qd if getattr(state, "qd", None) is not None else z(model.speeds.n)
+    qdd = state.qdd if getattr(state, "qdd", None) is not None else z(model.accs.n)
+    tau = state.tau if getattr(state, "tau", None) is not None else z(model.tau.n)
     ext_forces = (
         state.ext_forces
         if getattr(state, "ext_forces", None) is not None
-        else z(model.ext_forces["n"])
+        else z(model.ext_forces.n)
     )
     ext_torques = (
         state.ext_torques
         if getattr(state, "ext_torques", None) is not None
-        else z(model.ext_torques["n"])
+        else z(model.ext_torques.n)
     )
 
     return state.replace(
