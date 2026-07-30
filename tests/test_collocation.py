@@ -185,7 +185,7 @@ def test_walking_problem_solve(walking_problem):
     # Check that we have a valid solution structure
     assert hasattr(x, "q"), "Solution should have q attribute"
     assert hasattr(globals_dict, "h"), "Solution should have h attribute"
-    # assert info["status"] in [0, 1], "Solver did not converge"
+    assert info["status"] in [0, 1], "Solver did not converge"
 
 def test_constraint_and_objective_functions(walking_problem):
     """Test the constraints and objective function evaluations."""

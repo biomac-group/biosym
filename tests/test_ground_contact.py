@@ -1,9 +1,20 @@
 from types import SimpleNamespace
 
 import jax.numpy as jnp
+import pytest
 
-from biosym.constraints.ground_contact import Constraint, jacobian
 from biosym.utils.states import Constants, States
+
+# This test targets a separate ground_contact.py Constraint (with is_implicit_gc,
+# nvpn_model/nvpn_gc_model/nvpn_actuator_model splitting) that only ever existed on
+# a WIP branch (agy_develop). That "Part 1" design (separate dynamics/actuators/
+# ground_contact constraints) was abandoned in favor of the consolidated single
+# dynamics.py constraint (see constraint_implementation_options.md), so
+# biosym.constraints.ground_contact no longer exists on this branch.
+pytestmark = pytest.mark.skip(
+    reason="Targets the abandoned separate ground_contact.py design (WIP branch agy_develop); "
+    "superseded by the consolidated dynamics.py constraint."
+)
 
 
 class _DebugGcModel:
