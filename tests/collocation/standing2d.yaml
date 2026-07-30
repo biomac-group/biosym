@@ -22,15 +22,8 @@ collocation:
         exponent: 4 # Somehow this works best
 
 
-
-
   constraints:
     - name: dynamics
-      weight: "1/BW"
-    - name: actuators
-      weight: "1/BW"
-    - name: ground_contact
-      weight: "1/BW"
 
   #initial_guess:
   #  type: random

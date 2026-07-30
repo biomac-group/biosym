@@ -4,7 +4,6 @@ Predictive Gait Simulation in 2D
 
 This is a recreation of "gait2d", or 2D gait simulations in general
 """
-
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -16,7 +15,6 @@ import os
 import os
 import sys
 # For documentation builds, handle __file__ not being defined
-
 
 # Find the .git root directory, then set that as current dir
 def _find_git_root(start_path):
@@ -104,10 +102,6 @@ collocation:
   constraints:
     - name: dynamics
       weight: "1/BW"
-    - name: ground_contact
-      weight: "1/BW"
-    - name: actuators
-      weight: "1/BW"
 
   #initial_guess:
   #  type: random
@@ -136,8 +130,11 @@ solution = ocp.solve(visualize=True)
 end_ = time.time()
 print(f"Optimization completed in {end_ - start_:.2f} seconds")
 
-for i, coordinate in enumerate(model.coordinates['names']):
-    print(f"{coordinate}: {solution[0][0].states.model[0,i]:.4f}")
+sol_states = solution.states
+q = np.asarray(sol_states.q)
+for i, coordinate in enumerate(model.coordinates.names):
+    val = q.ravel()[i] if q.ndim == 1 else q[0, i]
+    print(f"{coordinate}: {val:.4f}")
 
 ###############################################################################
 # 2D Walking Configuration example
@@ -179,10 +176,6 @@ collocation:
   constraints:
     - name: dynamics
       weight: "1/BW" <-- Constraints are scaled so that they are in the same magnitude
-    - name: ground_contact
-      weight: "1/BW" <-- 1/BW means that the constraint violation is scaled by body weight
-    - name: actuators
-      weight: "1/BW"
     - name: periodicity
       weight: 1
       args:
@@ -213,6 +206,6 @@ os.chdir(current_dir)
 ocp_walking = collocation.Collocation(current_dir+"/examples/walking2d.yaml")
 # The solve method returns x (the optimal solution) and info (ipopt information)
 start = time.time()
-x, info = ocp_walking.solve(visualize=True)
+solution = ocp_walking.solve(visualize=True)
 end = time.time()
 print(f"Optimization completed in {end - start:.2f} seconds")

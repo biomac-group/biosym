@@ -1,1 +1,1 @@
-__all__ = ["general", "hill2d"]
+__all__ = ["coordinate_actuator", "torque_actuator", "hill2d", "passive_torques"]

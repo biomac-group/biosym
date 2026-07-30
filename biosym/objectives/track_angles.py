@@ -23,7 +23,7 @@ class Objective(BaseObjective):
         """
         self.model = model
         self.settings = settings
-        self.initial_joints = self.model.coordinates["names"]
+        self.initial_joints = self.model.coordinates.names
         self.n_nodes = self.settings["nnodes"]
 
         eps = 1e-8  # avoid division by zero
@@ -64,11 +64,15 @@ class Objective(BaseObjective):
             for e in exclude:
                 exclude_names_list.append(e)
 
-        # build list of tracked indices (relative to coordinate slice)
+        # build list of tracked indices (relative to coordinate slice).
+        # Model coordinate names carry a "q_" prefix (e.g. "q_pelvis_tx") that
+        # the tracking-data/exclude-list convention doesn't (e.g. "pelvis_tx"),
+        # so strip it before comparing -- otherwise nothing ever matches and
+        # `exclude` silently does nothing.
         tracked_indices = [
             i
             for i, name in enumerate(self.initial_joints)
-            if name not in exclude_names_list
+            if name.removeprefix("q_") not in exclude_names_list
         ]
         self.tracked_indices = tuple(tracked_indices)  # store as tuple for immutability
 
@@ -129,7 +133,7 @@ def objfun(states_list, globals_dict, settings, info):
     q_var = settings["q_var"]
 
     # Extract simulated joint angles from states
-    q_sim = states_list.states.model[: info["n_nodes"], info["tracked_indices"]]
+    q_sim = states_list.q[: info["n_nodes"], info["tracked_indices"]]
 
     # Weighted squared error
     error = (q_sim - q_exp) ** 2 / q_var
