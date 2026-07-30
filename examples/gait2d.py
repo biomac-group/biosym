@@ -102,10 +102,6 @@ collocation:
   constraints:
     - name: dynamics
       weight: "1/BW"
-    - name: ground_contact
-      weight: "1/BW"
-    - name: actuators
-      weight: "1/BW"
 
   #initial_guess:
   #  type: random
@@ -180,10 +176,6 @@ collocation:
   constraints:
     - name: dynamics
       weight: "1/BW" <-- Constraints are scaled so that they are in the same magnitude
-    - name: ground_contact
-      weight: "1/BW" <-- 1/BW means that the constraint violation is scaled by body weight
-    - name: actuators
-      weight: "1/BW"
     - name: periodicity
       weight: 1
       args:
