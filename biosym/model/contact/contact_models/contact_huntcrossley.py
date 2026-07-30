@@ -18,14 +18,21 @@ class HuntCrossley(BaseContact):
     Other contacts, such as those involving triangle meshes, are ignored.
 
     Normal force (Hertzian elastic + Hunt-Crossley dissipation):
-        f_n = k * x_+^(3/2) * (1 + (3/2) * c * xdot) + grad_bias * x
+        f_n = k * x_+^(3/2) * diss_+ + grad_bias * x
+        diss = 1 + (3/2) * c * xdot
     x is penetration depth, xdot its rate, k the stiffness (used as-is: the
     OpenSim value is already a physical k, NOT body-weight scaled), c the
     dissipation. x_+ is a smoothed positive part of x so the law switches
-    on/off differentiably. The grad_bias * x term is a small linear-in-raw-
-    depth bias (legacy "point towards ground" term) that keeps a nonzero
-    force gradient even where the smoothed x_+ has flattened out away from
-    contact.
+    on/off differentiably. diss_+ is likewise a smoothed positive part of the
+    dissipation factor: raw Hunt-Crossley lets diss go negative during fast
+    separation (xdot very negative), which flips f_n attractive/negative right
+    at liftoff and is a known source of jitter in gradient-based collocation --
+    the reference BioMAC-Sim-Toolbox gait3d_smoothsphere contact (generated via
+    SymPy, github.com/mad-lab-fau/BioMAC-Sim-Toolbox, opensimContactModel
+    branch) guards against exactly this with an equivalent smooth clamp. The
+    grad_bias * x term is a small linear-in-raw-depth bias (legacy "point
+    towards ground" term) that keeps a nonzero force gradient even where the
+    smoothed x_+ has flattened out away from contact.
 
     Friction (smoothed three-coefficient model):
         F_f = -f_n * [ blend * vt / sqrt(|vt|^2 + v_t^2) + uv * vt ]
@@ -49,7 +56,8 @@ class HuntCrossley(BaseContact):
 
     def __init__(self, pairs, stiffness, dissipation,
                  static_friction, dynamic_friction, viscous_friction,
-                 transition_velocity=0.01, eps_depth=1e-4, grad_bias=1e-1, **kwargs):
+                 transition_velocity=0.01, eps_depth=1e-4, eps_diss=5e-2,
+                 grad_bias=1e-1, **kwargs):
         super().__init__(pairs, **kwargs)
         self.k = float(stiffness)
         self.c = float(dissipation)
@@ -58,6 +66,7 @@ class HuntCrossley(BaseContact):
         self.uv = float(viscous_friction)
         self.v_t = float(transition_velocity)
         self.eps_depth = float(eps_depth)
+        self.eps_diss = float(eps_diss)
         self.grad_bias = float(grad_bias)
 
     # ------------------------------------------------------------------
@@ -92,8 +101,13 @@ class HuntCrossley(BaseContact):
         # Hertzian elastic term with Hunt-Crossley dissipation, plus a small
         # bias linear in raw (unsmoothed) depth so a nonzero gradient toward
         # contact survives even where x_pos has flattened out to ~0 (legacy
-        # "point towards ground" term).
-        f_n = self.k * x_pos ** 1.5 * (1 + 1.5 * self.c * xdot) + self.grad_bias * x
+        # "point towards ground" term). The dissipation factor is smoothly
+        # clamped to be non-negative (same trick as x_pos) so fast separation
+        # (xdot very negative) can't flip f_n attractive -- unclamped, this is
+        # a known Hunt-Crossley non-negativity issue that shows up as jitter.
+        diss = 1 + 1.5 * self.c * xdot
+        diss_pos = 0.5 * (sqrt(diss ** 2 + self.eps_diss ** 2) + diss)
+        f_n = self.k * x_pos ** 1.5 * diss_pos + self.grad_bias * x
         force_normal = f_n * normal
 
         # Smoothed static/dynamic Coulomb blend + viscous friction.

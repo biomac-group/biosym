@@ -1135,6 +1135,16 @@ class BiosymModel:
             df.loc[len(df)] = [var_type, name, x0[i], xmin, xmax]
         self.variables = df
 
+    @property
+    def opt_states(self):
+        """Template for the free/optimized state fields per node.
+
+        Excludes qdd, tau, ext_forces, ext_torques: those are derived on the
+        fly (finite-difference of qd; calc_forces) rather than being
+        independent decision variables in the optimization vector x.
+        """
+        return self.default_states.replace(qdd=None, tau=None, ext_forces=None, ext_torques=None)
+
     def _get_hash(self) -> str:
         hasher = hashlib.sha256()
 

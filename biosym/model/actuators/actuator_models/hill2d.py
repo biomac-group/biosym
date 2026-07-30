@@ -140,9 +140,11 @@ class Hill2d(BaseActuator):
 
     def get_nnz(self, model, settings):
         nnodes = settings.get("nnodes")
-        # Force-equilibrium constraint depends on model + actuator states at each node
-        nvpn_model = len(model.state_vector)
-        forces = nnodes * self.get_n_constraints_per_node() * (self.get_n_states() + nvpn_model)
+        # Force-equilibrium constraint's jacobian is dense over the per-node
+        # optimization vector (q, qd, gc_model, actuator_model) -- must match
+        # .jacobian()'s actual output size exactly, not just be an upper bound.
+        nvpn = model.opt_states.size()
+        forces = nnodes * self.get_n_constraints_per_node() * nvpn
         return forces
 
     def process_eom(self, model):
