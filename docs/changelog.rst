@@ -1,4 +1,14 @@
 =============================
+0.1.7 
+=============================
+* Unified the `dynamics` constraint: removed the separate `actuators` and `ground_contact` constraint modules (and `dynamics_unified.py`), folding their logic into a single expanded `dynamics.py` constraint. Example YAMLs and the `gait2d.py` example script were updated to drop the now-redundant constraint entries.
+* Added an `opt_states` template (q + qd + gc + actuators) for the collocation state vector, with matching updates to objectives, initial-guess, and settings utilities.
+* Fixed contact model bias terms in `contact_huntcrossley.py` and `contact_springdamper.py` so the solver always has a gradient toward the ground.
+* Corrected constraint bookkeeping in the iteration logger and implemented a random initial guess for the standing problem.
+
+
+
+=============================
 v0.1.6 Refactor Changelog & Migration
 =============================
 
@@ -180,3 +190,4 @@ It may be that there is a periodic_expand function that mimics the creation of t
 * Now supports multiple contact point and multiple actuator models to be mixed.
 * The base classes, ``ContactModel`` and ``ActuatorModel``, have been refactored (...)
 * Contact is split into ``contact_geometries`` and ``contact_models``.
+
