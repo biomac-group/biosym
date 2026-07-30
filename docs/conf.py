@@ -68,10 +68,10 @@ MODEL_BUNDLES = {
         ROOT_DIR / "tests" / "models" / "gait2d" / "gait2d_ground_contact.xml",
     ],
     "gait2d_huntcrossley.zip": [
-        ROOT_DIR / "dorschky_demo" / "models" / "gait2d_huntcrossley.yaml",
-        ROOT_DIR / "dorschky_demo" / "models" / "gait2d.xml",
-        ROOT_DIR / "dorschky_demo" / "models" / "gait2d_actuators.xml",
-        ROOT_DIR / "dorschky_demo" / "models" / "gait2d_ground_contact_huntcrossley.xml",
+        ROOT_DIR / "tests" / "models" / "gait2d_huntcrossley" / "gait2d_huntcrossley.yaml",
+        ROOT_DIR / "tests" / "models" / "gait2d" / "gait2d.xml",
+        ROOT_DIR / "tests" / "models" / "gait2d_huntcrossley" / "gait2d_actuators.xml",
+        ROOT_DIR / "tests" / "models" / "gait2d_huntcrossley" / "gait2d_ground_contact_huntcrossley.xml",
     ],
 }
 
