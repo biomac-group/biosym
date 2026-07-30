@@ -3,6 +3,7 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from biosym.constraints.base_constraint import BaseConstraint
 
@@ -323,12 +324,20 @@ def jacobian(modelfn_bwd, modelfn_zero, modelfn_periodic, states_list, globals_d
     constants = model.default_constants
     adaptive_h = settings.get("discretization", {}).get("args", {}).get("adaptive_h", False)
 
+    # Sparsity structure (rows/cols) below is built with plain NumPy instead of
+    # jnp, and outside of vmap/lax control flow. It depends only on Python ints
+    # (nnodes, nvpn, nq, ncons_sympy, ...) known at trace time, never on traced
+    # values, so tracing it with jnp only bloats the HLO graph XLA has to
+    # optimize (arange/tile/repeat/concatenate per node) without changing the
+    # result -- costly at high nnodes since it scales with node count. Building
+    # it eagerly in Python/NumPy keeps only the real per-node AD values (data)
+    # flowing through jax/vmap; the indices are embedded as constants.
     if nnodes == 1:
         jac_0 = modelfn_zero(states_list[0], constants)
-        row_block0 = jnp.arange(ncons_sympy)
-        col_block0 = jnp.arange(nvpn)
-        rows_out = jnp.repeat(row_block0, nvpn)
-        cols_out = jnp.tile(col_block0, ncons_sympy)
+        row_block0 = np.arange(ncons_sympy)
+        col_block0 = np.arange(nvpn)
+        rows_out = np.repeat(row_block0, nvpn)
+        cols_out = np.tile(col_block0, ncons_sympy)
         data_out = _flatten_model_jac(jac_0).flatten()
     else:
         periodic = modelfn_periodic is not None
@@ -344,56 +353,63 @@ def jacobian(modelfn_bwd, modelfn_zero, modelfn_periodic, states_list, globals_d
 
         row_offset = 0 if periodic else -1
 
-        def _node_block(n, jac_c, jac_p, jac_h_n):
-            row_block = (n + row_offset) * ncons_sympy + jnp.arange(ncons_sympy)
-            col_block = nvpn * n + jnp.arange(nvpn)
-            rows_curr = jnp.repeat(row_block, nvpn)
-            cols_curr = jnp.tile(col_block, ncons_sympy)
-            data_curr = _flatten_model_jac(jac_c).flatten()
+        def _node_block_indices(n):
+            row_block = (n + row_offset) * ncons_sympy + np.arange(ncons_sympy)
+            col_block = nvpn * n + np.arange(nvpn)
+            rows_curr = np.repeat(row_block, nvpn)
+            cols_curr = np.tile(col_block, ncons_sympy)
 
             # qd sits right after q in the node's flattened state vector.
-            col_block_prev = (n - 1) * nvpn + nq + jnp.arange(nq)
-            rows_prev = jnp.repeat(row_block, nq)
-            cols_prev = jnp.tile(col_block_prev, ncons_sympy)
-            data_prev = jac_p.qd.flatten()
+            col_block_prev = (n - 1) * nvpn + nq + np.arange(nq)
+            rows_prev = np.repeat(row_block, nq)
+            cols_prev = np.tile(col_block_prev, ncons_sympy)
 
             # This node's own dynamics equation uses h[n - 1] (interval n-1 -> n).
             h_col, h_scale = _h_column(nnodes, nnodes_dur, nvpn, adaptive_h, n - 1)
             rows_h = row_block
-            cols_h = jnp.full((ncons_sympy,), h_col, dtype=int)
-            data_h = jac_h_n * h_scale
+            cols_h = np.full((ncons_sympy,), h_col, dtype=int)
 
-            rows = jnp.concatenate((rows_curr, rows_prev, rows_h))
-            cols = jnp.concatenate((cols_curr, cols_prev, cols_h))
-            data = jnp.concatenate((data_curr, data_prev, data_h))
-            return rows, cols, data
+            rows = np.concatenate((rows_curr, rows_prev, rows_h))
+            cols = np.concatenate((cols_curr, cols_prev, cols_h))
+            return rows, cols, h_scale
 
-        rows_rest, cols_rest, data_rest = jax.vmap(_node_block)(jnp.arange(1, nnodes), jac_curr, jac_prev, jac_h)
-        rows_rest, cols_rest, data_rest = rows_rest.reshape(-1), cols_rest.reshape(-1), data_rest.reshape(-1)
+        _indices_and_scale = [_node_block_indices(n) for n in range(1, nnodes)]
+        rows_rest = np.concatenate([r for r, _, _ in _indices_and_scale])
+        cols_rest = np.concatenate([c for _, c, _ in _indices_and_scale])
+        h_scale_rest = jnp.asarray([s for _, _, s in _indices_and_scale])
+
+        def _node_block_data(jac_c, jac_p, jac_h_n, h_scale_n):
+            data_curr = _flatten_model_jac(jac_c).flatten()
+            data_prev = jac_p.qd.flatten()
+            data_h = jac_h_n * h_scale_n
+            return jnp.concatenate((data_curr, data_prev, data_h))
+
+        data_rest = jax.vmap(_node_block_data)(jac_curr, jac_prev, jac_h, h_scale_rest)
+        data_rest = data_rest.reshape(-1)
 
         if periodic:
             # Node 0: dense current-node block + a mirrored "wrap" qd neighbor
             # block + the wrap interval's h/dur column, pointing at the last
             # real dynamics node (nnodes - 1) / interval (nnodes - 1).
             jac_curr0, jac_wrap0, jac_h0 = modelfn_periodic(states_list[0], states_list[nnodes - 1], h[-1], constants)
-            row_block0 = jnp.arange(ncons_sympy)
-            col_block0 = jnp.arange(nvpn)
-            rows_curr0 = jnp.repeat(row_block0, nvpn)
-            cols_curr0 = jnp.tile(col_block0, ncons_sympy)
+            row_block0 = np.arange(ncons_sympy)
+            col_block0 = np.arange(nvpn)
+            rows_curr0 = np.repeat(row_block0, nvpn)
+            cols_curr0 = np.tile(col_block0, ncons_sympy)
             data_curr0 = _flatten_model_jac(jac_curr0).flatten()
 
-            col_block_wrap0 = (nnodes - 1) * nvpn + nq + jnp.arange(nq)
-            rows_wrap0 = jnp.repeat(row_block0, nq)
-            cols_wrap0 = jnp.tile(col_block_wrap0, ncons_sympy)
+            col_block_wrap0 = (nnodes - 1) * nvpn + nq + np.arange(nq)
+            rows_wrap0 = np.repeat(row_block0, nq)
+            cols_wrap0 = np.tile(col_block_wrap0, ncons_sympy)
             data_wrap0 = jac_wrap0.qd.flatten()
 
             h_col0, h_scale0 = _h_column(nnodes, nnodes_dur, nvpn, adaptive_h, nnodes - 1)
             rows_h0 = row_block0
-            cols_h0 = jnp.full((ncons_sympy,), h_col0, dtype=int)
+            cols_h0 = np.full((ncons_sympy,), h_col0, dtype=int)
             data_h0 = jac_h0 * h_scale0
 
-            rows_out = jnp.concatenate((rows_curr0, rows_wrap0, rows_h0, rows_rest))
-            cols_out = jnp.concatenate((cols_curr0, cols_wrap0, cols_h0, cols_rest))
+            rows_out = np.concatenate((rows_curr0, rows_wrap0, rows_h0, rows_rest))
+            cols_out = np.concatenate((cols_curr0, cols_wrap0, cols_h0, cols_rest))
             data_out = jnp.concatenate((data_curr0, data_wrap0, data_h0, data_rest))
         else:
             rows_out, cols_out, data_out = rows_rest, cols_rest, data_rest
