@@ -4,6 +4,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
+from biosym.constraints.dynamics import compute_qdd_fd
 from biosym.objectives.base_objective import BaseObjective
 
 
@@ -55,6 +56,6 @@ def objfun(states_list, globals_dict, settings, info):
     :return: The evaluated value of the objective function.
     """
     # Goal: reduce jerk, e.g. diff(qdd)
-    qdd = states_list.qdd
+    qdd = compute_qdd_fd(states_list, globals_dict, settings)
     jerk = jnp.diff(qdd, axis=0)
     return jnp.mean(jnp.square(jerk))
