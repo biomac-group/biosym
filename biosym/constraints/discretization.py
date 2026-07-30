@@ -54,7 +54,7 @@ class Constraint(BaseConstraint):
             "adaptive_h": self.adaptive_h,
             "mode": self.args.get("mode", "backward"),
             "sections": self.sections,
-            "ncons_per_node": 2 * self.n_var + self.section_constraints
+            "ncons_per_node": self.n_var + self.section_constraints
         }
 
     def get_confun(self):
@@ -81,7 +81,7 @@ class Constraint(BaseConstraint):
 
         :return: The number of constraints.
         """
-        return (self.settings.get("nnodes_dur") - 1) * (self.n_var * 2 + self.section_constraints) # *2: for qd and qdd
+        return (self.settings.get("nnodes_dur") - 1) * (self.n_var + self.section_constraints)
 
     def get_nnz(self):
         """
@@ -103,15 +103,13 @@ def confun_at_node(states_list, next_states_list, globals_dict, settings, info, 
     :param info: Information about the constraint function.
     :return: The evaluated value of the constraint function at the node.
     """
-    q_i = jnp.concatenate([states_list.q, states_list.qd], axis=-1)
-    q_i_next = jnp.concatenate([next_states_list.q, next_states_list.qd], axis=-1)
-    qd_0 = q_i_next - q_i
-    qd_states = (
-        jnp.concatenate([next_states_list.qd, next_states_list.qdd], axis=-1)
-        if info["mode"] == "backward"
-        else jnp.concatenate([states_list.qd, states_list.qdd], axis=-1)
-    )
-    
+    # Position/velocity continuity: q_next - q = h * qd. (The companion
+    # qd/qdd continuity constraint is not needed: qdd is *defined* as the
+    # backward-Euler finite difference of qd in dynamics.py, so that
+    # relation holds by construction.)
+    qd_0 = next_states_list.q - states_list.q
+    qd_states = next_states_list.qd if info["mode"] == "backward" else states_list.qd
+
     # Contact model
     sec_ = info['sections']
     for section in ['contact_model', 'actuator_model']:
@@ -148,35 +146,33 @@ def jacobian_at_node(states_list, next_states_list, globals_dict, settings, info
     :param info: Information about the constraint function.
     :return: The Jacobian of the constraint function at the node.
     """
-    d1 = -jnp.ones(info["nvar"] * 2)  # df/dq_i
-    d2 = jnp.ones(info["nvar"] * 2)  # df/dq_i_next
-    d3 = -jnp.ones(info["nvar"] * 2) * h  # df/dqd_states
+    d1 = -jnp.ones(info["nvar"])  # df/dq_i
+    d2 = jnp.ones(info["nvar"])  # df/dq_i_next
+    d3 = -jnp.ones(info["nvar"]) * h  # df/dqd_states
     d4 = -(
-        jnp.concatenate([next_states_list.qd, next_states_list.qdd], axis=-1)
-        if info["mode"] == "backward"
-        else jnp.concatenate([states_list.qd, states_list.qdd], axis=-1)
+        next_states_list.qd if info["mode"] == "backward" else states_list.qd
     )  # df/dh
 
-    r = jnp.arange(info["nvar"] * 2, dtype=int)
+    r = jnp.arange(info["nvar"], dtype=int)
 
-    c1 = jnp.arange(info["nvar"] * 2, dtype=int)
-    c2 = jnp.arange(info["nvar"] * 2, dtype=int) + states_list.size()
+    c1 = jnp.arange(info["nvar"], dtype=int)
+    c2 = jnp.arange(info["nvar"], dtype=int) + states_list.size()
     c3 = (
-        jnp.arange(info["nvar"] * 2, dtype=int)
+        jnp.arange(info["nvar"], dtype=int)
         + info["nvar"]
         + (states_list.size() if info["mode"] == "backward" else 0)
     )
     if info["adaptive_h"]:
         c4 = (
-            jnp.ones(info["nvar"] * 2, dtype=int) * states_list.size() - 1
+            jnp.ones(info["nvar"], dtype=int) * states_list.size() - 1
         )  # adaptive step size, h is always the last variable
     else:
-        c4 = jnp.ones(info["nvar"] * 2, dtype=int)
+        c4 = jnp.ones(info["nvar"], dtype=int)
 
     r, c, d = jnp.concatenate((r, r, r, r)), jnp.concatenate((c1, c2, c3, c4)), jnp.concatenate((d1, d2, d3, d4))
 
     sec_ = info['sections']
-    row_offset = info["nvar"] * 2
+    row_offset = info["nvar"]
     for section in ['contact_model', 'actuator_model']:
         if section in sec_:
             if len(sec_[section]['states']) > 0:
@@ -223,8 +219,8 @@ def jacobian_at_node(states_list, next_states_list, globals_dict, settings, info
 
 
 def _duration_entry_indices(info):
-    block_indices = [jnp.arange(6 * info["nvar"], 8 * info["nvar"], dtype=int)]
-    offset = 8 * info["nvar"]
+    block_indices = [jnp.arange(3 * info["nvar"], 4 * info["nvar"], dtype=int)]
+    offset = 4 * info["nvar"]
 
     for section in ['contact_model', 'actuator_model']:
         if section not in info['sections']:

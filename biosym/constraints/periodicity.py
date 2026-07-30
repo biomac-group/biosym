@@ -20,7 +20,7 @@ class Constraint(BaseConstraint):
         self.model = model
         self.settings = settings.copy()
         self.args = args
-        self.settings["nvpn"] = len(model.default_states.flatten())
+        self.settings["nvpn"] = model.opt_states.size()
         self.nvar = settings.get("nvar")
 
         # We exclude certain dimensions from the periodicity constraint
@@ -132,7 +132,9 @@ def jacobian_per(states_list, _, dims, id_symmetry, nnodes_dur, settings):
 def get_symmetry_indices(model):
     index_map = {}
     used = set()
-    names = model.state_vector 
+    # Reduced per-node layout: q, qd, gc_model, actuator_model (qdd/tau/
+    # ext_forces/ext_torques are derived, not part of the optimization vector).
+    names = model.coordinates.names + model.speeds.names
     if model.contact_model.get_n_states() > 0:
         names = names + model.contact_model.state_vector
     if model.actuator_model.get_n_states() > 0:
