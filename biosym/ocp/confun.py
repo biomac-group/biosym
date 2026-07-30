@@ -58,7 +58,7 @@ class Constraints:
         self.weights = []
         self.c_start, self.nnz_start = [0], [0]  # First constraint starts at 0
         for constraint in settings.get("constraints", []):
-            self.add_constraint(constraint.get("name"), constraint.get("weight"), constraint.get("args"))
+            self.add_constraint(constraint.get("name"), constraint.get("weight", 1.0), constraint.get("args"))
         self.nnz_start, self.c_start = (
             np.cumsum(self.nnz_start, dtype=int).tolist(),
             np.cumsum(self.c_start, dtype=int).tolist(),
@@ -251,7 +251,6 @@ def evaluate_jacobian(jacobian_functions, weights, nnz, c_start, nnz_start, stat
     )
     for i, jac in enumerate(jacobian_functions):
         r, c, d = jac(states_list, globals_dict)
-        print(f"JIT TRACING DEBUG evaluate_jacobian i={i}: r.shape={r.shape}, expected_size={nnz_start[i+1] - nnz_start[i]}")
         r = r + c_start[i]
         rows = rows.at[nnz_start[i] : nnz_start[i + 1]].set(r)
         cols = cols.at[nnz_start[i] : nnz_start[i + 1]].set(c)

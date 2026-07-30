@@ -8,8 +8,6 @@ nonlinear optimization solvers for biomechanical motion optimization.
 
 import os
 
-from biosym.model.model import *
-
 _cachedir = os.path.expanduser("~/.biosym/jax_cache")
 _model_cache = os.path.expanduser("~/.biosym/")
 os.environ["JAX_COMPILATION_CACHE_DIR"] = (
@@ -17,12 +15,20 @@ os.environ["JAX_COMPILATION_CACHE_DIR"] = (
 )
 os.makedirs((_cachedir), exist_ok=True)
 
+from biosym.model.model import *
 
 # jax.config.update("jax_enable_x64", True)
 
 import cyipopt
 import jax
-jax.config.update('jax_enable_x64', True)
+# Belt-and-suspenders: biosym.model.model (imported above) already imports jax,
+# so the JAX_COMPILATION_CACHE_DIR env var above may be set too late to affect
+# jax's own env-derived flag defaults, depending on import order elsewhere in
+# the process. Setting it explicitly via the config API works regardless of
+# when jax was first imported.
+jax.config.update("jax_compilation_cache_dir", _cachedir)
+jax.config.update("jax_persistent_cache_min_compile_time_secs", 1)
+#jax.config.update('jax_enable_x64', True)
 import jax.numpy as jnp
 import yaml
 from collections import namedtuple

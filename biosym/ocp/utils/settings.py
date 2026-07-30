@@ -20,24 +20,16 @@ def flat_model_to_states(model, v, states_template=None):
     i += q_len
     qd = v[i : i + qd_len]
     i += qd_len
-    qdd = v[i : i + qdd_len]
-    i += qdd_len
-    tau = v[i : i + tau_len]
-    i += tau_len
-    ext_forces = v[i : i + ext_f_len]
-    i += ext_f_len
-    ext_torques = v[i : i + ext_t_len]
-    
+    # qdd/tau/ext_forces/ext_torques are no longer free decision variables
+    # (they're derived on the fly), so their bound values are unused here.
+    i += qdd_len + tau_len + ext_f_len + ext_t_len
+
     if states_template is None:
-        states_template = model.default_states
-        
+        states_template = model.opt_states
+
     return states_template.replace(
         q=q,
         qd=qd,
-        qdd=qdd,
-        tau=tau,
-        ext_forces=ext_forces,
-        ext_torques=ext_torques,
     )
 
 
@@ -177,12 +169,12 @@ def process_collocation_settings(model, settings):
             raise ValueError(
                 "Duration bounds are required for collocation with multiple nodes."
             )
-        if type(settings["bounds"]["speed"]) == float:
+        if isinstance(settings["bounds"]["speed"], (int, float)):
             settings["bounds"]["speed"] = [
                 settings["bounds"]["speed"],
                 settings["bounds"]["speed"],
             ]
-        if type(settings["bounds"]["dur"]) == float:
+        if isinstance(settings["bounds"]["dur"], (int, float)):
             settings["bounds"]["dur"] = [
                 settings["bounds"]["dur"],
                 settings["bounds"]["dur"],
@@ -206,8 +198,8 @@ def process_collocation_settings(model, settings):
         settings["nnodes_dur"] = settings["nnodes"]
 
     states_variables = model.variables[model.variables.type == "state"]
-    min_generic = flat_model_to_states(model, jnp.array(states_variables.xmin), model.default_states)
-    max_generic = flat_model_to_states(model, jnp.array(states_variables.xmax), model.default_states)
+    min_generic = flat_model_to_states(model, jnp.array(states_variables.xmin), model.opt_states)
+    max_generic = flat_model_to_states(model, jnp.array(states_variables.xmax), model.opt_states)
 
     # Placeholders for gc and actuator model
     min_generic = min_generic.replace(
@@ -236,11 +228,6 @@ def process_collocation_settings(model, settings):
                 jnp.zeros(model.speeds.n, dtype=float) + (1e-8 if section == "max" else -1e-8)
             )
             settings["bounds"][section] = settings["bounds"][section].replace(qd=qd_val)
-            
-            qdd_val = settings["bounds"][section].qdd.at[0].set(
-                jnp.zeros(model.accs.n, dtype=float)
-            )
-            settings["bounds"][section] = settings["bounds"][section].replace(qdd=qdd_val)
 
     if settings["bounds"]["start_at_origin"]:
         q_min = settings["bounds"]["min"].q.at[0, 0].set(0)

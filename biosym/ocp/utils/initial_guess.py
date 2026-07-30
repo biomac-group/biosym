@@ -18,7 +18,7 @@ def make_initial_guess(model, settings, initial_guess):
 
     if initial_guess is None:
         initial_guess_states = states.concatenate(
-            [model.default_states] * settings["nnodes_dur"]
+            [model.opt_states] * settings["nnodes_dur"]
         )
 
     elif isinstance(initial_guess, dict):
@@ -38,7 +38,7 @@ def make_initial_guess(model, settings, initial_guess):
                 )
         elif initial_guess["type"] == "default":
             initial_guess_states = states.concatenate(
-                [model.default_states] * settings["nnodes_dur"]
+                [model.opt_states] * settings["nnodes_dur"]
             )
         elif initial_guess["type"] == "mid":
             pass
@@ -94,7 +94,7 @@ def make_initial_guess(model, settings, initial_guess):
             pass
         elif initial_guess == "default":
             initial_guess_states = states.concatenate(
-                [model.default_states] * settings["nnodes_dur"]
+                [model.opt_states] * settings["nnodes_dur"]
             )
         elif initial_guess == "mid":
             pass
