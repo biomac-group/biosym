@@ -14,9 +14,9 @@ def test_discretization_jacobian_matches_autodiff_for_mixed_dependents():
             "contact_model": {"states": jnp.array([0]), "derivatives": jnp.array([1])},
             "actuator_model": {"states": jnp.array([0]), "derivatives": jnp.array([1])},
         },
-        "ncons_per_node": 4,
-        "ncons": 4,
-        "nnz": 16,
+        "ncons_per_node": 3,
+        "ncons": 3,
+        "nnz": 12,
     }
     settings = {"nnodes_dur": 2}
     globals_dict = Globals(dur=jnp.array([0.5]), speed=jnp.array([0.0]), h=jnp.array([0.5]))
@@ -84,9 +84,9 @@ def test_discretization_jacobian_q_matches_autodiff_for_constant_duration():
             "contact_model": {"states": jnp.array([0]), "derivatives": jnp.array([1])},
             "actuator_model": {"states": jnp.array([0]), "derivatives": jnp.array([1])},
         },
-        "ncons_per_node": 4,
-        "ncons": 4,
-        "nnz": 16,
+        "ncons_per_node": 3,
+        "ncons": 3,
+        "nnz": 12,
     }
     settings = {"nnodes_dur": 2}
     globals_dict = Globals(dur=jnp.array([0.5]), speed=jnp.array([0.0]), h=jnp.zeros((0,)))
