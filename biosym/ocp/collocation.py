@@ -28,7 +28,7 @@ import jax
 # when jax was first imported.
 jax.config.update("jax_compilation_cache_dir", _cachedir)
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 1)
-#jax.config.update('jax_enable_x64', True)
+jax.config.update('jax_enable_x64', True)
 import jax.numpy as jnp
 import yaml
 from collections import namedtuple
