@@ -2,25 +2,19 @@ from abc import ABC, abstractmethod
 
 
 class BaseParser(ABC):
-    """
-    Abstract base class for model parsers.
-    """
+    """Abstract base class for model parsers."""
 
-    def __init__(self, model_file):
+    def __init__(self, model_file) -> None:
         self.model_file = model_file
         self.model = None
 
     @abstractmethod
     def get_n_bodies(self):
-        """
-        Returns the number of bodies in the model.
-        """
+        """Returns the number of bodies in the model."""
 
     @abstractmethod
     def get_n_joints(self):
-        """
-        Returns the number of joints in the model.
-        """
+        """Returns the number of joints in the model."""
 
     @abstractmethod
     def get_bodies(self):
@@ -33,7 +27,7 @@ class BaseParser(ABC):
             - body_offset: The offset of the body
             - com: The center of mass of the body
             - parent: The parent body of the body
-            - joints: The joint associated with the body
+            - joints: The joint associated with the body.
         """
 
     @abstractmethod
@@ -45,46 +39,36 @@ class BaseParser(ABC):
             - type: The type of the joint (e.g. revolute, prismatic)
             - axis: The axis of the joint
             - parent: The parent body of the joint
-            - child: The child body of the joint
+            - child: The child body of the joint.
 
         We should add range / stiffness / damping / etc. here to be mujoco-feature complete
         """
 
     @abstractmethod
     def get_n_external_forces(self):
-        """
-        Returns the number of bodies, where external forces can be applied.
-        """
+        """Returns the number of bodies, where external forces can be applied."""
 
     @abstractmethod
     def get_external_forces_bodies(self):
-        """
-        Returns the list of bodies, where external forces can be applied.
-        """
+        """Returns the list of bodies, where external forces can be applied."""
 
     @abstractmethod
     def get_n_internal_forces(self):
-        """
-        Returns the number of internal forces in the model.
-        """
+        """Returns the number of internal forces in the model."""
 
     @abstractmethod
     def get_internal_forces(self):
-        """
-        Returns the list of internal forces in the model.
-        """
+        """Returns the list of internal forces in the model."""
 
     @abstractmethod
     def get_gravity(self):
-        """
-        Returns the gravity vector in the model.
-        """
+        """Returns the gravity vector in the model."""
 
     @abstractmethod
     def get_n_sites(self):
-       """
-       Returns the number of sites (e.g., MuJoCo <site> elements or marker points)
-       defined in the model.
+        """
+        Returns the number of sites (e.g., MuJoCo <site> elements or marker points)
+        defined in the model.
         """
 
     @abstractmethod
@@ -96,5 +80,5 @@ class BaseParser(ABC):
             - pos: position (x, y, z) relative to parent body/frame
             - body: parent body name (optional)
             - size: visual size (optional)
-            - rgba: color/alpha tuple (optional)
+            - rgba: color/alpha tuple (optional).
         """

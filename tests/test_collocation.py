@@ -153,14 +153,15 @@ def walking_problem():
 
 def test_standing_problem_solve(standing_problem):
     """Test that the standing problem can be solved."""
-    (x, globals_dict), info = standing_problem.solve(visualize=VIS)
+    sol = standing_problem.solve(visualize=VIS)
+    x, globals_dict, info = sol.states, sol.globals, sol.info
 
     # Basic assertions
     assert x is not None, "Solution should not be None"
     assert info is not None, "Info should not be None"
 
     # Check that we have a valid solution structure
-    assert hasattr(x, "states"), "Solution should have states attribute"
+    assert hasattr(x, "q"), "Solution should have q attribute"
     print(info["status"])
     assert info["status"] in [0, 1], "Solver did not converge"
 
@@ -173,7 +174,8 @@ def test_walking_problem_solve(walking_problem):
 
     x, globals_dict = x_to_states_dict(x, walking_problem.initial_guess_states, walking_problem.initial_guess_globals)
 
-    (x, globals_dict), info = walking_problem.solve(visualize=VIS)  # Disable visualization for tests
+    sol = walking_problem.solve(visualize=VIS)  # Disable visualization for tests
+    x, globals_dict, info = sol.states, sol.globals, sol.info
 
     # Basic assertions
     assert x is not None, "Solution should not be None"
@@ -181,9 +183,9 @@ def test_walking_problem_solve(walking_problem):
     assert info is not None, "Info should not be None"
 
     # Check that we have a valid solution structure
-    assert hasattr(x, "states"), "Solution should have states attribute"
-    assert hasattr(x.states, "h"), "Solution should have h attribute"
-    # assert info["status"] in [0, 1], "Solver did not converge"
+    assert hasattr(x, "q"), "Solution should have q attribute"
+    assert hasattr(globals_dict, "h"), "Solution should have h attribute"
+    assert info["status"] in [0, 1], "Solver did not converge"
 
 def test_constraint_and_objective_functions(walking_problem):
     """Test the constraints and objective function evaluations."""
@@ -237,6 +239,104 @@ def test_all_objective_functions(walking_problem):
     # Verify it was added (this test depends on the internal structure)
     # You might need to adjust this based on how add_objective works
     assert True  # Placeholder assertion
+
+
+def test_muscle_constraint_structure(walking_problem):
+    """Verify Hill2d reports exactly n_actuators*nnodes constraints (force-equilibrium only).
+
+    This test guards against re-introducing dead constraints (e.g. the old c2
+    activation-dynamics block that was multiplied by zero).
+    """
+    problem = walking_problem
+    model = problem.model
+    settings = problem.settings
+    nnodes = settings.get("nnodes")
+
+    # Find the Hill2d actuator model
+    actuator = model.actuator_model
+    from biosym.model.actuators.actuator_models.hill2d import Hill2d
+    assert isinstance(actuator, Hill2d), "Expected Hill2d actuator for walking problem"
+
+    n_act = actuator.get_n_actuators()
+
+    # --- Constraint count ---
+    expected_ncon = n_act * nnodes
+    reported_ncon = actuator.get_n_constraints(model, settings)
+    assert reported_ncon == expected_ncon, (
+        f"get_n_constraints returned {reported_ncon}, expected {expected_ncon} "
+        f"({n_act} actuators × {nnodes} nodes)"
+    )
+
+    # --- Per-node constraint count ---
+    expected_per_node = n_act
+    reported_per_node = actuator.get_n_constraints_per_node()
+    assert reported_per_node == expected_per_node, (
+        f"get_n_constraints_per_node returned {reported_per_node}, expected {expected_per_node}"
+    )
+
+    # --- Actual constraint vector length ---
+    states = problem.initial_guess_states
+    globals_ = problem.initial_guess_globals
+    # Pull muscle constraints via the full collocation constraint vector
+    full_c = problem.constraints.confun(problem.initial_guess_states, problem.initial_guess_globals)
+    # Hill2d is the only actuator, so its constraints occupy the first n_act*nnodes entries
+    c_vec = full_c[:expected_ncon]
+    assert len(c_vec) == expected_ncon, (
+        f"constraints vector slice length {len(c_vec)} does not match expected {expected_ncon}"
+    )
+
+    # --- Jacobian nnz consistency ---
+    declared_nnz = actuator.get_nnz(model, settings)
+    rows, cols, data = actuator.jacobian((states, globals_), problem.model.default_constants, model, settings)
+    actual_nnz = len(data)
+    assert actual_nnz <= declared_nnz, (
+        f"jacobian() returned {actual_nnz} non-zeros but get_nnz() declared only {declared_nnz}"
+    )
+
+    # --- Jacobian index bounds ---
+    total_vars = states.size() + (2 if globals_ is not None else 0)  # 2 globals: dur, speed
+    assert int(rows.max()) < expected_ncon, (
+        f"Jacobian row index {int(rows.max())} out of bounds (ncon={expected_ncon})"
+    )
+    assert int(cols.max()) < total_vars, (
+        f"Jacobian col index {int(cols.max())} out of bounds (nvars={total_vars})"
+    )
+
+
+def test_constraint_jacobian_speed(walking_problem):
+    """Benchmark constraint and Jacobian evaluation throughput.
+
+    Reports per-call wall time (ms) after a JIT warm-up pass.
+    Intended to catch performance regressions — e.g. re-introducing
+    dead constraints or extra JIT traces.
+    """
+    import timeit
+
+    problem = walking_problem
+    states = problem.initial_guess_states
+    globals_ = problem.initial_guess_globals
+    confun = problem.constraints.confun
+    jacfun = problem.constraints.jacobian
+
+    n_repeats = 20
+
+    # --- warm-up (forces JAX JIT compilation) ---
+    confun(states, globals_)
+    jacfun(states, globals_)
+
+    # --- benchmark constraints ---
+    t_con = timeit.timeit(lambda: confun(states, globals_), number=n_repeats)
+    ms_con = t_con / n_repeats * 1e3
+    print(f"\n[speed] constraints(): {ms_con:.2f} ms/call  ({n_repeats} repeats)")
+
+    # --- benchmark jacobian ---
+    t_jac = timeit.timeit(lambda: jacfun(states, globals_), number=n_repeats)
+    ms_jac = t_jac / n_repeats * 1e3
+    print(f"[speed] jacobian():     {ms_jac:.2f} ms/call  ({n_repeats} repeats)")
+
+    # Sanity: both should complete within a reasonable per-call budget
+    assert ms_con < 500, f"constraints() too slow: {ms_con:.1f} ms/call (limit 500 ms)"
+    assert ms_jac < 500, f"jacobian() too slow: {ms_jac:.1f} ms/call (limit 500 ms)"
 
 
 @pytest.mark.skip(reason="For debugging purposes only")

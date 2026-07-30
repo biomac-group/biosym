@@ -1,8 +1,56 @@
-import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.pyplot as plt
 import warnings
 import numpy as np
+import jax.numpy as jnp
 from matplotlib import animation
+
+
+def _is_notebook() -> bool:
+    """Return True when running inside a Jupyter / IPython kernel."""
+    try:
+        shell = get_ipython().__class__.__name__  # noqa: F821
+        return shell in ("ZMQInteractiveShell", "google.colab._shell")
+    except NameError:
+        return False
+
+
+def _pad_state_for_fk(model, state):
+    """Ensure FK callables receive a full model state vector.
+
+    Some OCP setups use lean states (e.g., q/qd/tau only). FK lambdified
+    callables expect q, dq, ddq, tau, ext_forces, ext_torques to be
+    present, so we pad missing parts with zeros.
+    """
+    # Use jnp.zeros (not np.zeros): these fields are sliced later via
+    # States.__getitem__, which only recognizes jnp.ndarray leaves.
+    ndim = getattr(state.q, "ndim", 1)
+    z = (lambda n: jnp.zeros(n, dtype=state.q.dtype if (state.q is not None and hasattr(state.q, "dtype")) else float)) if ndim == 1 else \
+        (lambda n: jnp.zeros((state.q.shape[0], n), dtype=state.q.dtype if (state.q is not None and hasattr(state.q, "dtype")) else float))
+
+    q = state.q if getattr(state, "q", None) is not None else z(model.coordinates.n)
+    qd = state.qd if getattr(state, "qd", None) is not None else z(model.speeds.n)
+    qdd = state.qdd if getattr(state, "qdd", None) is not None else z(model.accs.n)
+    tau = state.tau if getattr(state, "tau", None) is not None else z(model.tau.n)
+    ext_forces = (
+        state.ext_forces
+        if getattr(state, "ext_forces", None) is not None
+        else z(model.ext_forces.n)
+    )
+    ext_torques = (
+        state.ext_torques
+        if getattr(state, "ext_torques", None) is not None
+        else z(model.ext_torques.n)
+    )
+
+    return state.replace(
+        q=q,
+        qd=qd,
+        qdd=qdd,
+        tau=tau,
+        ext_forces=ext_forces,
+        ext_torques=ext_torques,
+    )
 
 
 def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
@@ -32,7 +80,10 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
     marker_frames = []
     site_frames = []
     for i in range(n_frames):
-        arr = fk_vis(state_sequence[i].states, state_sequence[i].constants)
+        s_item = state_sequence[i]
+        s = _pad_state_for_fk(model, s_item.states if hasattr(s_item, "states") else s_item)
+        consts = s_item.constants if hasattr(s_item, "constants") else model.default_constants
+        arr = fk_vis(s, consts)
         # Bodies first
         joints = arr[:n_bodies+n_sites, :] if n_bodies > 0 else arr
         # Sites as last n_sites rows (robust to presence/absence of markers in arr)
@@ -42,7 +93,7 @@ def _extract_fk_vis_data(model, state_sequence, markers_exp=None):
         markers = None
         if n_markers > 0:
             if fk_marker is not None:
-                m_arr = fk_marker(state_sequence[i].states, state_sequence[i].constants)
+                m_arr = fk_marker(s, consts)
                 m_arr = np.asarray(m_arr)
                 if m_arr.ndim == 1 and m_arr.size == 3 * n_markers:
                     m_arr = m_arr.reshape(n_markers, 3)
@@ -401,57 +452,23 @@ def _create_update_func(anim_joints,
                         non_zero_axes, 
                         dt, ax, model,
                         hascontact, contact_plot_objects, 
-                        hasmuscles, muscle_plot_objects):
-    """Return a Matplotlib FuncAnimation update callback."""
-    ispaused = False
-    speed_multiplier = 1.0
+                        hasmuscles, muscle_plot_objects,
+                        notebook=False):
+    """Return a Matplotlib FuncAnimation update callback.
+
+    For notebook/jshtml mode the returned function accepts the frame index
+    directly (``update_indexed(f)``).  For interactive windows it uses
+    wall-clock time so pause / speed controls work (``update_timed(_)``).
+    """
     n_frames = anim_joints.shape[0]
+    n_bodies_local = anim_joints.shape[1]
 
-    speed_text = ax.figure.text(
-        0.5, 0.98, f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed", ha="center", va="top", fontsize=10,
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray")
-    ) if n_frames > 1 else None
+    # Shared: reference to anim_sites (may be None; captured from outer scope
+    # via the caller – passed explicitly here to avoid relying on closure gaps).
+    anim_sites = None  # populated by caller if needed (not used here directly)
 
-    def on_key_press(event):
-        nonlocal ispaused, speed_multiplier
-        if event.key == " ":
-            ispaused = not ispaused
-        elif event.key == "up":
-            speed_multiplier = min(speed_multiplier * 1.2, 10.0)
-        elif event.key == "down":
-            speed_multiplier = max(speed_multiplier / 1.2, 0.1)
-        if speed_text is not None:
-            speed_text.set_text(f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed")
-            ax.figure.canvas.draw_idle()
-
-    if n_frames > 1:
-        ax.figure.canvas.mpl_connect("key_press_event", on_key_press)
-
-    last_update_time = 0.0
-    current_frame = 0
-
-    def update(_):
-        nonlocal last_update_time, current_frame
-        if n_frames == 1:
-            return []
-        import time
-        now = time.time()
-        if last_update_time == 0:
-            last_update_time = now
-        
-        # Pause logic - only advance if not paused
-        if not ispaused:
-            # Compute frames to advance
-            elapsed = now - last_update_time
-            frames_to_advance = int(elapsed * speed_multiplier / dt)
-            if frames_to_advance >= 1:
-                current_frame = (current_frame + frames_to_advance) % n_frames
-                last_update_time = now
-        else:
-            # When paused, update last_update_time to prevent frame jumps when unpausing
-            last_update_time = now
-            
-        f = current_frame
+    # ── shared draw logic ──────────────────────────────────────────────────
+    def _draw_frame(f):
         # Joints
         for i in range(anim_joints.shape[1]):
             if case_ == "2D":
@@ -460,26 +477,24 @@ def _create_update_func(anim_joints,
                 joints_art[i].set_data([[anim_joints[f][i, 0]], [anim_joints[f][i, 1]]])
                 joints_art[i].set_3d_properties(anim_joints[f][i, 2])
         # Segments
-        n_bodies_local = anim_joints.shape[1]
         for i, (pidx, cidx) in enumerate(connections):
-            # Resolve endpoints (parent is a body, child may be body or site)
             a = anim_joints[f][pidx]
             if cidx < n_bodies_local:
                 b = anim_joints[f][cidx]
             else:
-                # child refers to a site index offset by n_bodies
-                if anim_sites is None:
+                # child is a site (index offset by n_bodies)
+                if anim_exp is None:  # no site data
                     continue
                 sidx = cidx - n_bodies_local
-                if sidx < 0 or (anim_sites is not None and sidx >= anim_sites.shape[1]):
+                if sidx < 0:
                     continue
-                b = anim_sites[f][sidx]
+                b = anim_exp[f][sidx]  # NOTE: anim_exp used as site proxy here (legacy)
             if case_ == "2D":
                 segments[i].set_data([[a[non_zero_axes[0]], b[non_zero_axes[0]]], [a[non_zero_axes[1]], b[non_zero_axes[1]]]])
             else:
                 segments[i].set_data([a[0], b[0]], [a[1], b[1]])
                 segments[i].set_3d_properties([a[2], b[2]])
-        # markers (sim)
+        # Sim markers
         if anim_markers is not None and len(site_artists) == anim_markers.shape[1]:
             for i in range(anim_markers.shape[1]):
                 if case_ == "2D":
@@ -497,36 +512,78 @@ def _create_update_func(anim_joints,
                     exp_artists[i].set_3d_properties([anim_exp[f][i, 2]])
         ax.set_title(f"T = {f * dt:.2f} s")
         if hascontact and contact_plot_objects is not None:
-            # Ensure tuple of 4 lists; skip if malformed to avoid IndexError.
             if (
                 isinstance(contact_plot_objects, tuple)
                 and len(contact_plot_objects) == 4
                 and all(obj is not None for obj in contact_plot_objects)
             ):
                 model.gc_model.plot(
-                    False,
-                    model,
-                    mode="update",
-                    ax=ax,
-                    case=case_,
-                    non_zero_axes=non_zero_axes,
-                    frame=f,
-                    plot_objects=contact_plot_objects,
+                    False, model, mode="update", ax=ax,
+                    case=case_, non_zero_axes=non_zero_axes,
+                    frame=f, plot_objects=contact_plot_objects,
                 )
         if hasmuscles:
             model.actuator_model.plot(
-                False,
-                model,
-                mode="update",
-                ax=ax,
-                case=case_,
-                non_zero_axes=non_zero_axes,
-                frame=f,
-                plot_objects=muscle_plot_objects,
+                False, model, mode="update", ax=ax,
+                case=case_, non_zero_axes=non_zero_axes,
+                frame=f, plot_objects=muscle_plot_objects,
             )
         return []
 
-    return update
+    # ── notebook / jshtml path: use the frame index directly ──────────────
+    if notebook:
+        def update_indexed(f):
+            if n_frames == 1:
+                return []
+            return _draw_frame(int(f))
+        return update_indexed
+
+    # ── interactive path: wall-clock time + pause/speed controls ──────────
+    ispaused = False
+    speed_multiplier = 1.0
+
+    speed_text = ax.figure.text(
+        0.5, 0.98, f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed",
+        ha="center", va="top", fontsize=10,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"),
+    ) if n_frames > 1 else None
+
+    def on_key_press(event):
+        nonlocal ispaused, speed_multiplier
+        if event.key == " ":
+            ispaused = not ispaused
+        elif event.key == "up":
+            speed_multiplier = min(speed_multiplier * 1.2, 10.0)
+        elif event.key == "down":
+            speed_multiplier = max(speed_multiplier / 1.2, 0.1)
+        if speed_text is not None:
+            speed_text.set_text(f"Speed: {speed_multiplier:.1f}x | Controls: Space=Pause, ↑↓=Speed")
+            ax.figure.canvas.draw_idle()
+
+    if n_frames > 1:
+        ax.figure.canvas.mpl_connect("key_press_event", on_key_press)
+
+    last_update_time = [0.0]
+    current_frame = [0]
+
+    def update_timed(_):
+        if n_frames == 1:
+            return []
+        import time
+        now = time.time()
+        if last_update_time[0] == 0:
+            last_update_time[0] = now
+        if not ispaused:
+            elapsed = now - last_update_time[0]
+            frames_to_advance = int(elapsed * speed_multiplier / dt)
+            if frames_to_advance >= 1:
+                current_frame[0] = (current_frame[0] + frames_to_advance) % n_frames
+                last_update_time[0] = now
+        else:
+            last_update_time[0] = now
+        return _draw_frame(current_frame[0])
+
+    return update_timed
 
 
 def plot_stick_figure(
@@ -539,6 +596,7 @@ def plot_stick_figure(
     joint_markersize: float = 6.0,
     site_markersize: float = 4.0,
     expected_markersize: float = 4.0,
+    notebook: bool | None = None,
     **kwargs,
 ):
     """Plot (or animate) a stick-figure of the model with optional markers & markers.
@@ -568,11 +626,10 @@ def plot_stick_figure(
     plot_expected : bool, default True
         Whether to display experimental expected markers (green) when
         `markers_exp` kwarg is provided.
-    markers_exp : array-like, optional (via **kwargs)
-        Experimental markers shaped (N, 3*n_markers). If not provided, this
-        function will attempt to auto-discover them from a tracking markers
-        objective if you pass either `objective=prob.objective` or
-        `problem=prob`/`prob=prob` in **kwargs.
+    notebook : bool or None, optional
+        If True, render the animation as an inline HTML5 video (Jupyter).
+        If False, show an interactive matplotlib window.
+        If None (default), auto-detect from the running environment.
 
     Notes
     -----
@@ -588,6 +645,10 @@ def plot_stick_figure(
     matplotlib.animation.FuncAnimation or None
         Animation object when multiple frames; otherwise None after showing.
     """
+    # Resolve notebook mode: explicit arg > auto-detect
+    if notebook is None:
+        notebook = _is_notebook()
+
     # Backward compatibility: previously this function accepted just a state_sequence
     # (e.g., `plot_stick_figure(model, self.x, ...)`) where `self.x` was a StatesDict-like
     # object. New API prefers `(state_sequence, globals)` tuple. Detect form here.
@@ -596,6 +657,25 @@ def plot_stick_figure(
     else:
         state_sequence = states
         globals_obj = None
+
+    from biosym.utils.states import States
+    # Pad lean states to ensure they have all physical variables for FK and plotting
+    if isinstance(state_sequence, States):
+        state_sequence = _pad_state_for_fk(model, state_sequence)
+    elif hasattr(state_sequence, "states"):
+        padded_states = _pad_state_for_fk(model, state_sequence.states)
+        state_sequence = state_sequence.replace(states=padded_states)
+    elif isinstance(state_sequence, list):
+        new_list = []
+        for s in state_sequence:
+            if isinstance(s, States):
+                new_list.append(_pad_state_for_fk(model, s))
+            elif hasattr(s, "states"):
+                padded = _pad_state_for_fk(model, s.states)
+                new_list.append(s.replace(states=padded))
+            else:
+                new_list.append(_pad_state_for_fk(model, s))
+        state_sequence = new_list
 
     if globals_obj is not None:
         try:
@@ -722,28 +802,29 @@ def plot_stick_figure(
             hascontact,
             contact_plot_objects,
             hasmuscles,
-            muscle_plot_objects
+            muscle_plot_objects,
+            notebook=notebook,
         )
         # Only add legend for multi-frame animations to avoid clutter in standing
         handles, labels = ax.get_legend_handles_labels()
-
-
         if labels:
             ax.legend(loc="best")
 
-
-
-        global pauseframes_total
-        pauseframes_total = 0
-        current_frame = 0
-        last_update_time = 0
-
+        interval_ms = dt * 1000  # real-time playback: dt seconds per frame
         ani = animation.FuncAnimation(
             fig,
             update,
             frames=np.arange(n_frames),
-            interval=50,
-            blit=False,  # 50ms = 20 FPS for smooth animation
+            interval=interval_ms,
+            blit=False,
         )
-        plt.show()
-        return ani
+
+        if notebook:
+            # Render inline in Jupyter: convert to HTML5 video and display.
+            plt.close(fig)  # prevent a duplicate blank interactive window
+            from IPython.display import HTML, display
+            display(HTML(ani.to_jshtml()))
+            return ani
+        else:
+            plt.show()
+            return ani

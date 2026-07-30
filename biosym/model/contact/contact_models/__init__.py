@@ -1,1 +1,1 @@
-__all__ = ["contact_points"]
+__all__ = ["contact_huntcrossley", "contact_springdamper"]

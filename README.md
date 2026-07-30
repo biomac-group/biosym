@@ -95,7 +95,7 @@ If you use biosym in academic work, please cite it as software:
 ```bibtex
 @software{biosym_2026,
   title = {biosym: A Python toolbox for biomechanical movement simulation and optimal control},
-  author = {Markus Gambietz and Theodoros Balougias and Yipeng Zhang and Anne Koelewijn},
+  author = {Markus Gambietz and Theodoros Balougias and Asghar Mahmoudi and Yipeng Zhang and Anne Koelewijn},
   year = {2026},
   version = {0.1.0},
   url = {https://github.com/biomac-group/biosym}

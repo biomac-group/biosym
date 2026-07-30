@@ -37,8 +37,8 @@ class Objective(BaseObjective):
             "name": os.path.splitext(os.path.basename(__file__))[0],
             "description": "Objective term for minimizing effort.",
             "required_variables": {"states": ["model"], "constants": ["model"]},
-            "idx_int_forces": self.model.forces["idx"],
-            "n_int_forces": self.model.forces["n"],
+            "idx_int_forces": self.model.tau.combined_idx,
+            "n_int_forces": self.model.tau.n,
             "range_actuators": self.model.actuators.idx["a"],
             "exponent": self.exponent,
             "speedweighting": self.speedweighting,
@@ -65,31 +65,17 @@ def objfun(states_list, globals_dict, settings, info):
     :param info: Information about the objective function.
     :return: The evaluated value of the objective function.
     """
-    if globals_dict is not None:
-        if info["speedweighting"]:
-            # Apply speed weighting to the forces
-            forces = (
-                states_list.states.actuator_model[
-                    : settings["nnodes"], info["range_actuators"]
-                ]
-                / settings["nnodes"]
-                * globals_dict.dur
-                / globals_dict.speed
-            )
-        else:
-            forces = (
-                states_list.states.actuator_model[
-                    : settings["nnodes"], info["range_actuators"]
-                ]
-                / settings["nnodes"]
-                * globals_dict.dur
-            )
-    else:
-        forces = (
-            states_list.states.actuator_model[
-                : settings["nnodes"], info["range_actuators"]
-            ]
-            / settings["nnodes"]
-        )
-    # Compute the objective value (e.g., L2 norm of the forces)
-    return jnp.sum(jnp.abs(jnp.power(forces, info["exponent"])))
+    # Per-node average control cost (no `dur` folded in here -- unlike a
+    # stray `* dur` before the exponent, which would spuriously raise dur to
+    # the exponent power in the total cost and reward shrinking it).
+    forces = (
+        states_list.actuator_model[: settings["nnodes"], info["range_actuators"]]
+        / settings["nnodes"]
+    )
+    output = jnp.sum(jnp.abs(jnp.power(forces, info["exponent"])))
+
+    if globals_dict is not None and info["speedweighting"]:
+        # Normalize the already-summed cost by speed^exponent (not per-node).
+        output = output / jnp.power(globals_dict.speed, info["exponent"])
+
+    return output

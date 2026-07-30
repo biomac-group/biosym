@@ -73,13 +73,14 @@ print(f"Model has {model.n_states} states and {model.n_constants} constants")
 ###############################################################################
 # Explore Model Structure
 # ------------------------
-# 
+#
 # Let's examine the structure of our loaded model to understand its components.
+# Model symbols are exposed as namedtuples, so they are accessed via dot notation.
 
 print("\n--- Model Structure ---")
-print(f"Coordinates: {model.coordinates['names']}")
-print(f"Speeds: {model.speeds['names']}")
-print(f"Forces: {model.forces['names']}")
+print(f"Coordinates: {model.coordinates.names}")
+print(f"Speeds: {model.speeds.names}")
+print(f"Forces: {model.tau.names}")
 
 print(f"\nBodies in the model:")
 for i, body in enumerate(model.dicts['bodies']):
@@ -95,29 +96,16 @@ for i, joint in enumerate(model.dicts['joints']):
 ###############################################################################
 # Set Up Initial Conditions
 # --------------------------
-# 
+#
 # Before running any computations, we need to set up the state and constant
-# vectors. The model provides default values that we can use.
+# vectors. The model provides default ``States``/``Constants`` instances that
+# we can use directly (or modify via ``.replace(...)``).
 
-# Initialize state vector (positions, velocities, accelerations, forces, etc.)
-states_dict = {
-    "states": {
-        "model": jnp.zeros(model.n_states),
-        "gc_model": jnp.zeros(0),        # Ground contact model states
-        "actuator_model": jnp.zeros(0),  # Actuator model states
-    },
-    "constants": {
-        "model": jnp.array(model.default_values[model.n_states:]),
-        "gc_model": jnp.zeros(0),
-        "actuator_model": jnp.zeros(0),
-    }
-}
+states_obj = model.default_states
+constants_obj = model.default_constants
 
-# Convert to proper dataclass format required by the model functions
-states_obj = states.dict_to_dataclass(states_dict)
-
-print(f"\nInitialized states vector with {len(states_obj.states.model)} elements")
-print(f"Initialized constants vector with {len(states_obj.constants.model)} elements")
+print(f"\nInitialized states vector with {states_obj.size()} elements")
+print(f"Initialized constants vector with {constants_obj.flatten().shape[0]} elements")
 
 ###############################################################################
 # Forward Kinematics Analysis
@@ -134,21 +122,22 @@ angles2 = np.linspace(-2*np.pi, 2*np.pi, 50)
 positions = []
 velocities = []
 
-# Set a small angular velocity for velocity computations
-states_obj = states_obj.replace_vector("states","model",states_obj.states.model.at[1].set(0.5))  # angular velocity in rad/s
+# Set a small angular velocity on the first hinge for velocity computations
+states_obj = states_obj.replace(qd=jnp.array(states_obj.qd).at[0].set(0.5))  # angular velocity in rad/s
 
 print("Computing forward kinematics for 50 different angles...")
 
 for angle, angle2 in zip(angles, angles2):
-    states_obj = states_obj.replace_vector("states","model",states_obj.states.model.at[0].set(angle))  # Set angle
-    states_obj = states_obj.replace_vector("states","model",states_obj.states.model.at[1].set(angle2)) # Set angular velocity
+    q = jnp.array(states_obj.q).at[0].set(angle)   # Set angle of the first hinge
+    q = q.at[1].set(angle2)                        # Set angle of the second hinge
+    states_obj = states_obj.replace(q=q)
 
     # Compute forward kinematics (positions)
-    pos = model.run["FK_vis"](states_obj.states, states_obj.constants)[-1,:2]
+    pos = model.run["FK_vis"](states_obj, constants_obj)[-1, :2]
     positions.append(pos.flatten())
-    
+
     # Compute velocity kinematics
-    vel = model.run["FK_dot"](states_obj.states, states_obj.constants)[-1,:2]
+    vel = model.run["FK_dot"](states_obj, constants_obj)[-1, :2]
     velocities.append(vel.flatten())
 
 positions = np.array(positions)
@@ -175,24 +164,26 @@ plt.show()
 print("\n--- Dynamics Analysis ---")
 
 # Set initial conditions: 45 degrees with some angular velocity
-states_obj = states_obj.replace_vector("states","model",states_obj.states.model.at[0].set(np.pi/4))  # 45 degrees
-states_obj = states_obj.replace_vector("states","model",states_obj.states.model.at[1].set(1.0))         # 1 rad/s angular velocity
+states_obj = states_obj.replace(q=jnp.array(states_obj.q).at[0].set(np.pi / 4))   # 45 degrees
+states_obj = states_obj.replace(qd=jnp.array(states_obj.qd).at[0].set(1.0))       # 1 rad/s angular velocity
 
-# Compute equations of motion residual
-eom_residual = model.run["confun"](states_obj.states, states_obj.constants)
+# Compute equations of motion residual (Kane's method)
+eom_residual = model.run["kane"](states_obj, constants_obj)
 print(f"EOM residual: {eom_residual}")
 
 # Compute mass matrix
-mass_matrix = model.run["mass_matrix"](states_obj.states, states_obj.constants)
+mass_matrix = model.run["mass_matrix"](states_obj, constants_obj)
 print(f"Mass matrix shape: {mass_matrix.shape}")
 print(f"Mass matrix:\n{mass_matrix}")
 
 # Compute forcing terms (Coriolis, centrifugal, gravity)
-forcing = model.run["forcing"](states_obj.states, states_obj.constants)
+forcing = model.run["forcing"](states_obj, constants_obj)
 print(f"Forcing terms: {forcing}")
 
-# Compute Jacobian for sensitivity analysis
-jacobian = model.run["jacobian"](states_obj.states, states_obj.constants)
-print(f"Jacobian shape: {jacobian}")
+# Compute Jacobian of the equations of motion for sensitivity analysis.
+# The result is a States pytree: one Jacobian block per state field
+# (each block has shape (n_eom_residuals, *field_shape)).
+jacobian = model.run["kane_jacobian"](states_obj, constants_obj)
+print(f"Jacobian: {jacobian}")
 
 ###############################################################################
