@@ -1,0 +1,1941 @@
+{
+ "BaseContact": [
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.model.contact.base_contact",
+   "module_short": "biosym.model.contact.base_contact",
+   "name": "BaseContact"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.model.contact",
+   "module_short": "biosym.model.contact",
+   "name": "BaseContact"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BaseContact"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BaseContact"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "abc",
+   "module_short": "abc",
+   "name": "ABC"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.contact.base_contact",
+   "module_short": "biosym.model.contact.base_contact",
+   "name": "BaseContact"
+  }
+ ],
+ "Matrix": [
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices.dense",
+   "module_short": "sympy",
+   "name": "MutableDenseMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices",
+   "module_short": "sympy",
+   "name": "MutableDenseMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "MutableDenseMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices.dense",
+   "module_short": "sympy.matrices.dense",
+   "name": "DenseMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices",
+   "module_short": "sympy.matrices",
+   "name": "DenseMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "DenseMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices.repmatrix",
+   "module_short": "sympy.matrices.repmatrix",
+   "name": "MutableRepMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices",
+   "module_short": "sympy.matrices",
+   "name": "MutableRepMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "MutableRepMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices.repmatrix",
+   "module_short": "sympy.matrices.repmatrix",
+   "name": "RepMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices",
+   "module_short": "sympy.matrices",
+   "name": "RepMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "RepMatrix"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices.matrixbase",
+   "module_short": "sympy",
+   "name": "MatrixBase"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.matrices",
+   "module_short": "sympy",
+   "name": "MatrixBase"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "MatrixBase"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.printing.defaults",
+   "module_short": "sympy.printing.defaults",
+   "name": "Printable"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.printing",
+   "module_short": "sympy.printing",
+   "name": "Printable"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Printable"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Matrix"
+  }
+ ],
+ "SlidingHuntCrossley": [
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "__main__",
+   "module_short": "__main__",
+   "name": "SlidingHuntCrossley"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.model.contact.base_contact",
+   "module_short": "biosym.model.contact.base_contact",
+   "name": "BaseContact"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.model.contact",
+   "module_short": "biosym.model.contact",
+   "name": "BaseContact"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BaseContact"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BaseContact"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "abc",
+   "module_short": "abc",
+   "name": "ABC"
+  }
+ ],
+ "_find_git_root": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  }
+ ],
+ "_git_root": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "_materialize": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.constraints.dynamics",
+   "module_short": "biosym.constraints.dynamics",
+   "name": "_materialize"
+  }
+ ],
+ "_upsample_states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  }
+ ],
+ "atan2": [
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions.elementary.trigonometric",
+   "module_short": "sympy.functions.elementary.trigonometric",
+   "name": "atan2"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions.elementary",
+   "module_short": "sympy.functions.elementary",
+   "name": "atan2"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions",
+   "module_short": "sympy",
+   "name": "atan2"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "atan2"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions.elementary.trigonometric",
+   "module_short": "sympy.functions.elementary.trigonometric",
+   "name": "InverseTrigonometricFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions.elementary",
+   "module_short": "sympy.functions.elementary",
+   "name": "InverseTrigonometricFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions",
+   "module_short": "sympy.functions",
+   "name": "InverseTrigonometricFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "InverseTrigonometricFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.function",
+   "module_short": "sympy.core.function",
+   "name": "DefinedFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy.core",
+   "name": "DefinedFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "DefinedFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.function",
+   "module_short": "sympy",
+   "name": "Function"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy",
+   "name": "Function"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Function"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.function",
+   "module_short": "sympy.core.function",
+   "name": "Application"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy.core",
+   "name": "Application"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Application"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.expr",
+   "module_short": "sympy",
+   "name": "Expr"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy",
+   "name": "Expr"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Expr"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.basic",
+   "module_short": "sympy",
+   "name": "Basic"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy",
+   "name": "Basic"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Basic"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.evalf",
+   "module_short": "sympy.core.evalf",
+   "name": "EvalfMixin"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy.core",
+   "name": "EvalfMixin"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "EvalfMixin"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.printing.defaults",
+   "module_short": "sympy.printing.defaults",
+   "name": "Printable"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.printing",
+   "module_short": "sympy.printing",
+   "name": "Printable"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Printable"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "atan2"
+  }
+ ],
+ "collocation.Collocation": [
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  }
+ ],
+ "contact_parser.register_contact_model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.contact.contact_parser",
+   "module_short": "biosym.model.contact.contact_parser",
+   "name": "register_contact_model"
+  }
+ ],
+ "current_dir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "jax.jacobian": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax",
+   "module_short": "jax",
+   "name": "jacobian"
+  }
+ ],
+ "jax.jit": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax",
+   "module_short": "jax",
+   "name": "jit"
+  }
+ ],
+ "jax.vmap": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax",
+   "module_short": "jax",
+   "name": "vmap"
+  }
+ ],
+ "jnp.arange": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax.numpy",
+   "module_short": "jax.numpy",
+   "name": "arange"
+  }
+ ],
+ "jnp.array": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax.numpy",
+   "module_short": "jax.numpy",
+   "name": "array"
+  }
+ ],
+ "jnp.asarray": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax.numpy",
+   "module_short": "jax.numpy",
+   "name": "asarray"
+  }
+ ],
+ "jnp.cross": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib._jax",
+   "module_short": "jaxlib._jax",
+   "name": "PjitFunction"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib",
+   "module_short": "jaxlib",
+   "name": "PjitFunction"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax.numpy",
+   "module_short": "jax.numpy",
+   "name": "cross"
+  }
+ ],
+ "jnp.repeat": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax.numpy",
+   "module_short": "jax.numpy",
+   "name": "repeat"
+  }
+ ],
+ "jnp.stack": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax.numpy",
+   "module_short": "jax.numpy",
+   "name": "stack"
+  }
+ ],
+ "jnp.tile": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jax.numpy",
+   "module_short": "jax.numpy",
+   "name": "tile"
+  }
+ ],
+ "lambdify": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "lambdify"
+  }
+ ],
+ "load_model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "load_model"
+  }
+ ],
+ "model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BiosymModel"
+  }
+ ],
+ "model._replace_dyn": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "BiosymModel._replace_dyn"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BiosymModel._replace_dyn"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BiosymModel._replace_dyn"
+  }
+ ],
+ "model._symbols": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.matrices.dense",
+   "module_short": "sympy",
+   "name": "MutableDenseMatrix"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.matrices",
+   "module_short": "sympy",
+   "name": "MutableDenseMatrix"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "MutableDenseMatrix"
+  }
+ ],
+ "model.body_origins": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "dict"
+  }
+ ],
+ "model.default_constants": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "Constants"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "Constants"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Constants"
+  }
+ ],
+ "model.gc_model.get_n_states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "__main__",
+   "module_short": "__main__",
+   "name": "SlidingHuntCrossley.get_n_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.contact.base_contact",
+   "module_short": "biosym.model.contact.base_contact",
+   "name": "BaseContact.get_n_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.contact",
+   "module_short": "biosym.model.contact",
+   "name": "BaseContact.get_n_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BaseContact.get_n_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BaseContact.get_n_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "abc",
+   "module_short": "abc",
+   "name": "ABC.get_n_states"
+  }
+ ],
+ "model.gc_model.get_states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "__main__",
+   "module_short": "__main__",
+   "name": "SlidingHuntCrossley.get_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.contact.base_contact",
+   "module_short": "biosym.model.contact.base_contact",
+   "name": "BaseContact.get_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.contact",
+   "module_short": "biosym.model.contact",
+   "name": "BaseContact.get_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BaseContact.get_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BaseContact.get_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "abc",
+   "module_short": "abc",
+   "name": "ABC.get_states"
+  }
+ ],
+ "model.ground_frame": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector.frame",
+   "module_short": "sympy.physics.vector",
+   "name": "ReferenceFrame"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector",
+   "module_short": "sympy.physics.vector",
+   "name": "ReferenceFrame"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics",
+   "module_short": "sympy.physics",
+   "name": "ReferenceFrame"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "ReferenceFrame"
+  }
+ ],
+ "model.ground_frame.x": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector.frame",
+   "module_short": "sympy.physics.vector",
+   "name": "ReferenceFrame.x"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector",
+   "module_short": "sympy.physics.vector",
+   "name": "ReferenceFrame.x"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics",
+   "module_short": "sympy.physics",
+   "name": "ReferenceFrame.x"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "ReferenceFrame.x"
+  }
+ ],
+ "model.ground_frame.y": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector.frame",
+   "module_short": "sympy.physics.vector",
+   "name": "ReferenceFrame.y"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector",
+   "module_short": "sympy.physics.vector",
+   "name": "ReferenceFrame.y"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics",
+   "module_short": "sympy.physics",
+   "name": "ReferenceFrame.y"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "ReferenceFrame.y"
+  }
+ ],
+ "model.ground_frame.z": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector.frame",
+   "module_short": "sympy.physics.vector",
+   "name": "ReferenceFrame.z"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector",
+   "module_short": "sympy.physics.vector",
+   "name": "ReferenceFrame.z"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics",
+   "module_short": "sympy.physics",
+   "name": "ReferenceFrame.z"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "ReferenceFrame.z"
+  }
+ ],
+ "model.n_constants": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "model.n_states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "model.opt_states.size": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "BiosymModel.opt_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BiosymModel.opt_states"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BiosymModel.opt_states"
+  }
+ ],
+ "model.origin": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector.point",
+   "module_short": "sympy.physics.vector",
+   "name": "Point"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics.vector",
+   "module_short": "sympy.physics.vector",
+   "name": "Point"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy.physics",
+   "module_short": "sympy.physics",
+   "name": "Point"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Point"
+  }
+ ],
+ "model.reference_frames": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "dict"
+  }
+ ],
+ "model.rigid_bodies.keys": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  }
+ ],
+ "model.run": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "dict"
+  }
+ ],
+ "model_file": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "np.arange": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "arange"
+  }
+ ],
+ "np.array": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "array"
+  }
+ ],
+ "np.asarray": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "asarray"
+  }
+ ],
+ "np.empty": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "empty"
+  }
+ ],
+ "np.interp": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "_ArrayFunctionDispatcher"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "interp"
+  }
+ ],
+ "np.linspace": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "_ArrayFunctionDispatcher"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "linspace"
+  }
+ ],
+ "np.meshgrid": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "_ArrayFunctionDispatcher"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "meshgrid"
+  }
+ ],
+ "np.zeros": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "zeros"
+  }
+ ],
+ "ocp_running": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation"
+  }
+ ],
+ "ocp_running.model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BiosymModel"
+  }
+ ],
+ "ocp_running.solve": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation.solve"
+  }
+ ],
+ "ocp_standing": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation"
+  }
+ ],
+ "ocp_standing.solve": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation.solve"
+  }
+ ],
+ "os.chdir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os",
+   "module_short": "os",
+   "name": "chdir"
+  }
+ ],
+ "os.getcwd": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os",
+   "module_short": "os",
+   "name": "getcwd"
+  }
+ ],
+ "os.path.abspath": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "abspath"
+  }
+ ],
+ "os.path.dirname": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "dirname"
+  }
+ ],
+ "os.path.isdir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "isdir"
+  }
+ ],
+ "os.path.join": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "join"
+  }
+ ],
+ "running_animation": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "matplotlib.animation",
+   "module_short": "matplotlib.animation",
+   "name": "FuncAnimation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "matplotlib",
+   "module_short": "matplotlib",
+   "name": "FuncAnimation"
+  }
+ ],
+ "solution_running": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp.collocation",
+   "name": "Solution"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Solution"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Solution"
+  }
+ ],
+ "solution_running.globals": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "Globals"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "Globals"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Globals"
+  }
+ ],
+ "solution_running.states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "States"
+  }
+ ],
+ "solution_standing": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp.collocation",
+   "name": "Solution"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Solution"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Solution"
+  }
+ ],
+ "sqrt": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "sqrt"
+  }
+ ],
+ "start": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "start_": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "start_path": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "start_time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "stickfigure.plot_stick_figure": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.visualization.stickfigure",
+   "module_short": "biosym.visualization.stickfigure",
+   "name": "plot_stick_figure"
+  }
+ ],
+ "sys.path": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "list"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sys",
+   "module_short": "sys",
+   "name": "path"
+  }
+ ],
+ "sys.path.insert": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sys.path",
+   "module_short": "sys.path",
+   "name": "insert"
+  }
+ ],
+ "tanh": [
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions.elementary.hyperbolic",
+   "module_short": "sympy.functions.elementary.hyperbolic",
+   "name": "tanh"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions.elementary",
+   "module_short": "sympy.functions.elementary",
+   "name": "tanh"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions",
+   "module_short": "sympy",
+   "name": "tanh"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "tanh"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions.elementary.hyperbolic",
+   "module_short": "sympy.functions.elementary.hyperbolic",
+   "name": "HyperbolicFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions.elementary",
+   "module_short": "sympy.functions.elementary",
+   "name": "HyperbolicFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.functions",
+   "module_short": "sympy.functions",
+   "name": "HyperbolicFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "HyperbolicFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.function",
+   "module_short": "sympy.core.function",
+   "name": "DefinedFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy.core",
+   "name": "DefinedFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "DefinedFunction"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.function",
+   "module_short": "sympy",
+   "name": "Function"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy",
+   "name": "Function"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Function"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.function",
+   "module_short": "sympy.core.function",
+   "name": "Application"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy.core",
+   "name": "Application"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Application"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.expr",
+   "module_short": "sympy",
+   "name": "Expr"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy",
+   "name": "Expr"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Expr"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.basic",
+   "module_short": "sympy",
+   "name": "Basic"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy",
+   "name": "Basic"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Basic"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core.evalf",
+   "module_short": "sympy.core.evalf",
+   "name": "EvalfMixin"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.core",
+   "module_short": "sympy.core",
+   "name": "EvalfMixin"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "EvalfMixin"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.printing.defaults",
+   "module_short": "sympy.printing.defaults",
+   "name": "Printable"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy.printing",
+   "module_short": "sympy.printing",
+   "name": "Printable"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "Printable"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sympy",
+   "module_short": "sympy",
+   "name": "tanh"
+  }
+ ],
+ "time.time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "time",
+   "module_short": "time",
+   "name": "time"
+  }
+ ],
+ "upsampled_states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "States"
+  }
+ ]
+}

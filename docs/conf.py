@@ -230,6 +230,7 @@ sphinx_gallery_conf = {
     "plot_gallery": not USE_COMMITTED_GALLERY,
     "remove_config_comments": True,
     "show_memory": True,
+    "matplotlib_animations": (True, "html5"),
 }
 
 

@@ -1,0 +1,684 @@
+{
+ "_find_git_root": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  }
+ ],
+ "_git_root": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "collocation.Collocation": [
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": true,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  }
+ ],
+ "coordinate": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "current_dir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "end": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "end_": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "i": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "load_model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "load_model"
+  }
+ ],
+ "load_time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BiosymModel"
+  }
+ ],
+ "model.coordinates.names": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "list"
+  }
+ ],
+ "model.n_constants": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "model.n_states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "model_file": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "np.asarray": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "asarray"
+  }
+ ],
+ "ocp": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation"
+  }
+ ],
+ "ocp.solve": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation.solve"
+  }
+ ],
+ "ocp_walking": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation"
+  }
+ ],
+ "ocp_walking.model": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model.model",
+   "module_short": "biosym.model.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.model",
+   "module_short": "biosym.model",
+   "name": "BiosymModel"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "BiosymModel"
+  }
+ ],
+ "ocp_walking.solve": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Collocation.solve"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Collocation.solve"
+  }
+ ],
+ "os.chdir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os",
+   "module_short": "os",
+   "name": "chdir"
+  }
+ ],
+ "os.getcwd": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os",
+   "module_short": "os",
+   "name": "getcwd"
+  }
+ ],
+ "os.path.abspath": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "abspath"
+  }
+ ],
+ "os.path.dirname": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "dirname"
+  }
+ ],
+ "os.path.isdir": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "isdir"
+  }
+ ],
+ "os.path.join": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "os.path",
+   "module_short": "os.path",
+   "name": "join"
+  }
+ ],
+ "q": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "ndarray"
+  }
+ ],
+ "q.ndim": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "int"
+  }
+ ],
+ "q.ravel": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  }
+ ],
+ "sol_states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "States"
+  }
+ ],
+ "sol_states.q": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib._jax",
+   "module_short": "jaxlib._jax",
+   "name": "ArrayImpl"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "jaxlib",
+   "module_short": "jaxlib",
+   "name": "ArrayImpl"
+  }
+ ],
+ "solution": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp.collocation",
+   "module_short": "biosym.ocp.collocation",
+   "name": "Solution"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.ocp",
+   "module_short": "biosym.ocp",
+   "name": "Solution"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Solution"
+  }
+ ],
+ "solution.globals": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "Globals"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "Globals"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "Globals"
+  }
+ ],
+ "solution.states": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.states",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils",
+   "module_short": "biosym.utils",
+   "name": "States"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym",
+   "module_short": "biosym",
+   "name": "States"
+  }
+ ],
+ "standing_yaml_config": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "start": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "start_": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "start_path": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ],
+ "start_time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "float"
+  }
+ ],
+ "stickfigure.plot_stick_figure": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.visualization.stickfigure",
+   "module_short": "biosym.visualization.stickfigure",
+   "name": "plot_stick_figure"
+  }
+ ],
+ "sys.path": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "list"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sys",
+   "module_short": "sys",
+   "name": "path"
+  }
+ ],
+ "sys.path.insert": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "sys.path",
+   "module_short": "sys.path",
+   "name": "insert"
+  }
+ ],
+ "time.time": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "builtin_function_or_method"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "time",
+   "module_short": "time",
+   "name": "time"
+  }
+ ],
+ "val": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "numpy",
+   "module_short": "numpy",
+   "name": "float64"
+  }
+ ],
+ "walking_animation": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "matplotlib.animation",
+   "module_short": "matplotlib.animation",
+   "name": "FuncAnimation"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "matplotlib",
+   "module_short": "matplotlib",
+   "name": "FuncAnimation"
+  }
+ ],
+ "walking_yaml_config": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "str"
+  }
+ ]
+}

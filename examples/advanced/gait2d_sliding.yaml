@@ -1,0 +1,12 @@
+model:
+  name: gait2d.xml # copy of tests/models/gait2d/gait2d.xml -- nothing custom about the bodies/joints
+  additional_parameters:
+    joints:
+      jointK2: 5000
+      jointD: 2
+    ground_contact:
+      replace_existing: true
+      file: "gait2d_ground_contact_sliding.xml" # the interesting part -- see that file
+    actuators:
+      replace_existing: true
+      file: "gait2d_actuators.xml" # copy of tests/models/gait2d/gait2d_actuators.xml

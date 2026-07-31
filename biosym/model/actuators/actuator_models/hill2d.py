@@ -86,12 +86,16 @@ class Hill2d(BaseActuator):
             [float(mi.get("joint", defaults.get("joint", 0.0))) for mi in muscles_dict]
         )  # Joint angles
         self.state_vector = (
-            [f"Lce_{n}" for n in self.names] + [f"Lce_{n}_dot" for n in self.names] + [f"a_{n}" for n in self.names]
+            [f"Lce_{n}" for n in self.names]
+            + [f"Lce_{n}_dot" for n in self.names]
+            + [f"a_{n}" for n in self.names]
+            + [f"e_{n}" for n in self.names]
         )
         self.idx = {
             "Lce": jnp.arange(0, self.n_actuators),
             "Lce_dot": jnp.arange(self.n_actuators, 2 * self.n_actuators),
             "a": jnp.arange(2 * self.n_actuators, 3 * self.n_actuators),
+            "e": jnp.arange(3 * self.n_actuators, 4 * self.n_actuators),
         }
         self.bounds = {
             "states": {
@@ -100,6 +104,7 @@ class Hill2d(BaseActuator):
                         1e-3 * jnp.ones(self.n_actuators),  # Lce, avoid dividing by zero
                         -self.muscle_constants["vmax"].squeeze(),  # Lce_dot
                         0 * jnp.ones(self.n_actuators),  # a
+                        0 * jnp.ones(self.n_actuators),  # e
                     )
                 ),
                 "max": jnp.concatenate(
@@ -107,6 +112,7 @@ class Hill2d(BaseActuator):
                         3 * jnp.ones(self.n_actuators),  # id
                         self.muscle_constants["vmax"].squeeze(),  # Lce_dot
                         1 * jnp.ones(self.n_actuators),  # a
+                        1 * jnp.ones(self.n_actuators),  # e
                     )
                 ),
             }
@@ -133,7 +139,24 @@ class Hill2d(BaseActuator):
         return 0
 
     def get_n_constraints(self, model, settings):
-        return self.n_actuators * settings.get("nnodes")  # One force-equilibrium constraint per actuator per node
+        nnodes = settings.get("nnodes")
+        # One force-equilibrium constraint per actuator per node, plus one
+        # activation-dynamics constraint per actuator for every node that has
+        # a predecessor. If the problem is periodic, node 0's predecessor is
+        # the (possibly mirrored) last node, so every node is constrained;
+        # otherwise node 0 is left unconstrained (no predecessor), same
+        # convention as the main dynamics constraint.
+        n = self.n_actuators * nnodes
+        if nnodes > 1:
+            n += self.n_actuators * (nnodes - 1)
+            if self._periodic_actuator_mirror(model, settings) is not None:
+                n += self.n_actuators
+        else:
+            # Single-node (equilibrium) problems have no time dimension for
+            # activation dynamics to act over, so e would otherwise be a free
+            # variable with zero gradient everywhere -- pin it to a instead.
+            n += self.n_actuators
+        return n
 
     def get_n_constraints_per_node(self):
         return self.n_actuators
@@ -143,8 +166,21 @@ class Hill2d(BaseActuator):
         # Force-equilibrium constraint's jacobian is dense over the per-node
         # optimization vector (q, qd, gc_model, actuator_model) -- must match
         # .jacobian()'s actual output size exactly, not just be an upper bound.
+        # (states_dict.get_n_states() there evaluates to the same number: the
+        # decision-variable States carries only the free fields -- qdd, tau,
+        # ext_forces, ext_torques are derived and absent/None -- so its
+        # to_array() length equals model.opt_states.size().)
         nvpn = model.opt_states.size()
         forces = nnodes * self.get_n_constraints_per_node() * nvpn
+        if nnodes > 1:
+            # Activation-dynamics constraint is dense over both the current
+            # and the previous node's per-node vector.
+            forces += (nnodes - 1) * self.n_actuators * (2 * nvpn)
+            if self._periodic_actuator_mirror(model, settings) is not None:
+                forces += self.n_actuators * (2 * nvpn)
+        else:
+            # e == a pin: dense over one node's vector only.
+            forces += self.n_actuators * nvpn
         return forces
 
     def process_eom(self, model):
@@ -424,18 +460,89 @@ class Hill2d(BaseActuator):
         F_ce = a * F1 * F2 + F_damp
         return F_max * F_ce, F_max * F_see, F_max * F_pee
 
+    def _periodic_actuator_mirror(self, model, settings):
+        """
+        Local (0..n_actuator_states-1) index permutation mapping each
+        actuator state to its periodic-wrap partner at the opposite end of
+        the gait cycle, or None if the problem has no periodicity
+        constraint. With symmetry, reuses the same L/R name-based pairing as
+        the main periodicity constraint; without it, the identity
+        permutation (plain wraparound, no mirroring).
+        """
+        for c in settings.get("constraints", []) or []:
+            if c.get("name") == "periodicity":
+                args = c.get("args") or {}
+                n_states = self.get_n_states()
+                if args.get("symmetry", False):
+                    from biosym.constraints.periodicity import get_symmetry_indices
+
+                    full = get_symmetry_indices(model)
+                    offset = model.coordinates.n + model.speeds.n + model.contact_model.get_n_states()
+                    return jnp.array([full[offset + i] - offset for i in range(n_states)])
+                return jnp.arange(n_states)
+        return None
+
+    def _activation_pred(self, a_prev, e_prev, h):
+        """
+        Predict a[t+1] from the previous node's activation and excitation via
+        first-order activation dynamics, closed-form-integrated over step h:
+
+            a[t+1] = e[t] + (a[t] - e[t]) * exp(-(e[t]/Tact + (1-e[t])/Tdeact) * h)
+
+        e is the free excitation control (own state, bounded [0, 1]); a is the
+        activation state driven by it. See the module docstring for why e (not
+        just a rate-limited a) is modeled explicitly here.
+        """
+        Tact = self.muscle_constants["Tact"].squeeze(-1)
+        Tdeact = self.muscle_constants["Tdeact"].squeeze(-1)
+        tau_inv = e_prev / Tact + (1 - e_prev) / Tdeact
+        return e_prev + (a_prev - e_prev) * jnp.exp(-tau_inv * h)
+
     def constraints(self, states, constants, model, settings):
-        states_dict, _globals = states
+        states_dict, globals_dict = states
         # Unpack StatesDict -> States so that slicing only touches consistently-shaped arrays
         inner_states = states_dict.states if hasattr(states_dict, "states") else states_dict
         nnodes = settings.get("nnodes")
         F_ce, F_see, F_pee = self.muscle_equations(inner_states[:nnodes], constants, model)
         F_max = self.muscle_constants["fmax"]
         c1 = (F_see - F_ce - F_pee) / F_max  # Normalized to F_max
-        return c1.T.reshape(-1)  # shape (n_actuators * nnodes,)
+        c1 = c1.T.reshape(-1)  # shape (n_actuators * nnodes,)
+
+        if nnodes > 1:
+            if settings.get("discretization", {}).get("args", {}).get("adaptive_h", False):
+                raise NotImplementedError(
+                    "Hill2d activation dynamics does not yet support adaptive_h discretization."
+                )
+            from biosym.constraints.dynamics import _node_h
+
+            h = _node_h(globals_dict, settings, nnodes - 1)  # shape (nnodes - 1,)
+            a_prev = inner_states.actuator_model[: nnodes - 1, self.idx["a"]]
+            e_prev = inner_states.actuator_model[: nnodes - 1, self.idx["e"]]
+            a_curr = inner_states.actuator_model[1:nnodes, self.idx["a"]]
+            a_pred = self._activation_pred(a_prev, e_prev, h[:, None])
+            c2 = (a_curr - a_pred).reshape(-1)  # shape (n_actuators * (nnodes - 1),)
+            c1 = jnp.concatenate([c1, c2], axis=0)
+
+            mirror = self._periodic_actuator_mirror(model, settings)
+            if mirror is not None:
+                h_wrap = _node_h(globals_dict, settings, nnodes)[-1]
+                last = inner_states.actuator_model[nnodes - 1]
+                a_prev_wrap = last[mirror[self.idx["a"]]]
+                e_prev_wrap = last[mirror[self.idx["e"]]]
+                a_curr_wrap = inner_states.actuator_model[0, self.idx["a"]]
+                a_pred_wrap = self._activation_pred(a_prev_wrap, e_prev_wrap, h_wrap)
+                c3 = a_curr_wrap - a_pred_wrap  # shape (n_actuators,)
+                c1 = jnp.concatenate([c1, c3], axis=0)
+        else:
+            # No time dimension for activation dynamics to act over: pin e to
+            # a directly instead of leaving e an unconstrained free variable.
+            e0 = inner_states.actuator_model[0, self.idx["e"]]
+            a0 = inner_states.actuator_model[0, self.idx["a"]]
+            c1 = jnp.concatenate([c1, e0 - a0], axis=0)
+        return c1
 
     def jacobian(self, states, constants, model, settings):
-        states_dict, _globals = states
+        states_dict, globals_dict = states
         # Unpack StatesDict -> States so that vmap sees a consistent batch axis.
         # StatesDict slicing propagates to ALL leaf arrays (including size-0
         # ext_forces / ext_torques), causing inconsistent vmap axes.
@@ -464,6 +571,105 @@ class Hill2d(BaseActuator):
         rows = jnp.repeat(row_blocks, nvpn, axis=1).flatten()
         cols = jnp.tile(col_blocks, (1, ncons)).flatten()
         data = jac.to_array().reshape(nnodes, -1).flatten()
+
+        if nnodes > 1:
+            if settings.get("discretization", {}).get("args", {}).get("adaptive_h", False):
+                raise NotImplementedError(
+                    "Hill2d activation dynamics does not yet support adaptive_h discretization."
+                )
+            from biosym.constraints.dynamics import _node_h
+
+            h = _node_h(globals_dict, settings, nnodes - 1)  # shape (nnodes - 1,)
+
+            def c2(s_curr, s_prev, h_i, constants):
+                a_curr = s_curr.actuator_model[self.idx["a"]]
+                a_prev = s_prev.actuator_model[self.idx["a"]]
+                e_prev = s_prev.actuator_model[self.idx["e"]]
+                a_pred = self._activation_pred(a_prev, e_prev, h_i)
+                return a_curr - a_pred  # shape (n_actuators,)
+
+            c2_fun = jax.jit(
+                jax.vmap(jax.jacobian(c2, argnums=(0, 1)), in_axes=(0, 0, 0, None))
+            )
+            jac_curr, jac_prev = c2_fun(
+                states_dict[1:nnodes], states_dict[0 : nnodes - 1], h, constants
+            )
+
+            ncons2 = self.n_actuators
+            row_offset = nnodes * ncons
+            node_indices2 = jnp.arange(nnodes - 1)  # constraint block n <-> node (n+1, n)
+
+            row_blocks2 = row_offset + node_indices2[:, None] * ncons2 + jnp.arange(ncons2)[None, :]
+            col_blocks_curr = (node_indices2 + 1)[:, None] * nvpn + jnp.arange(nvpn)[None, :]
+            col_blocks_prev = node_indices2[:, None] * nvpn + jnp.arange(nvpn)[None, :]
+
+            rows_curr = jnp.repeat(row_blocks2, nvpn, axis=1).flatten()
+            cols_curr = jnp.tile(col_blocks_curr, (1, ncons2)).flatten()
+            data_curr = jac_curr.to_array().reshape(nnodes - 1, -1).flatten()
+
+            rows_prev = jnp.repeat(row_blocks2, nvpn, axis=1).flatten()
+            cols_prev = jnp.tile(col_blocks_prev, (1, ncons2)).flatten()
+            data_prev = jac_prev.to_array().reshape(nnodes - 1, -1).flatten()
+
+            rows = jnp.concatenate([rows, rows_curr, rows_prev])
+            cols = jnp.concatenate([cols, cols_curr, cols_prev])
+            data = jnp.concatenate([data, data_curr, data_prev])
+
+            mirror = self._periodic_actuator_mirror(model, settings)
+            if mirror is not None:
+                h_wrap = _node_h(globals_dict, settings, nnodes)[-1]
+                mirror_a = mirror[self.idx["a"]]
+                mirror_e = mirror[self.idx["e"]]
+
+                def c3(s_curr, s_prev, h_i, constants):
+                    a_curr = s_curr.actuator_model[self.idx["a"]]
+                    a_prev = s_prev.actuator_model[mirror_a]
+                    e_prev = s_prev.actuator_model[mirror_e]
+                    a_pred = self._activation_pred(a_prev, e_prev, h_i)
+                    return a_curr - a_pred  # shape (n_actuators,)
+
+                jac_curr3, jac_prev3 = jax.jit(jax.jacobian(c3, argnums=(0, 1)))(
+                    states_dict[0], states_dict[nnodes - 1], h_wrap, constants
+                )
+
+                ncons3 = self.n_actuators
+                row_offset3 = row_offset + (nnodes - 1) * ncons2
+                row_block3 = row_offset3 + jnp.arange(ncons3)
+
+                col_block_curr3 = jnp.arange(nvpn)  # node 0
+                col_block_prev3 = (nnodes - 1) * nvpn + jnp.arange(nvpn)  # node nnodes - 1
+
+                rows_curr3 = jnp.repeat(row_block3, nvpn)
+                cols_curr3 = jnp.tile(col_block_curr3, ncons3)
+                data_curr3 = jac_curr3.to_array().flatten()
+
+                rows_prev3 = jnp.repeat(row_block3, nvpn)
+                cols_prev3 = jnp.tile(col_block_prev3, ncons3)
+                data_prev3 = jac_prev3.to_array().flatten()
+
+                rows = jnp.concatenate([rows, rows_curr3, rows_prev3])
+                cols = jnp.concatenate([cols, cols_curr3, cols_prev3])
+                data = jnp.concatenate([data, data_curr3, data_prev3])
+        else:
+            # No time dimension for activation dynamics to act over: pin e to
+            # a directly instead of leaving e an unconstrained free variable.
+            def c_pin(s0):
+                return s0.actuator_model[self.idx["e"]] - s0.actuator_model[self.idx["a"]]
+
+            jac_pin = jax.jit(jax.jacobian(c_pin))(states_dict[0])
+
+            ncons_pin = self.n_actuators
+            row_offset_pin = nnodes * ncons
+            row_block_pin = row_offset_pin + jnp.arange(ncons_pin)
+            col_block_pin = jnp.arange(nvpn)  # node 0
+
+            rows_pin = jnp.repeat(row_block_pin, nvpn)
+            cols_pin = jnp.tile(col_block_pin, ncons_pin)
+            data_pin = jac_pin.to_array().flatten()
+
+            rows = jnp.concatenate([rows, rows_pin])
+            cols = jnp.concatenate([cols, cols_pin])
+            data = jnp.concatenate([data, data_pin])
 
         return rows, cols, data
 

@@ -1,0 +1,26 @@
+collocation:
+  name: script2d_sliding_contact
+  description: Standing equilibrium for the 2D gait model with a sliding-contact-point ground contact model
+  settings:
+    model: examples/advanced/gait2d_sliding.yaml
+    nnodes: 1
+    discretization:
+      type: euler
+      mode: backward
+      weight: 1
+    output:
+      file: "~/.biosym/standing2d_sliding.pkl"
+    tol: 5e-4
+
+  objectives:
+    - name: effort_term
+      weight: 100
+      args:
+        exponent: 5
+
+  constraints:
+    - name: dynamics
+
+  bounds:
+    from_model: true
+    start_at_origin: true

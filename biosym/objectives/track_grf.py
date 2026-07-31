@@ -4,27 +4,28 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
+from biosym.constraints.dynamics import calc_forces
 from biosym.objectives.base_objective import BaseObjective
 from biosym.utils import read_mot, segment_gait_averages
 
 
 class Objective(BaseObjective):
     """
-    Objective term for tracking experimental joint angles.
+    Objective term for tracking experimental ground reaction forces (GRFs).
     """
 
     def __init__(self, model, settings, **kwargs):
         """
-        Initialize the objective with experimental joint angle data.
+        Initialize the objective with experimental GRF data.
 
         :param model: biosym model object.
         :param settings: Dictionary containing settings for the objective function.
-        :param datafile: Path to CSV file with mean and variance joint angles.
+        :param datafile: Path to CSV file with mean and variance GRFs.
         """
         self.model = model
         self.settings = settings
         self.n_nodes = self.settings["nnodes"]
-        self.n_grfs = self.model.ext_forces["n"]
+        self.n_grfs = self.model.ext_forces.n
         self.norm_factor = self.n_nodes * self.n_grfs
 
         # read grf file from yaml either as pre-segmented mean/var or raw data
@@ -51,7 +52,11 @@ class Objective(BaseObjective):
         self.grf_var = jnp.asarray(grf_var_df.values) + 1e-8
 
         # attach arrays into a settings dict passed to objfun so signature matches others
-        self.obj_settings = {"grf_exp": self.grf_exp, "grf_var": self.grf_var}
+        self.obj_settings = {
+            "grf_exp": self.grf_exp,
+            "grf_var": self.grf_var,
+            "constants": self.model.default_constants,
+        }
 
     def _get_info(self):
         # Provide info used by objfun and gradient builder
@@ -60,7 +65,6 @@ class Objective(BaseObjective):
             "description": "Objective term for tracking GRFs against experimental data.",
             "required_variables": {"states": ["model"], "constants": ["model"]},
             "n_nodes": self.n_nodes,
-            "idx_grfs": self.model.ext_forces["idx"],
             "n_grfs": self.n_grfs,
             "norm_factor": self.norm_factor,
         }
@@ -69,6 +73,7 @@ class Objective(BaseObjective):
         """Return the objective function."""
         fun = partial(
             objfun,
+            model=self.model,
             settings=self.obj_settings,
             info=self._get_info(),
         )
@@ -78,6 +83,7 @@ class Objective(BaseObjective):
         """Return the gradient of the objective function."""
         fun = partial(
             objfun,
+            model=self.model,
             settings=self.obj_settings,
             info=self._get_info(),
         )
@@ -85,25 +91,29 @@ class Objective(BaseObjective):
         return jax.jit(jax.grad(fun, argnums=[0, 1]))
 
 
-def objfun(states_list, globals_dict, settings, info):
+def objfun(states_list, globals_dict, model, settings, info):
     """
     Objective function: Track GRFs vs experimental mean/var.
 
-    Behavior:
-      - If settings contains 'grf_exp'/'grf_var' (precomputed), use them (fast).
-      - Elif globals_dict contains 'grf_exp'/'grf_var', use those.
-      - Else call biosym.utils.segment_gait_cycles.segment_gait_averages()
-        and use the returned gait_avg_grfs (second element).
+    The simulated GRFs are computed by running the ground-contact model's
+    forward pass on the current states (the same computation the dynamics
+    constraint uses), rather than reading the ext_forces state slot -- that
+    slot is a free decision variable that is only tied to the true contact
+    force indirectly through the (soft) dynamics constraint, so it need not
+    match the physically-consistent GRF away from a fully converged solution.
     """
 
     # read expected values from settings passed in
     grf_exp = settings["grf_exp"]
     grf_var = settings["grf_var"]
+    constants = settings["constants"]
+    n_nodes = info["n_nodes"]
 
-    # simulated GRFs from state vector
-    grf_sim = states_list.states.model[
-        : info["n_nodes"], info["idx_grfs"] : info["idx_grfs"] + info["n_grfs"]
-    ]
+    # Evaluate the contact model's forward pass per node (it is defined for a
+    # single node, so vmap it over the leading node axis of the trajectory).
+    nodes = states_list[:n_nodes]
+    filled = jax.vmap(calc_forces, in_axes=(0, None, None))(nodes, model, constants)
+    grf_sim = filled.ext_forces
 
     # Weighted squared error
     error = (grf_sim - grf_exp) ** 2 / grf_var

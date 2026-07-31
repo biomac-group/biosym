@@ -92,6 +92,42 @@ _XML_DEFAULT_FORCE_LAW = "springdamper"
 
 
 # ----------------------------------------------------------------------
+# Stateful GC models: type name -> constructor(xml_root, body_weight) -> BaseContact.
+# For GC models that don't fit the pairs/geometry force-law pipeline above
+# (e.g. models with their own decision-variable states, like an implicit
+# contact-force model), selected via <ground_contact_model type="..."> instead
+# of the per-feature `force_law` attribute. Empty by default; populated at
+# runtime via register_contact_model, so a user can plug in a custom GC model
+# without editing this module.
+# ----------------------------------------------------------------------
+_STATEFUL_MODELS = {}
+
+
+def register_contact_model(type_name, constructor):
+    """
+    Register a custom stateful GC model, selected by
+    `<ground_contact_model type="type_name">` in a contact XML file.
+
+    Parameters
+    ----------
+    type_name : str
+        The `type` attribute value that selects this model.
+    constructor : callable(xml_root) -> BaseContact
+        Builds the model from the parsed `<ground_contact_model>` XML
+        element. Body weight isn't known yet at this point (it depends on
+        the model's compiled mass constants) -- model.py calls
+        `gc_model.process_eom(model, body_weight=...)` right after
+        construction, same as every other GC model.
+
+    Must be called before load_model(...) parses a YAML/XML referencing
+    `type_name` -- get_from_xml resolves the type at parse time, and a GC
+    model's state count is baked into the symbolic model / JAX-compiled
+    functions during model construction, so it can't be swapped in afterward.
+    """
+    _STATEFUL_MODELS[type_name] = constructor
+
+
+# ----------------------------------------------------------------------
 # Shared geometry / pairing helpers
 # ----------------------------------------------------------------------
 def _normalize_geo_dict(raw):
@@ -146,7 +182,16 @@ def _make_pairs(geometries):
 def get_from_xml(file_path, body_weight=None):
     """Build the contact model from XML contact file. body_weight is
     accepted for backward compatibility but unused (scaling happens in
-    SpringDamper.process_eom)."""
+    SpringDamper.process_eom).
+
+    If the root <ground_contact_model> carries a `type` attribute matching a
+    model registered via register_contact_model, that constructor is used
+    directly (bypassing the pairs/geometry force-law pipeline below, which
+    stateful GC models generally don't fit)."""
+    root = ET.parse(file_path).getroot()
+    stateful_constructor = _STATEFUL_MODELS.get(root.get("type"))
+    if stateful_constructor is not None:
+        return stateful_constructor(root)
     return _assemble(_parse_xml(file_path))
 
 

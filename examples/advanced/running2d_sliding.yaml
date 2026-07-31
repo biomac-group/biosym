@@ -1,0 +1,48 @@
+collocation:
+  name: script2d_sliding_contact_running
+  description: >
+    Template-free running at 3.5 m/s (past the walk-run transition speed --
+    the optimizer is free to find a running/bouncing gait, stance and flight
+    phases are not hard-coded, they emerge from the contact forces) with the
+    sliding-contact-point ground contact model -- effort minimization only,
+    no tracking data.
+  settings:
+    model: examples/advanced/gait2d_sliding.yaml
+    nnodes: 50
+    discretization:
+      type: euler
+      args:
+        mode: backward
+        vars: q
+        weight: 10
+        adaptive_h: false
+    output:
+      file: "~/.biosym/running2d_sliding.pkl"
+    tol: 5e-4
+    acceptable_dual_inf_tol: 1e-3
+    acceptable_tol: 1e-3
+    constr_viol_tol: 1e-4
+    max_iter: 6000
+
+  objectives:
+    - name: effort_term
+      weight: 225
+      args:
+        exponent: 5
+
+  constraints:
+    - name: dynamics
+    - name: periodicity
+      args:
+        symmetry: true
+        exclude: [0]
+
+  initial_guess:
+    type: from_file
+    file: "~/.biosym/standing2d_sliding.pkl"
+
+  bounds:
+    from_model: true
+    start_at_origin: true
+    dur: [0.1, 0.4]
+    speed: 3.5

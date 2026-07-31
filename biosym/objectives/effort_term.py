@@ -67,12 +67,12 @@ def objfun(states_list, globals_dict, settings, info):
     """
     # Per-node average control cost (no `dur` folded in here -- unlike a
     # stray `* dur` before the exponent, which would spuriously raise dur to
-    # the exponent power in the total cost and reward shrinking it).
-    forces = (
-        states_list.actuator_model[: settings["nnodes"], info["range_actuators"]]
-        / settings["nnodes"]
-    )
-    output = jnp.sum(jnp.abs(jnp.power(forces, info["exponent"])))
+    # the exponent power in the total cost and reward shrinking it). The
+    # nnodes normalization must happen *after* the sum/power, not before --
+    # dividing forces by nnodes first would raise nnodes to `exponent`'s
+    # power too, the exact bug this comment warns against for dur.
+    forces = states_list.actuator_model[: settings["nnodes"], info["range_actuators"]]
+    output = jnp.sum(jnp.abs(jnp.power(forces, info["exponent"]))) / settings["nnodes"]
 
     if globals_dict is not None and info["speedweighting"]:
         # Normalize the already-summed cost by speed^exponent (not per-node).

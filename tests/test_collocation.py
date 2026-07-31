@@ -242,10 +242,13 @@ def test_all_objective_functions(walking_problem):
 
 
 def test_muscle_constraint_structure(walking_problem):
-    """Verify Hill2d reports exactly n_actuators*nnodes constraints (force-equilibrium only).
-
-    This test guards against re-introducing dead constraints (e.g. the old c2
-    activation-dynamics block that was multiplied by zero).
+    """Verify Hill2d reports n_actuators*nnodes force-equilibrium constraints
+    plus n_actuators*(nnodes-1) activation-dynamics constraints (one per
+    actuator for every node with a predecessor), plus -- when the problem has
+    a periodicity constraint -- one more n_actuators block wrapping the last
+    node's (possibly mirrored) activation/excitation onto node 0. Without
+    periodicity, node 0 is left unconstrained (no predecessor), same
+    convention as the main dynamics constraint.
     """
     problem = walking_problem
     model = problem.model
@@ -258,13 +261,20 @@ def test_muscle_constraint_structure(walking_problem):
     assert isinstance(actuator, Hill2d), "Expected Hill2d actuator for walking problem"
 
     n_act = actuator.get_n_actuators()
+    is_periodic = actuator._periodic_actuator_mirror(model, settings) is not None
 
     # --- Constraint count ---
     expected_ncon = n_act * nnodes
+    if nnodes > 1:
+        expected_ncon += n_act * (nnodes - 1)
+        if is_periodic:
+            expected_ncon += n_act
     reported_ncon = actuator.get_n_constraints(model, settings)
     assert reported_ncon == expected_ncon, (
         f"get_n_constraints returned {reported_ncon}, expected {expected_ncon} "
-        f"({n_act} actuators × {nnodes} nodes)"
+        f"({n_act} actuators x {nnodes} nodes force-equilibrium + "
+        f"{n_act} actuators x {nnodes - 1} nodes activation-dynamics"
+        f"{' + periodic wrap block' if is_periodic else ''})"
     )
 
     # --- Per-node constraint count ---

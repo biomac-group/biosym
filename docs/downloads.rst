@@ -21,7 +21,7 @@ using the ground contact model from
 gait2d (Hunt-Crossley contact)
 ================================
 
-The gait2d variant with Hunt-Crossley smooth contact spheres for the
+The gait2d variant with Hunt-Crossley smooth contact points for the
 ground contact model.
 
 :download:`Download gait2d_huntcrossley.zip <_generated_downloads/gait2d_huntcrossley.zip>`
