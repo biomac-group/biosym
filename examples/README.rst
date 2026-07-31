@@ -1,7 +1,7 @@
 .. _examples:
 
-Examples
-========
+Basic Examples
+==============
 
 This directory contains examples demonstrating the biosym library functionality.
 

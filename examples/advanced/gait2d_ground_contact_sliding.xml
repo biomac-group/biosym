@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A custom ground-contact model: one sliding contact point per foot instead
+  of the usual fixed heel/toe pair. The contact point's location blends
+  smoothly (tanh) between the heel and toe reference points as a function of
+  the foot's own orientation, following the sliding-contact-point idea from
+  SSPINNpose (Gambietz et al., ACM TIST, 2026). Force law is a Hunt-Crossley variant (same
+  smoothed normal/friction formulas as contact_huntcrossley.py); only the
+  contact force is a decision-variable state, position/velocity of the
+  sliding point stay algebraic (derived from q, qdot).
+
+  heel/toe offsets match the fixed heel/toe points in gait2d_ground_contact.xml;
+  stiffness/dissipation/friction values match gait2d_ground_contact_huntcrossley.xml
+  (Falisse et al. 2022 SmoothSphereHalfSpaceForce parameters).
+
+  See sliding_contact_gait2d.py for the SlidingHuntCrossley class that parses
+  this file (registered under type="huntcrossley_sliding").
+-->
+<ground_contact_model type="huntcrossley_sliding"
+  stiffness="1e6" dissipation="2.0"
+  static_friction="0.8" dynamic_friction="0.8" viscous_friction="0.5"
+  transition_velocity="0.2">
+  <slide_point name="slide_r" body="foot_r" heel="-0.06 -0.0702 0" toe="0.1636 -0.0702 0" steepness="7.0"></slide_point>
+  <slide_point name="slide_l" body="foot_l" heel="-0.06 -0.0702 0" toe="0.1636 -0.0702 0" steepness="7.0"></slide_point>
+</ground_contact_model>

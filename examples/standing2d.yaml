@@ -2,13 +2,13 @@ collocation:
   name: script2d_torque_driven
   description: Setup file for 2D gait model with torque-driven actuators
   settings:
-    model: tests/models/gait2d/gait2d.yaml
+    model: tests/models/gait2d_huntcrossley/gait2d_huntcrossley.yaml
     #model: tests/models/pendulum.xml
     nnodes: 1
     discretization:
       type: euler
       mode: backward
-      weight: 400
+      weight: 1
     output:
       file: "~/.biosym/standing2d.pkl"
     tol: 5e-4
@@ -21,7 +21,6 @@ collocation:
 
   constraints:
     - name: dynamics
-      weight: "1/BW"
 
   #initial_guess:
   #  type: random

@@ -295,7 +295,8 @@ def confun(modelfn_bwd, modelfn_zero, modelfn_periodic, states_list, globals_dic
         data_out = data_model
 
     if model.gc_model.get_n_constraints(model, settings) > 0:
-        raise NotImplementedError("Ground contact constraints in unified dynamics not yet implemented.")
+        c_gc = model.gc_model.constraints((states_list, globals_dict), constants, model, settings)
+        data_out = jnp.concatenate([data_out, c_gc.flatten().squeeze()])
     return data_out
 
 
@@ -416,12 +417,23 @@ def jacobian(modelfn_bwd, modelfn_zero, modelfn_periodic, states_list, globals_d
 
     data_out = (1 / info['bodymass'] * data_out).reshape(-1)
 
+    row_offset = info.get('ncons_pernode') * info.get('n_dyn_nodes')
     if model.actuator_model.get_n_constraints(model, settings) > 0:
         rows_act_con, cols_act_con, data_act_con = model.actuator_model.jacobian(
             (states_list, globals_dict), constants, model, settings
         )
-        rows_act_con = rows_act_con + (info.get('ncons_pernode') * info.get('n_dyn_nodes'))  # Shift row indices to avoid overlap
+        rows_act_con = rows_act_con + row_offset  # Shift row indices to avoid overlap
         rows_out = jnp.concatenate([rows_out, rows_act_con], axis=0)
         cols_out = jnp.concatenate([cols_out, cols_act_con], axis=0)
         data_out = jnp.concatenate([data_out, data_act_con], axis=0)
+        row_offset = row_offset + model.actuator_model.get_n_constraints(model, settings)
+
+    if model.gc_model.get_n_constraints(model, settings) > 0:
+        rows_gc_con, cols_gc_con, data_gc_con = model.gc_model.jacobian(
+            (states_list, globals_dict), constants, model, settings
+        )
+        rows_gc_con = rows_gc_con + row_offset  # Shift row indices past the model + actuator blocks
+        rows_out = jnp.concatenate([rows_out, rows_gc_con], axis=0)
+        cols_out = jnp.concatenate([cols_out, cols_gc_con], axis=0)
+        data_out = jnp.concatenate([data_out, data_gc_con], axis=0)
     return rows_out, cols_out, data_out

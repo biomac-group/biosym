@@ -530,8 +530,22 @@ def _create_update_func(anim_joints,
             )
         return []
 
-    # ── notebook / jshtml path: use the frame index directly ──────────────
-    if notebook:
+    # ── notebook / jshtml / non-interactive-backend path: use the frame
+    # index directly ────────────────────────────────────────────────────
+    # update_timed (below) advances the displayed frame using *real*
+    # wall-clock elapsed time, so pause/speed keyboard controls work in a
+    # live GUI window. But animation.save()/to_html5_video() (used both by
+    # notebook display and by the sphinx-gallery doc build) calls the update
+    # function back-to-back as fast as each frame can be drawn -- nothing
+    # waits for `interval`, so "elapsed" there is just per-frame render
+    # jitter, not real time. Wall-clock timing on that path produces an
+    # essentially random advance each call (worse with a slow per-frame
+    # draw, e.g. a contact model re-evaluating a JAX function per frame),
+    # which is exactly the "choppy / frames out of order" symptom. Only use
+    # wall-clock timing when there's a genuine interactive GUI backend to
+    # actually benefit from it.
+    backend_is_interactive = matplotlib.get_backend().lower() not in ("agg", "template")
+    if notebook or not backend_is_interactive:
         def update_indexed(f):
             if n_frames == 1:
                 return []
@@ -597,6 +611,7 @@ def plot_stick_figure(
     site_markersize: float = 4.0,
     expected_markersize: float = 4.0,
     notebook: bool | None = None,
+    playback_speed: float = 1.0,
     **kwargs,
 ):
     """Plot (or animate) a stick-figure of the model with optional markers & markers.
@@ -630,6 +645,9 @@ def plot_stick_figure(
         If True, render the animation as an inline HTML5 video (Jupyter).
         If False, show an interactive matplotlib window.
         If None (default), auto-detect from the running environment.
+    playback_speed : float, default 1.0
+        Real-time playback is scaled by ``1 / playback_speed``; e.g. 0.25
+        plays 4x slower (slow motion), 2.0 plays 2x faster.
 
     Notes
     -----
@@ -810,7 +828,7 @@ def plot_stick_figure(
         if labels:
             ax.legend(loc="best")
 
-        interval_ms = dt * 1000  # real-time playback: dt seconds per frame
+        interval_ms = dt * 1000 / playback_speed  # real-time playback: dt seconds per frame, scaled by playback_speed
         ani = animation.FuncAnimation(
             fig,
             update,

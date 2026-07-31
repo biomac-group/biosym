@@ -11,6 +11,7 @@ biosym Documentation Overview
    guides/index.rst
    modules/index.rst
    auto_examples/index.rst
+   Downloads <downloads.rst>
    Changelog <CHANGELOG.md>
 
 Indices and Tables

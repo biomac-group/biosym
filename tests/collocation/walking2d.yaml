@@ -24,11 +24,11 @@ collocation:
 
   objectives:
     - name: effort_term
-      weight: 1e4
+      weight: 225
       args:
         exponent: 5
     - name: jerk_term
-      weight: 1e-3
+      weight: 1e-5
 
   constraints:
     - name: dynamics
