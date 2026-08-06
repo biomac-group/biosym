@@ -58,10 +58,7 @@ from biosym.utils import states
 # function handles caching automatically, so subsequent loads will be faster.
 # We toggle force_rebuild to True to ensure we load from the XML file directly and not from cache.
 
-# sphinx_gallery_start_ignore
-os.chdir(current_dir)
-# sphinx_gallery_end_ignore
-model_file = "tests/models/pendulum.xml"
+model_file = os.path.join(current_dir, "tests", "models", "pendulum.xml")
 print("Loading pendulum model...")
 start_time = time.time()
 model = load_model(model_file, force_rebuild=True)

@@ -101,7 +101,7 @@ collocation:
 
   constraints:
     - name: dynamics
-      weight: "1/BW"
+      weight: 1.0  # dynamics constraint self-normalizes by body weight (N) internally
 
   #initial_guess:
   #  type: random
@@ -119,12 +119,15 @@ collocation:
 # to run an optimization problem to find a standing posture.
 # Usually, you would see IPOPT's log as well, but it gets redirected when building the documentation.
 
-# sphinx_gallery_start_ignore
-os.chdir(current_dir)
-# sphinx_gallery_end_ignore
 from biosym.ocp import collocation
 
-ocp = collocation.Collocation(current_dir+"/examples/standing2d.yaml", force_rebuild=True)
+# sphinx_gallery_start_ignore
+# sphinx-gallery resets the CWD to this script's own directory before each
+# code block below, so re-establish the repo root before any relative model
+# paths inside the YAML configs get resolved.
+os.chdir(current_dir)
+# sphinx_gallery_end_ignore
+ocp = collocation.Collocation(os.path.join(current_dir, "examples", "standing2d.yaml"), force_rebuild=True)
 start_ = time.time()
 solution = ocp.solve(visualize=True)
 end_ = time.time()
@@ -218,7 +221,7 @@ collocation:
 # sphinx_gallery_start_ignore
 os.chdir(current_dir)
 # sphinx_gallery_end_ignore
-ocp_walking = collocation.Collocation(current_dir+"/examples/walking2d.yaml")
+ocp_walking = collocation.Collocation(os.path.join(current_dir, "examples", "walking2d.yaml"))
 # The solve method returns x (the optimal solution) and info (ipopt information)
 start = time.time()
 solution = ocp_walking.solve(visualize=False)
