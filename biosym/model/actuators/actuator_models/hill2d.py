@@ -71,6 +71,18 @@ class Hill2d(BaseActuator):
         self.muscle_constants["kSEE"] = 1.0 / (
             (self.muscle_constants["umax"] ** 2) * (self.muscle_constants["SEEslack"] ** 2)
         )
+        # Activation/excitation bounds default to the physiological [0, 1]
+        # range, but are settable per muscle (or via <default>) as a_min/
+        # a_max -- e.g. van den Bogert et al. (2011)/Dorschky et al. (2019)
+        # relax this to [0, 5] as a numerical trick to ease convergence for
+        # high-effort movements like running, letting activation overshoot
+        # its biological ceiling rather than saturate.
+        self.muscle_constants["a_min"] = jnp.array(
+            [float(mi.get("a_min", defaults.get("a_min", 0.0))) for mi in muscles_dict]
+        )[:, jnp.newaxis]
+        self.muscle_constants["a_max"] = jnp.array(
+            [float(mi.get("a_max", defaults.get("a_max", 1.0))) for mi in muscles_dict]
+        )[:, jnp.newaxis]
 
         self.moment_arm_matrix = jnp.zeros((self.n_actuators, len(joints_dict)))
         self.actuated_joints = set()
@@ -85,34 +97,40 @@ class Hill2d(BaseActuator):
         self.joints = jnp.array(
             [float(mi.get("joint", defaults.get("joint", 0.0))) for mi in muscles_dict]
         )  # Joint angles
+        # Lce_dot is *not* a state: it's derived as the backward-Euler
+        # derivative of Lce w.r.t. the previous node (see forward()) rather
+        # than being an independent decision variable -- see constraints()
+        # for why Lce is the current node's own free state while its velocity
+        # comes from history instead.
         self.state_vector = (
             [f"Lce_{n}" for n in self.names]
-            + [f"Lce_{n}_dot" for n in self.names]
             + [f"a_{n}" for n in self.names]
             + [f"e_{n}" for n in self.names]
         )
         self.idx = {
             "Lce": jnp.arange(0, self.n_actuators),
-            "Lce_dot": jnp.arange(self.n_actuators, 2 * self.n_actuators),
-            "a": jnp.arange(2 * self.n_actuators, 3 * self.n_actuators),
-            "e": jnp.arange(3 * self.n_actuators, 4 * self.n_actuators),
+            "a": jnp.arange(self.n_actuators, 2 * self.n_actuators),
+            "e": jnp.arange(2 * self.n_actuators, 3 * self.n_actuators),
         }
+        # e drives a towards itself (see _activation_pred), so e shares a's
+        # a_min/a_max: capping e at 1 while a_max > 1 would make a_max
+        # unreachable.
+        a_min = self.muscle_constants["a_min"].squeeze(-1)
+        a_max = self.muscle_constants["a_max"].squeeze(-1)
         self.bounds = {
             "states": {
                 "min": jnp.concatenate(
                     (
                         1e-3 * jnp.ones(self.n_actuators),  # Lce, avoid dividing by zero
-                        -self.muscle_constants["vmax"].squeeze(),  # Lce_dot
-                        0 * jnp.ones(self.n_actuators),  # a
-                        0 * jnp.ones(self.n_actuators),  # e
+                        a_min,  # a
+                        a_min,  # e
                     )
                 ),
                 "max": jnp.concatenate(
                     (
-                        3 * jnp.ones(self.n_actuators),  # id
-                        self.muscle_constants["vmax"].squeeze(),  # Lce_dot
-                        1 * jnp.ones(self.n_actuators),  # a
-                        1 * jnp.ones(self.n_actuators),  # e
+                        3 * jnp.ones(self.n_actuators),  # Lce
+                        a_max,  # a
+                        a_max,  # e
                     )
                 ),
             }
@@ -171,14 +189,27 @@ class Hill2d(BaseActuator):
         # ext_forces, ext_torques are derived and absent/None -- so its
         # to_array() length equals model.opt_states.size().)
         nvpn = model.opt_states.size()
-        forces = nnodes * self.get_n_constraints_per_node() * nvpn
+        is_periodic = self._periodic_actuator_mirror(model, settings) is not None
         if nnodes > 1:
+            # Force-equilibrium: Lce_dot is now the backward-Euler derivative
+            # of Lce w.r.t. the predecessor node (see constraints()), so this
+            # constraint's Jacobian is dense over both the current node's and
+            # the predecessor's per-node vector, plus one h/dur column --
+            # except node 0 when the problem is *not* periodic, where there is
+            # no predecessor at all (Lce_dot == 0, a true constant there),
+            # leaving it dense over its own node only with no h dependency.
+            forces = self.n_actuators * nvpn if not is_periodic else self.n_actuators * (2 * nvpn + 1)
+            forces += (nnodes - 1) * self.n_actuators * (2 * nvpn + 1)
             # Activation-dynamics constraint is dense over both the current
-            # and the previous node's per-node vector.
-            forces += (nnodes - 1) * self.n_actuators * (2 * nvpn)
-            if self._periodic_actuator_mirror(model, settings) is not None:
-                forces += self.n_actuators * (2 * nvpn)
+            # and the previous node's per-node vector, plus one h/dur column
+            # (a_pred's exp(-tau_inv * h) term is h-dependent too).
+            forces += (nnodes - 1) * self.n_actuators * (2 * nvpn + 1)
+            if is_periodic:
+                forces += self.n_actuators * (2 * nvpn + 1)
         else:
+            # Force-equilibrium: dense over node 0's own state only (no time
+            # dimension to derive Lce_dot from, so it's fixed at zero).
+            forces = self.n_actuators * nvpn
             # e == a pin: dense over one node's vector only.
             forces += self.n_actuators * nvpn
         return forces
@@ -391,14 +422,38 @@ class Hill2d(BaseActuator):
 
         return super().process_eom(model)
 
-    def forward(self, states, constants, model):
-        _F_ce, F_see, _F_pee = self.muscle_equations(states, constants, model)
+    def forward(self, states, constants, model, states_prev=None, h=None):
+        """
+        states_prev/h: the previous node's states and the step size to it, used
+        to derive fiber velocity as a backward-Euler finite difference of Lce
+        (see muscle_equations). None when there is no meaningful predecessor
+        (node 0 of a non-periodic problem, a single-node equilibrium problem,
+        or a caller outside the main dynamics-constraint evaluation, e.g. GRF
+        tracking) -- fiber velocity then falls back to zero, same convention
+        as constraints()/jacobian() use for those cases.
+        """
+        L_ce = states.actuator_model[..., self.idx["Lce"]]
+        if states_prev is not None:
+            L_ce_prev = states_prev.actuator_model[..., self.idx["Lce"]]
+            L_ce_dot = (L_ce - L_ce_prev) / h
+        else:
+            L_ce_dot = jnp.zeros_like(L_ce)
+        _F_ce, F_see, _F_pee = self.muscle_equations(states, L_ce_dot, constants, model)
         # F_see = F_ce + F_pee
         # Todo: Hill's equations in here
         # What is the force at every joint
         return (self.moment_arm_matrix.T @ F_see).T  # shape (n_samples, n_joints)
 
-    def muscle_equations(self, states, constants, model):
+    def muscle_equations(self, states, L_ce_dot, constants, model):
+        """
+        L_ce_dot: fiber velocity, in the same (un-transposed) layout as
+        states.actuator_model[..., self.idx["Lce"]] -- i.e. shape (n_actuators,)
+        for a single node or (n_samples, n_actuators) batched. It is *not*
+        read from states: it's supplied by the caller (forward(): derived from
+        states_prev via backward-Euler difference; constraints(): derived from
+        the trajectory's own Lce history, see that method) since Lce_dot is no
+        longer an independent decision variable.
+        """
         # Constraction dynamics
         F_max = self.muscle_constants["fmax"]
         L_ce_opt = self.muscle_constants["lceopt"]
@@ -414,15 +469,14 @@ class Hill2d(BaseActuator):
 
         if states.q.ndim < 2:
             L_ce = states.actuator_model[self.idx["Lce"]][:, jnp.newaxis]
-            L_ce_dot = states.actuator_model[self.idx["Lce_dot"]][:, jnp.newaxis]
             a = states.actuator_model[self.idx["a"]][:, jnp.newaxis]
             q = states.q[:, jnp.newaxis]
+            L_ce_dot = L_ce_dot[:, jnp.newaxis]
         else:
             L_ce = states.actuator_model[:, self.idx["Lce"]].T
             a = states.actuator_model[:, self.idx["a"]].T
             q = states.q.T
-            # L_ce_dot for the last state is always zero?
-            L_ce_dot = states.actuator_model[:, self.idx["Lce_dot"]].T
+            L_ce_dot = L_ce_dot.T
 
         x = (L_ce - 1) / W  # L_ce: Normalized contractile element length, W: Width of the force-length relationship
         # Force-length relationship
@@ -498,12 +552,44 @@ class Hill2d(BaseActuator):
         tau_inv = e_prev / Tact + (1 - e_prev) / Tdeact
         return e_prev + (a_prev - e_prev) * jnp.exp(-tau_inv * h)
 
+    def _lce_dot_trajectory(self, inner_states, globals_dict, settings, model, nnodes):
+        """
+        Fiber velocity for each of the first `nnodes` nodes, derived as the
+        backward-Euler derivative of Lce w.r.t. the predecessor node (Lce_dot
+        is not a decision variable -- see __init__). Node 0 has no
+        predecessor within the trajectory: if the problem is periodic it's
+        tied to the (possibly mirrored) last node, exactly like the
+        activation-dynamics wrap below; otherwise fiber velocity is zero
+        there (a real boundary, same convention as the single-node case).
+        """
+        if nnodes == 1:
+            return jnp.zeros((1, self.n_actuators))
+
+        from biosym.constraints.dynamics import _node_h
+
+        h = _node_h(globals_dict, settings, nnodes - 1)  # shape (nnodes - 1,)
+        L_ce_curr = inner_states.actuator_model[1:nnodes, self.idx["Lce"]]
+        L_ce_prev = inner_states.actuator_model[: nnodes - 1, self.idx["Lce"]]
+        L_ce_dot_rest = (L_ce_curr - L_ce_prev) / h[:, None]  # shape (nnodes - 1, n_actuators)
+
+        mirror = self._periodic_actuator_mirror(model, settings)
+        if mirror is not None:
+            h_wrap = _node_h(globals_dict, settings, nnodes)[-1]
+            last = inner_states.actuator_model[nnodes - 1]
+            L_ce_prev_wrap = last[mirror[self.idx["Lce"]]]
+            L_ce_dot_0 = (inner_states.actuator_model[0, self.idx["Lce"]] - L_ce_prev_wrap) / h_wrap
+        else:
+            L_ce_dot_0 = jnp.zeros(self.n_actuators)
+
+        return jnp.concatenate([L_ce_dot_0[None, :], L_ce_dot_rest], axis=0)  # shape (nnodes, n_actuators)
+
     def constraints(self, states, constants, model, settings):
         states_dict, globals_dict = states
         # Unpack StatesDict -> States so that slicing only touches consistently-shaped arrays
         inner_states = states_dict.states if hasattr(states_dict, "states") else states_dict
         nnodes = settings.get("nnodes")
-        F_ce, F_see, F_pee = self.muscle_equations(inner_states[:nnodes], constants, model)
+        L_ce_dot = self._lce_dot_trajectory(inner_states, globals_dict, settings, model, nnodes)
+        F_ce, F_see, F_pee = self.muscle_equations(inner_states[:nnodes], L_ce_dot, constants, model)
         F_max = self.muscle_constants["fmax"]
         c1 = (F_see - F_ce - F_pee) / F_max  # Normalized to F_max
         c1 = c1.T.reshape(-1)  # shape (n_actuators * nnodes,)
@@ -536,6 +622,8 @@ class Hill2d(BaseActuator):
         else:
             # No time dimension for activation dynamics to act over: pin e to
             # a directly instead of leaving e an unconstrained free variable.
+            # (Lce_dot has no such pin needed: it's not a state at all here,
+            # already fixed at zero by _lce_dot_trajectory above.)
             e0 = inner_states.actuator_model[0, self.idx["e"]]
             a0 = inner_states.actuator_model[0, self.idx["a"]]
             c1 = jnp.concatenate([c1, e0 - a0], axis=0)
@@ -549,28 +637,117 @@ class Hill2d(BaseActuator):
 
         nnodes = settings.get("nnodes")
 
-        ### Force equilibrium constraint
-        def c1(s, constants):
-            F_ce, F_see, F_pee = self.muscle_equations(s, constants, model)
-            F_max = self.muscle_constants["fmax"]
-            return ((F_see - F_ce - F_pee) / F_max).T.reshape(-1)  # shape (n_actuators,)
-
-        c_fun = jax.jit(jax.vmap(jax.jacobian(c1, argnums=0), in_axes=(0, None), out_axes=0))
-        jac = c_fun(states_dict[:nnodes], constants)
-
-
         ncons = self.get_n_constraints_per_node()
-        node_indices = jnp.arange(nnodes)
         # Per-node variable counts (from States, not StatesDict)
         nvpn = states_dict.get_n_states()
+        mirror = self._periodic_actuator_mirror(model, settings)
 
-        # Model jacobian blocks
-        row_blocks = node_indices[:, None] * ncons + jnp.arange(ncons)[None, :]
-        col_blocks = node_indices[:, None] * nvpn + jnp.arange(nvpn)[None, :]
+        ### Force equilibrium constraint
+        # Lce_dot is now the backward-Euler derivative of Lce w.r.t. the
+        # predecessor node (see constraints()/_lce_dot_trajectory), not an
+        # independent decision variable, so this constraint's Jacobian also
+        # depends on that predecessor node's state, and -- since Lce_dot's
+        # denominator is h, which derives from the global `dur` -- on `dur`
+        # too. Node 0 is the exception when the problem is *not* periodic:
+        # there Lce_dot == 0 is a true constant (no predecessor, no h
+        # dependency at all) and the block stays local to node 0.
+        if nnodes > 1 and settings.get("discretization", {}).get("args", {}).get("adaptive_h", False):
+            raise NotImplementedError(
+                "Hill2d force-equilibrium constraint does not yet support adaptive_h discretization."
+            )
+        nnodes_dur = settings.get("nnodes_dur", nnodes)
+        h_col = nnodes_dur * nvpn
+        h_scale = 1.0 / (nnodes_dur - 1) if nnodes_dur > 1 else 0.0
 
-        rows = jnp.repeat(row_blocks, nvpn, axis=1).flatten()
-        cols = jnp.tile(col_blocks, (1, ncons)).flatten()
-        data = jac.to_array().reshape(nnodes, -1).flatten()
+        def c1_local(s, constants):
+            L_ce_dot = jnp.zeros(self.n_actuators)
+            F_ce, F_see, F_pee = self.muscle_equations(s, L_ce_dot, constants, model)
+            F_max = self.muscle_constants["fmax"]
+            return (F_see - F_ce - F_pee) / F_max  # shape (n_actuators,)
+
+        def c1_pair(s_curr, s_prev, h_i, constants):
+            L_ce_curr = s_curr.actuator_model[self.idx["Lce"]]
+            L_ce_prev = s_prev.actuator_model[self.idx["Lce"]]
+            L_ce_dot = (L_ce_curr - L_ce_prev) / h_i
+            F_ce, F_see, F_pee = self.muscle_equations(s_curr, L_ce_dot, constants, model)
+            F_max = self.muscle_constants["fmax"]
+            return (F_see - F_ce - F_pee) / F_max  # shape (n_actuators,)
+
+        row_block0 = jnp.arange(ncons)
+        col_block0 = jnp.arange(nvpn)
+
+        if nnodes > 1:
+            from biosym.constraints.dynamics import _node_h
+
+            if mirror is not None:
+                h_wrap = _node_h(globals_dict, settings, nnodes)[-1]
+                # Mirror composed with idx *inside* the closure (mirroring the
+                # true, unpermuted states_dict[nnodes - 1] rather than a
+                # pre-permuted copy passed to jax.jacobian): the latter would
+                # differentiate w.r.t. the permuted array's own positions,
+                # putting each derivative at its mirror partner's column
+                # instead of the real decision variable's column -- exactly
+                # the bug this mirrors away from (see c3's identical pattern
+                # below for the activation-dynamics wrap).
+                mirror_lce = mirror[self.idx["Lce"]]
+
+                def c1_pair_wrap(s_curr, s_prev, h_i, constants):
+                    L_ce_curr = s_curr.actuator_model[self.idx["Lce"]]
+                    L_ce_prev = s_prev.actuator_model[mirror_lce]
+                    L_ce_dot = (L_ce_curr - L_ce_prev) / h_i
+                    F_ce, F_see, F_pee = self.muscle_equations(s_curr, L_ce_dot, constants, model)
+                    F_max = self.muscle_constants["fmax"]
+                    return (F_see - F_ce - F_pee) / F_max  # shape (n_actuators,)
+
+                jac_curr0, jac_prev0, jac_h0 = jax.jit(jax.jacobian(c1_pair_wrap, argnums=(0, 1, 2)))(
+                    states_dict[0], states_dict[nnodes - 1], h_wrap, constants
+                )
+                rows = jnp.repeat(row_block0, nvpn)
+                cols = jnp.tile(col_block0, ncons)
+                data = jac_curr0.to_array().flatten()
+
+                col_block_prev0 = (nnodes - 1) * nvpn + jnp.arange(nvpn)
+                rows = jnp.concatenate([rows, jnp.repeat(row_block0, nvpn)])
+                cols = jnp.concatenate([cols, jnp.tile(col_block_prev0, ncons)])
+                data = jnp.concatenate([data, jac_prev0.to_array().flatten()])
+
+                rows = jnp.concatenate([rows, row_block0])
+                cols = jnp.concatenate([cols, jnp.full((ncons,), h_col, dtype=int)])
+                data = jnp.concatenate([data, (jac_h0 * h_scale).reshape(-1)])
+            else:
+                jac_0 = jax.jit(jax.jacobian(c1_local, argnums=0))(states_dict[0], constants)
+                rows = jnp.repeat(row_block0, nvpn)
+                cols = jnp.tile(col_block0, ncons)
+                data = jac_0.to_array().flatten()
+
+            node_indices = jnp.arange(1, nnodes)
+            h_pairs = _node_h(globals_dict, settings, nnodes - 1)  # step into nodes 1..nnodes-1
+            jac_curr, jac_prev, jac_h = jax.jit(
+                jax.vmap(jax.jacobian(c1_pair, argnums=(0, 1, 2)), in_axes=(0, 0, 0, None))
+            )(states_dict[1:nnodes], states_dict[0 : nnodes - 1], h_pairs, constants)
+
+            row_blocks_rest = node_indices[:, None] * ncons + jnp.arange(ncons)[None, :]
+            col_blocks_curr = node_indices[:, None] * nvpn + jnp.arange(nvpn)[None, :]
+            col_blocks_prev = (node_indices - 1)[:, None] * nvpn + jnp.arange(nvpn)[None, :]
+
+            rows_rest = jnp.repeat(row_blocks_rest, nvpn, axis=1).flatten()
+            cols_curr = jnp.tile(col_blocks_curr, (1, ncons)).flatten()
+            data_curr = jac_curr.to_array().reshape(nnodes - 1, -1).flatten()
+            cols_prev = jnp.tile(col_blocks_prev, (1, ncons)).flatten()
+            data_prev = jac_prev.to_array().reshape(nnodes - 1, -1).flatten()
+
+            rows_h = row_blocks_rest.flatten()
+            cols_h = jnp.full(rows_h.shape, h_col, dtype=int)
+            data_h = (jac_h * h_scale).reshape(-1)
+
+            rows = jnp.concatenate([rows, rows_rest, rows_rest, rows_h])
+            cols = jnp.concatenate([cols, cols_curr, cols_prev, cols_h])
+            data = jnp.concatenate([data, data_curr, data_prev, data_h])
+        else:
+            jac_0 = jax.jit(jax.jacobian(c1_local, argnums=0))(states_dict[0], constants)
+            rows = jnp.repeat(row_block0, nvpn)
+            cols = jnp.tile(col_block0, ncons)
+            data = jac_0.to_array().flatten()
 
         if nnodes > 1:
             if settings.get("discretization", {}).get("args", {}).get("adaptive_h", False):
@@ -589,9 +766,9 @@ class Hill2d(BaseActuator):
                 return a_curr - a_pred  # shape (n_actuators,)
 
             c2_fun = jax.jit(
-                jax.vmap(jax.jacobian(c2, argnums=(0, 1)), in_axes=(0, 0, 0, None))
+                jax.vmap(jax.jacobian(c2, argnums=(0, 1, 2)), in_axes=(0, 0, 0, None))
             )
-            jac_curr, jac_prev = c2_fun(
+            jac_curr, jac_prev, jac_h2 = c2_fun(
                 states_dict[1:nnodes], states_dict[0 : nnodes - 1], h, constants
             )
 
@@ -611,9 +788,13 @@ class Hill2d(BaseActuator):
             cols_prev = jnp.tile(col_blocks_prev, (1, ncons2)).flatten()
             data_prev = jac_prev.to_array().reshape(nnodes - 1, -1).flatten()
 
-            rows = jnp.concatenate([rows, rows_curr, rows_prev])
-            cols = jnp.concatenate([cols, cols_curr, cols_prev])
-            data = jnp.concatenate([data, data_curr, data_prev])
+            rows_h2 = row_blocks2.flatten()
+            cols_h2 = jnp.full(rows_h2.shape, h_col, dtype=int)
+            data_h2 = (jac_h2 * h_scale).reshape(-1)
+
+            rows = jnp.concatenate([rows, rows_curr, rows_prev, rows_h2])
+            cols = jnp.concatenate([cols, cols_curr, cols_prev, cols_h2])
+            data = jnp.concatenate([data, data_curr, data_prev, data_h2])
 
             mirror = self._periodic_actuator_mirror(model, settings)
             if mirror is not None:
@@ -628,7 +809,7 @@ class Hill2d(BaseActuator):
                     a_pred = self._activation_pred(a_prev, e_prev, h_i)
                     return a_curr - a_pred  # shape (n_actuators,)
 
-                jac_curr3, jac_prev3 = jax.jit(jax.jacobian(c3, argnums=(0, 1)))(
+                jac_curr3, jac_prev3, jac_h3 = jax.jit(jax.jacobian(c3, argnums=(0, 1, 2)))(
                     states_dict[0], states_dict[nnodes - 1], h_wrap, constants
                 )
 
@@ -647,9 +828,13 @@ class Hill2d(BaseActuator):
                 cols_prev3 = jnp.tile(col_block_prev3, ncons3)
                 data_prev3 = jac_prev3.to_array().flatten()
 
-                rows = jnp.concatenate([rows, rows_curr3, rows_prev3])
-                cols = jnp.concatenate([cols, cols_curr3, cols_prev3])
-                data = jnp.concatenate([data, data_curr3, data_prev3])
+                rows_h3 = row_block3
+                cols_h3 = jnp.full(rows_h3.shape, h_col, dtype=int)
+                data_h3 = (jac_h3 * h_scale).reshape(-1)
+
+                rows = jnp.concatenate([rows, rows_curr3, rows_prev3, rows_h3])
+                cols = jnp.concatenate([cols, cols_curr3, cols_prev3, cols_h3])
+                data = jnp.concatenate([data, data_curr3, data_prev3, data_h3])
         else:
             # No time dimension for activation dynamics to act over: pin e to
             # a directly instead of leaving e an unconstrained free variable.
@@ -670,6 +855,8 @@ class Hill2d(BaseActuator):
             rows = jnp.concatenate([rows, rows_pin])
             cols = jnp.concatenate([cols, cols_pin])
             data = jnp.concatenate([data, data_pin])
+            # (Lce_dot has no such pin needed here: it's not a state at all,
+            # already fixed at zero in the force-equilibrium block above.)
 
         return rows, cols, data
 

@@ -51,10 +51,15 @@ class CoordinateActuator(BaseActuator):
     def reset(self):
         pass
 
-    def forward(self, states, constants, model):
+    def forward(self, states, constants, model, states_prev=None, h=None):
         """
         Return a joint-sized torque array: this actuator's commanded torques
         placed at their joints' coordinate indices, zero elsewhere.
+
+        states_prev/h are accepted for interface parity with muscle actuators
+        (e.g. Hill2d, which needs the previous node to derive fiber velocity)
+        but unused here: a coordinate actuator's torque has no such history
+        dependence.
         """
         # Position of each actuator's joint in the model's coordinate list.
         joint_names = [j["name"] for j in model.dicts["joints"]]

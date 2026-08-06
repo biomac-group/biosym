@@ -50,7 +50,8 @@ class PassiveTorques(BaseActuator):
             if ji.get("damping", 0.0) > 0.0 or ji.get("stiffness", 0.0) > 0.0
         ]
 
-    def forward(self, states, constants, model):
+    def forward(self, states, constants, model, states_prev=None, h=None):
+        # states_prev/h: unused, see CoordinateActuator.forward.
         def f_plus(x):
             return 0.5 * (x + jnp.sqrt(x**2 + JOINT_RANGE_TOL**2))
 

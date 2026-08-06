@@ -77,7 +77,7 @@ class BaseActuator(ABC):
         """Reset any internal state (no-op for memoryless actuators)."""
 
     @abstractmethod
-    def forward(self, states, constants, model):
+    def forward(self, states, constants, model, states_prev=None, h=None):
         """
         Compute this actuator's joint-torque contribution for the current state.
 
@@ -89,6 +89,14 @@ class BaseActuator(ABC):
         Because every actuator returns a full joint-sized array, actuators that
         touch several joints (muscles, chain-spanning torque actuators) simply
         fill several entries -- no special routing needed.
+
+        states_prev/h give the previous node's state and the step size to it
+        (None when there is no meaningful predecessor: node 0 of a
+        non-periodic problem, a single-node equilibrium problem, or a caller
+        outside the main dynamics-constraint evaluation, e.g. GRF tracking).
+        Only actuators whose contraction dynamics need a time derivative that
+        isn't itself a decision variable (Hill2d's fiber velocity) use these;
+        everything else ignores them.
         """
 
     def process_eom(self, model):
