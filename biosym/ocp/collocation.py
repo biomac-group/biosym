@@ -7,6 +7,7 @@ nonlinear optimization solvers for biomechanical motion optimization.
 """
 
 import os
+import time
 
 _cachedir = os.path.expanduser("~/.biosym/jax_cache")
 _model_cache = os.path.expanduser("~/.biosym/")
@@ -125,6 +126,8 @@ class Collocation:
                 self.model = load_model(
                     self.settings.get("settings").get("model"),
                     force_rebuild=kwargs.get("force_rebuild", False),
+                    compile_eom=self.settings.get("settings").get("compile_eom", True),
+                    fit_muscle_paths=self.settings.get("settings").get("fit_muscle_paths", False),
                 )
         self.settings = process_collocation_settings(self.model, self.settings)
 
@@ -159,6 +162,7 @@ class Collocation:
         - Prepares the problem for optimization with zero constraint bounds
         - Uses limited-memory Hessian approximation for efficiency
         """
+        _setup_start = time.perf_counter()
         # Create a cyipopt.problem
         ig_globals = self.initial_guess_globals if self.settings["nnodes"] > 1 else None
         self.x0 = utils.states_dict_to_x(self.initial_guess_states, ig_globals)
@@ -224,6 +228,7 @@ class Collocation:
         self.nlp.add_option("print_timing_statistics", "yes")
         # Initialize iteration logger (will be None unless enabled)
         self.iteration_logger = None
+        self.wall_time_setup = time.perf_counter() - _setup_start
     
     def enable_logging(self, log_interval: int = 100, launch_dashboard: bool = True, dashboard_port: int = 8050):
         """
@@ -303,6 +308,55 @@ class Collocation:
             # Give the server a moment to start
             time.sleep(1)
 
+    def _evaluate_objective_values(self, states_, globals_):
+        """Evaluate each objective term individually at the given solution.
+
+        Parameters
+        ----------
+        states_ : StatesDict
+            Solution states to evaluate the objectives at.
+        globals_ : dict or None
+            Solution global variables to evaluate the objectives at.
+
+        Returns
+        -------
+        dict
+            Mapping from objective name to its weighted scalar value.
+        """
+        values = {}
+        for obj_instance, obj_func, weight in zip(
+            self.objective._objectives,
+            self.objective.objective_functions,
+            self.objective.weights,
+        ):
+            name = obj_instance._get_info().get("name")
+            values[name] = float(weight * obj_func(states_, globals_))
+        return values
+
+    def _evaluate_constraint_values(self, states_, globals_):
+        """Evaluate each constraint term individually at the given solution.
+
+        Parameters
+        ----------
+        states_ : StatesDict
+            Solution states to evaluate the constraints at.
+        globals_ : dict or None
+            Solution global variables to evaluate the constraints at.
+
+        Returns
+        -------
+        dict
+            Mapping from constraint name to its weighted constraint value array.
+        """
+        values = {}
+        c_vec = self.constraints.confun(states_, globals_)
+        for i, constraint in enumerate(self.constraints._constraints):
+            start_idx = self.constraints.c_start[i]
+            end_idx = self.constraints.c_start[i + 1]
+            name = constraint._get_info().get("name")
+            values[name] = np.asarray(c_vec[start_idx:end_idx])
+        return values
+
     def solve(self, visualize=False, **kwargs):
         """
         Solve the optimal control problem using IPOPT.
@@ -338,7 +392,11 @@ class Collocation:
                 "Collocation problem has already been solved. Press y to repeat, x to leave"
             ) in ["y", "Y"]:
                 return None
+        _solve_start = time.perf_counter()
         x, info = self.nlp.solve(self.x0)
+        info["wall_time_solve"] = time.perf_counter() - _solve_start
+        info["wall_time_setup"] = self.wall_time_setup
+        info["wall_time_total"] = info["wall_time_solve"] + self.wall_time_setup
 
         self.x = utils.x_to_states_dict(
             x,
@@ -356,6 +414,10 @@ class Collocation:
                 cloudpickle.dump(output, f)
         # Todo: Cleanup the result a bit nicer
         states_, globals_ = self.x
-        Solution = namedtuple("Solution", ["states", "globals", "info"])
-        return Solution(states_, globals_, info)
+        objective_values = self._evaluate_objective_values(states_, globals_)
+        constraint_values = self._evaluate_constraint_values(states_, globals_)
+        Solution = namedtuple(
+            "Solution", ["states", "globals", "info", "objective_values", "constraint_values"]
+        )
+        return Solution(states_, globals_, info, objective_values, constraint_values)
 

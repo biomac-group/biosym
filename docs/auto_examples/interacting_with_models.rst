@@ -37,12 +37,11 @@ BiosymModel class.
     import matplotlib.pyplot as plt
     import time
     import timeit
-    import sys
     import os
-
 
     from biosym.model.model import load_model
     from biosym.utils import states
+    from biosym.utils.paths import find_repo_root
 
 
 
@@ -51,7 +50,8 @@ BiosymModel class.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 54-60
+
+.. GENERATED FROM PYTHON SOURCE LINES 31-37
 
 Load the Model
 --------------
@@ -60,12 +60,12 @@ First, we load a simple pendulum model from an XML file. The load_model
 function handles caching automatically, so subsequent loads will be faster.
 We toggle force_rebuild to True to ensure we load from the XML file directly and not from cache.
 
-.. GENERATED FROM PYTHON SOURCE LINES 60-70
+.. GENERATED FROM PYTHON SOURCE LINES 37-47
 
 .. code-block:: Python
 
 
-    model_file = "tests/models/pendulum.xml"
+    model_file = os.path.join(current_dir, "tests", "models", "pendulum.xml")
     print("Loading pendulum model...")
     start_time = time.time()
     model = load_model(model_file, force_rebuild=True)
@@ -84,13 +84,13 @@ We toggle force_rebuild to True to ensure we load from the XML file directly and
 
     Loading pendulum model...
     Replacing dynamic symbols in the EOM with the v_ states, this might take a while...
-    Model loaded in 0.526 seconds
+    Model loaded in 0.620 seconds
     Model has 8 states and 29 constants
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 74-79
+.. GENERATED FROM PYTHON SOURCE LINES 48-53
 
 Explore Model Structure
 ------------------------
@@ -98,7 +98,7 @@ Explore Model Structure
 Let's examine the structure of our loaded model to understand its components.
 Model symbols are exposed as namedtuples, so they are accessed via dot notation.
 
-.. GENERATED FROM PYTHON SOURCE LINES 79-96
+.. GENERATED FROM PYTHON SOURCE LINES 53-70
 
 .. code-block:: Python
 
@@ -144,7 +144,7 @@ Model symbols are exposed as namedtuples, so they are accessed via dot notation.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 97-103
+.. GENERATED FROM PYTHON SOURCE LINES 71-77
 
 Set Up Initial Conditions
 --------------------------
@@ -153,7 +153,7 @@ Before running any computations, we need to set up the state and constant
 vectors. The model provides default ``States``/``Constants`` instances that
 we can use directly (or modify via ``.replace(...)``).
 
-.. GENERATED FROM PYTHON SOURCE LINES 103-110
+.. GENERATED FROM PYTHON SOURCE LINES 77-84
 
 .. code-block:: Python
 
@@ -179,7 +179,7 @@ we can use directly (or modify via ``.replace(...)``).
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 111-116
+.. GENERATED FROM PYTHON SOURCE LINES 85-90
 
 Forward Kinematics Analysis
 ----------------------------
@@ -187,7 +187,7 @@ Forward Kinematics Analysis
 Now let's compute the forward kinematics for different pendulum angles
 to understand how the end-effector moves through space.
 
-.. GENERATED FROM PYTHON SOURCE LINES 116-157
+.. GENERATED FROM PYTHON SOURCE LINES 90-131
 
 .. code-block:: Python
 
@@ -254,7 +254,7 @@ to understand how the end-effector moves through space.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 158-163
+.. GENERATED FROM PYTHON SOURCE LINES 132-137
 
 Dynamics Computations
 ----------------------
@@ -262,7 +262,7 @@ Dynamics Computations
 Let's compute the equations of motion and examine the mass matrix and
 forcing terms for our pendulum model.
 
-.. GENERATED FROM PYTHON SOURCE LINES 163-189
+.. GENERATED FROM PYTHON SOURCE LINES 137-163
 
 .. code-block:: Python
 
@@ -316,7 +316,7 @@ forcing terms for our pendulum model.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 1.639 seconds)
+   **Total running time of the script:** (0 minutes 1.597 seconds)
 
 
 .. _sphx_glr_download_auto_examples_interacting_with_models.py:
