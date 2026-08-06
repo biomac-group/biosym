@@ -9,5 +9,5 @@
 
 - **Agent Personas / Profiles**: Refer to and follow the specialized guidelines for agent roles documented under [agent_profiles](file:///Users/markusgambietz/PhD/01_Python_Projects/biosym/skills/agent_profiles) (e.g., `release_gatekeeper.md` for release and documentation quality, `lean_skeptic.md` for backward compatibility checks, etc.) when performing relevant tasks.
 
-
+- **Changelog**: When making changes to the codebase, update the changelog accordingly in the section for the next version bump. The changelog is located in "CHANGELOG.md". Ensure that the changelog entry is clear, concise, and accurately reflects the changes made.
     
