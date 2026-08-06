@@ -48,7 +48,11 @@ class Constraints:
         self.model = model
         self.settings = settings
         self.nvar = settings.get("nvar")
-        self.ncons_model = len(self.model.fr)
+        # model.fr (SymPy/Kane's residual force vector) only exists when the
+        # model was built with compile_eom=True; its length is just the DOF
+        # count, which is equally available as model.coordinates.n for
+        # RNEA-backed models (compile_eom=False) that skip the Kane derivation.
+        self.ncons_model = len(self.model.fr) if hasattr(self.model, "fr") else self.model.coordinates.n
 
         # Initialize constraints and jacobian building
         self.constraint_functions = []
@@ -105,8 +109,12 @@ class Constraints:
             Either a string name of a constraint class or a constraint class object.
             If string, the class will be looked up in the global namespace.
         weight : float, int, or str
-            Weighting factor for the constraint in the optimization.
-            Can be numeric value or special string like "1/BW" for bodyweight normalization.
+            Weighting factor for the constraint in the optimization. Must be a
+            plain number (or numeric string). The special "1/BW" setting is
+            deprecated and no longer accepted: constraints (e.g. `dynamics`)
+            that need body-weight normalization now apply it internally in
+            Newtons, so their residuals are already O(1) and a plain weight
+            of 1.0 is the correct choice.
         args : dict, optional
             Additional arguments to pass to the constraint constructor.
             
@@ -145,16 +153,19 @@ class Constraints:
         if isinstance(weight, (int, float)):
             self.weights.append(float(weight))
         elif isinstance(weight, str):
+            if weight == "1/BW":
+                raise ValueError(
+                    "Weight '1/BW' is deprecated and no longer supported: constraints that "
+                    "need body-weight normalization (e.g. 'dynamics') now apply it internally "
+                    "in Newtons, so their residuals are already O(1). Use a plain weight of "
+                    "1.0 instead."
+                )
             try:
                 self.weights.append(float(weight))
-            except:
-                pass
-            if weight == "1/BW":
-                self.weights.append(1 / jnp.sum(jnp.array([body["mass"] for body in self.model.dicts["bodies"]])))
-            else:
-                raise ValueError(f"Weight '{weight}' is not a valid number or setting. Valid settings are: '1/BW'.")
+            except ValueError:
+                raise ValueError(f"Weight '{weight}' is not a valid number.")
         else:
-            raise ValueError("Weight must be a number or a string referring to a setting.") 
+            raise ValueError("Weight must be a number or a string referring to a setting.")
 
         # Update required variables
         if info["required_variables"]:

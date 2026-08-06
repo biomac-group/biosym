@@ -23,18 +23,19 @@ Batching
 
 Aka how can I use biosym for deep learning applications?
 
-.. GENERATED FROM PYTHON SOURCE LINES 7-17
+.. GENERATED FROM PYTHON SOURCE LINES 7-19
 
 .. code-block:: Python
 
 
-    from tracemalloc import start
     import numpy as np
     import matplotlib.pyplot as plt
     import time
+    import os
 
     from biosym.model.model import load_model
     from biosym.utils import states
+    from biosym.utils.paths import find_repo_root
     import jax
 
 
@@ -44,7 +45,8 @@ Aka how can I use biosym for deep learning applications?
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 56-62
+
+.. GENERATED FROM PYTHON SOURCE LINES 26-32
 
 Load 2D Gait Model
 -------------------------
@@ -53,7 +55,7 @@ We'll load a more complex 2D gait model that includes ground contact forces
 and actuator models. This demonstrates BiosymModel's capability to handle
 sophisticated biomechanical systems.
 
-.. GENERATED FROM PYTHON SOURCE LINES 62-73
+.. GENERATED FROM PYTHON SOURCE LINES 32-43
 
 .. code-block:: Python
 
@@ -78,17 +80,17 @@ sophisticated biomechanical systems.
 
     Loading 2D gait model with torque actuators...
     Replacing dynamic symbols in the EOM with the v_ states, this might take a while...
-    Model loaded in 6.328 seconds
+    Model loaded in 5.244 seconds
     Model has 45 states and 94 constants
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 74-75
+.. GENERATED FROM PYTHON SOURCE LINES 44-45
 
 Create batches of movement data
 
-.. GENERATED FROM PYTHON SOURCE LINES 75-93
+.. GENERATED FROM PYTHON SOURCE LINES 45-63
 
 .. code-block:: Python
 
@@ -125,13 +127,13 @@ Create batches of movement data
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 94-97
+.. GENERATED FROM PYTHON SOURCE LINES 64-67
 
 Performance of batching (optional)
 -------------------------
 Check if jax finds a GPU
 
-.. GENERATED FROM PYTHON SOURCE LINES 97-109
+.. GENERATED FROM PYTHON SOURCE LINES 67-79
 
 .. code-block:: Python
 
@@ -157,7 +159,7 @@ Check if jax finds a GPU
 
     Available devices: [CpuDevice(id=0)]
     Computed dynamics for batch of size 1000 in 0.0008 seconds
-    Computed dynamics for batch of size 1000 without batching in 1.2400 seconds
+    Computed dynamics for batch of size 1000 without batching in 1.3335 seconds
 
 
 
@@ -165,7 +167,7 @@ Check if jax finds a GPU
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 8.954 seconds)
+   **Total running time of the script:** (0 minutes 7.725 seconds)
 
 
 .. _sphx_glr_download_auto_examples_batching.py:

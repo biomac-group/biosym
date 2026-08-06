@@ -23,11 +23,26 @@ class Constraint(BaseConstraint):
         self.settings = settings.copy()
         self.settings["nvpn"] = model.opt_states.size()
         self.nvar = settings.get("nvar")
-        self.ncons_model = len(self.model.fr)
+        # See ocp/confun.py's Constraints.__init__ for why this falls back to
+        # model.coordinates.n when model.fr (Kane's residual, compile_eom=True
+        # only) doesn't exist.
+        self.ncons_model = len(self.model.fr) if hasattr(self.model, "fr") else self.model.coordinates.n
         self.nq = self.model.coordinates.n
         self.nvpn_opt = model.opt_states.size()
         self.qd_mirror = _periodic_qd_mirror(model, settings)
-        self.bodymass = model.variables[(model.variables['name'].str.startswith('m_')) & (model.variables['type'] == "constant")]['x0'].sum()
+        # Only meaningful at the periodic wrap node (states_prev = mirrored
+        # last node): permutes that node's actuator_model block the same way
+        # qd_mirror permutes qd, so Hill2d's fiber-velocity backward
+        # difference sees the correctly-mirrored predecessor limb.
+        self.actuator_mirror = (
+            model.actuator_model._periodic_actuator_mirror(model, settings)
+            if self.qd_mirror is not None and hasattr(model.actuator_model, "_periodic_actuator_mirror")
+            else None
+        )
+        bodymass = model.variables[(model.variables['name'].str.startswith('m_')) & (model.variables['type'] == "constant")]['x0'].sum()
+        # Normalizer for the (Newton-valued) dynamics residual must be a force, not a mass.
+        g_mag = float(np.abs(model.default_constants.g).max())
+        self.body_weight_n = bodymass * g_mag
 
     def _get_info(self):
         return {
@@ -39,7 +54,7 @@ class Constraint(BaseConstraint):
             "ncons": self.get_n_constraints(),
             "ncons_pernode": self.ncons_model,
             "n_dyn_nodes": self._n_dyn_nodes(),
-            "bodymass": self.bodymass,
+            "body_weight_n": self.body_weight_n,
             "nq": self.nq,
         }
 
@@ -47,7 +62,7 @@ class Constraint(BaseConstraint):
         modelfn_bwd = partial(conf_bwd, self.model)
         modelfn_zero = partial(conf_zero, self.model)
         modelfn_periodic = (
-            partial(conf_bwd, self.model, qd_prev_mirror=self.qd_mirror)
+            partial(conf_bwd, self.model, qd_prev_mirror=self.qd_mirror, actuator_prev_mirror=self.actuator_mirror)
             if self.qd_mirror is not None else None
         )
         return jax.jit(partial(
@@ -64,7 +79,10 @@ class Constraint(BaseConstraint):
         modelfn_bwd = jax.jacobian(partial(conf_bwd, self.model), argnums=(0, 1, 2))
         modelfn_zero = jax.jacobian(partial(conf_zero, self.model))
         modelfn_periodic = (
-            jax.jacobian(partial(conf_bwd, self.model, qd_prev_mirror=self.qd_mirror), argnums=(0, 1, 2))
+            jax.jacobian(
+                partial(conf_bwd, self.model, qd_prev_mirror=self.qd_mirror, actuator_prev_mirror=self.actuator_mirror),
+                argnums=(0, 1, 2),
+            )
             if self.qd_mirror is not None else None
         )
         return jax.jit(partial(
@@ -130,16 +148,25 @@ def _materialize(states, model):
     return states.replace(**fills) if fills else states
 
 
-def calc_forces(states, model, constants=None):
+def calc_forces(states, model, constants=None, states_prev=None, h=None):
     """
     First stage of the dynamics evaluation: run the ground-contact and actuator
     models' forward passes and inject the resulting forces/torques into states.
+
+    states_prev/h are the previous node's states and the step size to it, used
+    only by the actuator model (e.g. Hill2d derives fiber velocity from the
+    backward difference of fiber length across the two nodes). Ground contact
+    has no such history dependence. None when there is no meaningful
+    predecessor (node 0 of a non-periodic problem, a single-node equilibrium
+    problem, or a caller outside the dynamics constraint, e.g. GRF tracking) --
+    actuators that need it fall back to their own boundary convention (Hill2d:
+    zero fiber velocity).
     """
     if constants is None:
         constants = model.default_constants
     states = _materialize(states, model)
     external_forces, external_torques = model.run["gc_model"](states, constants)
-    internal_forces = model.run["actuator_model"](states, constants)
+    internal_forces = model.run["actuator_model"](states, constants, states_prev=states_prev, h=h)
     return states.replace(
         tau=internal_forces.flatten(),
         ext_forces=external_forces.flatten(),
@@ -193,9 +220,32 @@ def jvpfun(model, primals, tangents):
     return residuals, dresiduals
 
 
-def _conf_core(model, states, constants):
-    states_filled = calc_forces(states, model, constants)
-    return confun_mm_tau(states_filled, constants, model)
+def confun_rnea_tau(states, constants, model):
+    """Direct RNEA dynamics residual: tau_req(q,qd,qdd) - tau_applied.
+
+    RNEA already fuses M(q) qdd + C(q,qd) + g(q) into a single O(n) pass
+    without ever forming M or the bias term separately (see
+    aba.get_rnea_jax_model's docstring) -- unlike confun_mm_tau, there's no
+    intermediate O(n^2) mass-matrix computation to avoid re-differentiating
+    (that's what confun_mm_tau's custom_jvp exists for), so this needs no
+    custom_jvp of its own: plain reverse-mode autodiff (jax.jacobian, already
+    what get_jacobian() below uses for both paths) is already close to a
+    hand-derived rule for RNEA, per the RNEA-jacobian investigation in
+    performance_bottlenecks.md. Used automatically whenever compile_eom=False
+    (measured ~2x faster per call, and cheaper to differentiate, than
+    reconstructing mass_matrix/forcing from RNEA and going through
+    confun_mm_tau -- reconstruction needs n+2 RNEA evaluations where this
+    needs 1 -- see scratch/benchmark_rnea_vs_rnea_massmatrix.py).
+    """
+    full_tau = jnp.zeros(model.accs.n, dtype=states.qd.dtype).at[model.tau.combined_idx].set(states.tau)
+    return model.run["rnea"](states, constants) - full_tau
+
+
+def _conf_core(model, states, constants, states_prev=None, h=None):
+    states_filled = calc_forces(states, model, constants, states_prev=states_prev, h=h)
+    if getattr(model, "compile_eom", True):
+        return confun_mm_tau(states_filled, constants, model)
+    return confun_rnea_tau(states_filled, constants, model)
 
 
 def _periodic_qd_mirror(model, settings):
@@ -217,7 +267,7 @@ def _periodic_qd_mirror(model, settings):
     return None
 
 
-def conf_bwd(model, states, states_prev, h, constants, qd_prev_mirror=None):
+def conf_bwd(model, states, states_prev, h, constants, qd_prev_mirror=None, actuator_prev_mirror=None):
     """
     qdd is derived from a backward-Euler finite difference of qd,
     qdd = (qd - qd_prev) / h. If qd_prev_mirror is given (periodic wrap at
@@ -233,14 +283,29 @@ def conf_bwd(model, states, states_prev, h, constants, qd_prev_mirror=None):
     Autodiff resolves the multiply-by-h/divide-by-h cancellation exactly, so
     this is not merely an algebraic simplification done by hand -- it changes
     what's actually returned (and hence exposed to the NLP solver).
+
+    states_prev/h are also handed to the actuator model (see calc_forces), so
+    Hill2d can derive its own fiber velocity the same way. actuator_prev_mirror
+    is actuator_prev_mirror's qd_prev_mirror counterpart: at the periodic wrap
+    node, states_prev is the mirrored last node's states, so its
+    actuator_model block needs the same L/R permutation before Hill2d diffs
+    against it, otherwise a symmetric gait's fiber-velocity signs come out
+    swapped between limbs.
     """
     qd_prev = states_prev.qd if qd_prev_mirror is None else states_prev.qd[qd_prev_mirror]
     states = states.replace(qdd=(states.qd - qd_prev) / h)
-    return h * _conf_core(model, states, constants)
+    actuator_states_prev = (
+        states_prev
+        if actuator_prev_mirror is None
+        else states_prev.replace(actuator_model=states_prev.actuator_model[actuator_prev_mirror])
+    )
+    return h * _conf_core(model, states, constants, states_prev=actuator_states_prev, h=h)
 
 
 def conf_zero(model, states, constants):
-    """Single-node problems: no neighbor exists at all, so qdd == 0."""
+    """Single-node problems: no neighbor exists at all, so qdd == 0. Likewise
+    no predecessor states for the actuator model (Hill2d falls back to its own
+    zero-fiber-velocity boundary convention)."""
     states = states.replace(qdd=jnp.zeros_like(states.qd))
     return _conf_core(model, states, constants)
 
@@ -286,7 +351,7 @@ def confun(modelfn_bwd, modelfn_zero, modelfn_periodic, states_list, globals_dic
         vals = jax.vmap(modelfn_bwd, in_axes=(0, 0, 0, None))(
             states_list[1:nnodes], states_list[0 : nnodes - 1], h, constants
         )
-    data_model = (1 / info['bodymass'] * vals.squeeze()).reshape(-1)
+    data_model = (1 / info['body_weight_n'] * vals.squeeze()).reshape(-1)
 
     if model.actuator_model.get_n_constraints(model, settings) > 0:
         c_act = model.actuator_model.constraints((states_list, globals_dict), constants, model, settings)
@@ -415,7 +480,7 @@ def jacobian(modelfn_bwd, modelfn_zero, modelfn_periodic, states_list, globals_d
         else:
             rows_out, cols_out, data_out = rows_rest, cols_rest, data_rest
 
-    data_out = (1 / info['bodymass'] * data_out).reshape(-1)
+    data_out = (1 / info['body_weight_n'] * data_out).reshape(-1)
 
     row_offset = info.get('ncons_pernode') * info.get('n_dyn_nodes')
     if model.actuator_model.get_n_constraints(model, settings) > 0:

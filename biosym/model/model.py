@@ -89,7 +89,13 @@ class BiosymModel:
     and provides interfaces for optimization and simulation.
     """
 
-    def __init__(self, definition_file: str, get_hash: bool = False, compile_eom: bool = True) -> None:
+    def __init__(
+        self,
+        definition_file: str,
+        get_hash: bool = False,
+        compile_eom: bool = True,
+        fit_muscle_paths: bool = False,
+    ) -> None:
         """Initialize a BiosymModel from a definition file.
 
         Parameters
@@ -100,13 +106,21 @@ class BiosymModel:
             If True, only compute model hash without full initialization, by default False
         compile_eom : bool, optional
             If True, compile symbolic equations of motion and JAX functions, by default True
+        fit_muscle_paths : bool, optional
+            OSIM models only. If True, fit muscle-tendon-length-vs-joint-angle
+            polynomials for every OpenSim muscle (needed for Millard2012 muscles
+            to build with real, geometry-derived moment arms instead of being
+            skipped). This calls into the OpenSim API once per joint angle sample
+            per crossed coordinate per muscle, which is genuinely expensive for
+            models with wrapping surfaces (several minutes for ~80 muscles) - so
+            it defaults to False and must be opted into explicitly.
 
         Raises
         ------
         ValueError
             If definition_file format is not supported
         NotImplementedError
-            If trying to load not yet supported files 
+            If trying to load not yet supported files
         """
         definition_file = os.path.abspath(os.path.expanduser(definition_file))
         self.compile_eom = compile_eom
@@ -122,6 +136,13 @@ class BiosymModel:
             # Replace the definition file with the model name
             definition_file = os.path.join(os.path.dirname(definition_file), cfg["model"]["name"])
         self.definition_file = definition_file
+        # Set whenever the model is ultimately backed by an OpenSim file --
+        # directly (.osim) or via a .yaml wrapper whose "model.name" points at
+        # one (definition_file is resolved to that base file above). None for
+        # MuJoCo-XML-based models. biosym.visualization.opensim_viewer uses
+        # this to load a matching osim.Model for playback, so it can only be
+        # used with OpenSim-based models.
+        self.osim_file = definition_file if definition_file.endswith(".osim") else None
 
         if definition_file.endswith(".xml"):
             parser = mujoco_parser.MujocoParser(definition_file)
@@ -138,7 +159,7 @@ class BiosymModel:
 
         # Parsing the OpenSim models
         elif definition_file.endswith(".osim"):
-            parser = osim_parser.OsimParser(definition_file)
+            parser = osim_parser.OsimParser(definition_file, fit_muscle_paths=fit_muscle_paths)
             # Translate OpenSim to Biosym standard
             self._translate_osim_to_biosym(parser)
 
@@ -161,26 +182,25 @@ class BiosymModel:
                             "Adding ground contact to existing models is not implemented yet. Try replacing them instead."
                         )
                 if "actuators" in cfg["model"]["additional_parameters"]:
-                    actuator_model_file = os.path.join(
-                        os.path.dirname(definition_file),
-                        cfg["model"]["additional_parameters"]["actuators"]["file"],
-                    )
-                    self.actuators = actuator_parser.get_from_xml(
-                        actuator_model_file,
-                        joints=parser.get_joints(),
-                        joint_names=[j["name"] for j in parser.get_joints()],
-                    )
-                    if cfg["model"]["additional_parameters"]["actuators"]["replace_existing"] == True:
-                        parser.actuators = self.actuators.get_actuators()
-                    else:
-                        raise NotImplementedError(
-                            "Adding actuators to existing models is not implemented yet. Try replacing them instead."
+                    actuators_cfg = cfg["model"]["additional_parameters"]["actuators"]
+                    if "file" in actuators_cfg:
+                        actuator_model_file = os.path.join(os.path.dirname(definition_file), actuators_cfg["file"])
+                        self.actuators = actuator_parser.get_from_xml(
+                            actuator_model_file,
+                            joints=parser.get_joints(),
+                            joint_names=[j["name"] for j in parser.get_joints()],
                         )
-                    # actuator_model = actuator_parser.get(actuator_model_file)
-                else:
-                    raise NotImplementedError(
-                        "Taking actuators from a model definition file is not implemented yet. Try using additional_parameters in the yaml file instead."
-                    )
+                        if actuators_cfg["replace_existing"] == True:
+                            parser.actuators = self.actuators.get_actuators()
+                        else:
+                            raise NotImplementedError(
+                                "Adding actuators to existing models is not implemented yet. Try replacing them instead."
+                            )
+                    # A "scale" block rescales whichever CoordinateActuator(s) are
+                    # already present (freshly loaded above, or already built from
+                    # the base model/OSIM translation) -- it does not require "file".
+                    if "scale" in actuators_cfg:
+                        self._apply_actuator_scale_overrides(actuators_cfg["scale"])
                 if "joints" in cfg["model"]["additional_parameters"]:
                     pass  # Joint limits not implemented yet # Limit actuators is also an actuator in the end
 
@@ -194,9 +214,10 @@ class BiosymModel:
 
         # Future work, tbd: (These should be disabled or enabled by a flag in the config file); so that we don't need to compile everything every time
         if hasattr(self, "gc_model"):
+            g_mag = float(np.abs(self.default_constants.g).max())
             self.gc_model.process_eom(
-                self, body_weight=sum(self.default_constants.mass)
-            )  # If the GC model needs to add extra equations of motion, it will do so here
+                self, body_weight=sum(self.default_constants.mass) * g_mag
+            )  # If the GC model needs to add extra equations of motion, it will do so here (body_weight is in Newtons, i.e. mass * g)
             self._register_contact_model(self.gc_model)
         if hasattr(self, "actuators"):
             self.actuators.process_eom(self)
@@ -211,6 +232,16 @@ class BiosymModel:
         # ABA fails on bodies with zero inertia components (e.g. thin toe bodies); Kane path unaffected
         self._register_aba_rnea()
 
+        if not self.compile_eom:
+            # compile_eom=False skips the SymPy/Kane symbolic derivation entirely
+            # (its compile time explodes for larger 3D non-planar models -- see
+            # performance_bottlenecks.md), so model.run["mass_matrix"]/["forcing"]
+            # would otherwise not exist at all. Provide them via RNEA instead, so
+            # any code written against that interface (the OCP `dynamics`
+            # constraint, SimulationEnvironment's "sympy" backend) works
+            # transparently for compile_eom=False models too.
+            self._register_rnea_mass_matrix_forcing()
+
         # self._create_FK(parser)
         # self._create_IMU(parser) ....
 
@@ -218,9 +249,11 @@ class BiosymModel:
         """Translates raw OpenSim parser output into the Biosym architecture."""
 
         _JOINT_BUILDERS = {
-            "PinJoint":    pin_joint.PinJoint,
-            "PlanarJoint": planar_joint.PlanarJoint,
-            "WeldJoint":   weld_joint.WeldJoint,
+            "PinJoint":       pin_joint.PinJoint,
+            "PlanarJoint":    planar_joint.PlanarJoint,
+            "WeldJoint":      weld_joint.WeldJoint,
+            "CustomJoint":    custom_joint.CustomJoint,
+            "UniversalJoint": universal_joint.UniversalJoint,
             # NOTE: register any newly implemented joint type here.
             }
 
@@ -828,7 +861,13 @@ class BiosymModel:
         )
         self.run["mass_matrix_uncompiled"] = self.mass_matrix
         self._precompile_fn(self.mass_matrix, (self.default_states, self.default_constants), "mass_matrix")
-        self._precompile_fn(self.mass_matrix, (self.default_states, self.default_constants), "mass_matrix_jacobian", jacobian=True)
+        # NOTE: no "mass_matrix_jacobian" here. A brute-force jax.jacobian of the
+        # full n x n mass matrix is never actually needed: the dynamics residual
+        # (biosym/constraints/dynamics.py:confun_mm_tau) already has a custom_jvp
+        # that differentiates the *contracted* M(q) @ qdd product directly (O(n)
+        # per direction) instead of the full mass-matrix tensor (O(n^2) per
+        # direction). This entry was unused anywhere in the codebase and only
+        # added compile time/memory.
 
 
         forcing_replaced = self._replace_dyn(self.kane.forcing)
@@ -1056,10 +1095,10 @@ class BiosymModel:
 
         has_active = actuator_model is not None
 
-        def lambda_func(states: Any, constants: Any, model: Any) -> Any:
-            passive = self.passive_actuators.forward(states, constants, model)
+        def lambda_func(states: Any, constants: Any, model: Any, states_prev: Any = None, h: Any = None) -> Any:
+            passive = self.passive_actuators.forward(states, constants, model, states_prev=states_prev, h=h)
             if has_active:
-                f = actuator_model.forward(states, constants, model) + passive
+                f = actuator_model.forward(states, constants, model, states_prev=states_prev, h=h) + passive
             else:
                 f = passive
             # f is full-DOF; extract the actuated-joint slots for tau.
@@ -1287,7 +1326,12 @@ def _to_sympy_vector(values: list[Any], reference_frame: ReferenceFrame) -> Any:
     return values[0] * reference_frame.x + values[1] * reference_frame.y + values[2] * reference_frame.z
 
 
-def load_model(model_file: str, force_rebuild: bool = False, compile_eom: bool = True) -> "BiosymModel":
+def load_model(
+    model_file: str,
+    force_rebuild: bool = False,
+    compile_eom: bool = True,
+    fit_muscle_paths: bool = False,
+) -> "BiosymModel":
     """Load a model from a file with caching support.
 
     Parameters
@@ -1298,6 +1342,14 @@ def load_model(model_file: str, force_rebuild: bool = False, compile_eom: bool =
         If True, rebuild model even if cached version exists, by default False
     compile_eom : bool, optional
         If True, compile symbolic equations of motion and JAX functions, by default True
+    fit_muscle_paths : bool, optional
+        OSIM models only. If True, fit muscle-tendon-length-vs-joint-angle
+        polynomials for every OpenSim muscle (see BiosymModel.__init__ -- this
+        is genuinely expensive, several minutes for a model with ~80 muscles).
+        The whole built model (including the fitted polynomials) is
+        cloudpickled to the cache below, so that cost is only ever paid once
+        per model file; subsequent load_model calls with the same flags load
+        the already-fitted model straight from the cache. By default False.
 
     Returns
     -------
@@ -1306,7 +1358,11 @@ def load_model(model_file: str, force_rebuild: bool = False, compile_eom: bool =
 
     Notes
     -----
-    Uses hash-based caching to avoid recompiling identical models.
+    Uses hash-based caching to avoid recompiling identical models. The cache
+    filename also encodes compile_eom/fit_muscle_paths (not just the file-content
+    hash from BiosymModel._get_hash(), which is agnostic to these flags), so
+    switching either flag for the same model file can never silently return a
+    cached model built with the other flag's value.
     """
     model_file = os.path.abspath(os.path.expanduser(model_file))
 
@@ -1316,7 +1372,7 @@ def load_model(model_file: str, force_rebuild: bool = False, compile_eom: bool =
 
     if disable_cache:
         print("Caching is disabled via BIOSYM_DISABLE_CACHE. Compiling model from source...")
-        return BiosymModel(model_file, compile_eom=compile_eom)
+        return BiosymModel(model_file, compile_eom=compile_eom, fit_muscle_paths=fit_muscle_paths)
 
     # Generate a hash of the config / or xml tree and save the cloudpickled model in the cache
     model_hash = BiosymModel(model_file, get_hash=True, compile_eom=compile_eom)._get_hash()
@@ -1324,10 +1380,12 @@ def load_model(model_file: str, force_rebuild: bool = False, compile_eom: bool =
     cache_dir = os.environ.get("BIOSYM_CACHE_DIR", _model_cache)
     os.makedirs(cache_dir, exist_ok=True)
     precision_tag = "x64" if bool(jax.config.read("jax_enable_x64")) else "x32"
-    cache_path = os.path.join(cache_dir, f"{model_hash}_{precision_tag}.cpkl")
+    eom_tag = "eom" if compile_eom else "noeom"
+    muscle_tag = "musclefit" if fit_muscle_paths else "nomusclefit"
+    cache_path = os.path.join(cache_dir, f"{model_hash}_{precision_tag}_{eom_tag}_{muscle_tag}.cpkl")
 
     if not force_rebuild and os.path.exists(cache_path):
-        print(f"Loading model from cache: {model_hash}_{precision_tag}.cpkl")
+        print(f"Loading model from cache: {os.path.basename(cache_path)}")
         try:
             with open(cache_path, "rb") as f:
                 model = cloudpickle.load(f)
@@ -1337,7 +1395,7 @@ def load_model(model_file: str, force_rebuild: bool = False, compile_eom: bool =
             with contextlib.suppress(Exception):
                 os.remove(cache_path)
 
-    model = BiosymModel(model_file, compile_eom=compile_eom)
+    model = BiosymModel(model_file, compile_eom=compile_eom, fit_muscle_paths=fit_muscle_paths)
     # Save the model to the cache
     try:
         with open(cache_path, "wb") as f:

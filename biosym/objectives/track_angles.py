@@ -3,6 +3,8 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 
 from biosym.objectives.base_objective import BaseObjective
 from biosym.utils import read_mot, segment_gait_averages
@@ -41,6 +43,15 @@ class Objective(BaseObjective):
             gait_joint_angles, _, _ = segment_gait_averages(n_points=self.n_nodes)
             q_mean_df = gait_joint_angles.filter(like="_mean")
             q_var_df = gait_joint_angles.filter(like="_var")
+
+        # No variance columns present (e.g. reference data that intentionally
+        # doesn't track variance) -- fall back to uniform (unweighted) error.
+        if q_var_df.shape[1] == 0:
+            q_var_df = pd.DataFrame(
+                np.ones_like(q_mean_df.values),
+                columns=[c.replace("_mean", "_var") for c in q_mean_df.columns],
+                index=q_mean_df.index,
+            )
 
         # number of rows (time points) must match n_nodes
         if q_mean_df.shape[0] != int(self.n_nodes):

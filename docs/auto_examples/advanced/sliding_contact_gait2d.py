@@ -22,34 +22,19 @@ be implemented in a custom GC model. Additionally, having stateful GC models
 might improve jacobian conditioning. 
 """
 import os
-import sys
 import time
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
+from biosym.utils.paths import find_repo_root
+
 # sphinx_gallery_start_ignore
-def _find_git_root(start_path):
-    p = os.path.abspath(start_path)
-    while True:
-        if os.path.isdir(os.path.join(p, ".git")):
-            return p
-        parent = os.path.dirname(p)
-        if parent == p:
-            return None
-        p = parent
-
-try:
-    start_path = os.path.dirname(os.path.abspath(__file__))
-except NameError:
-    start_path = os.path.abspath(os.getcwd())
-
-_git_root = _find_git_root(start_path)
-current_dir = _git_root if _git_root else start_path
+# biosym is importable regardless of CWD, but example data/model paths below
+# are given relative to the repo root, so chdir there for reproducibility.
+current_dir = find_repo_root()
 os.chdir(current_dir)
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
 # sphinx_gallery_end_ignore
 
 ###############################################################################
@@ -569,6 +554,9 @@ print(f"Ground contact model added {model.gc_model.get_n_states()} states: {mode
 from biosym.ocp import collocation
 
 # sphinx_gallery_start_ignore
+# sphinx-gallery resets the CWD to this script's own directory before each
+# code block below, so re-establish the repo root before any relative model
+# paths inside the YAML configs get resolved.
 os.chdir(current_dir)
 # sphinx_gallery_end_ignore
 ocp_standing = collocation.Collocation(
