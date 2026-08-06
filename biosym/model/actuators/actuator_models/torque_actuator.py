@@ -128,11 +128,13 @@ class TorqueActuator(BaseActuator):
     def reset(self):
         pass
 
-    def forward(self, states, constants, model):
+    def forward(self, states, constants, model, states_prev=None, h=None):
         """
         Return a joint-sized torque array. For each actuator, place
         -M (its commanded magnitude, negated) at every joint on its connecting
         chain. Multiple actuators / shared joints accumulate by summation.
+
+        states_prev/h: unused, see CoordinateActuator.forward.
         """
         joint_names = [j["name"] for j in model.dicts["joints"]]
         n_dof = model.coordinates.n

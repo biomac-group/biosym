@@ -19,10 +19,11 @@ class SpringDamper(BaseContact):
     "point towards ground" term) that keeps a nonzero force gradient even
     where the smoothed x_+ has flattened out away from contact.
 
-    Stiffness is body-weight scaled (k_eff = k * body_weight * 9.81) at
-    process_eom time, matching the legacy code -- the yaml k values are
-    dimensionless multipliers, not physical stiffnesses. (Unlike HuntCrossley,
-    whose OpenSim stiffness is already physical and is used as-is.)
+    Stiffness is body-weight scaled (k_eff = k * body_weight, with body_weight
+    in Newtons i.e. mass * g) at process_eom time, matching the legacy code --
+    the yaml k values are dimensionless multipliers, not physical stiffnesses.
+    (Unlike HuntCrossley, whose OpenSim stiffness is already physical and is
+    used as-is.)
 
     Parameters are hardcoded into the symbolic expression, so this law adds no
     states and no constants to the optimization.
@@ -87,8 +88,8 @@ class SpringDamper(BaseContact):
         # Body-weight scaling, as in the legacy ContactPoints. Done here (not
         # in __init__) because body_weight is only known at process_eom time.
         # Recompute from self.k each call so re-running can't double-scale.
-        body_weight = kwargs.get("body_weight", 1.0)
-        self.k_eff = self.k * body_weight * 9.81
+        body_weight = kwargs.get("body_weight", 1.0)  # Newtons (mass * g)
+        self.k_eff = self.k * body_weight
 
         self._build_geometries(model)
 
