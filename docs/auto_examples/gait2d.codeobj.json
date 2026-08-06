@@ -1,22 +1,4 @@
 {
- "_find_git_root": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "function"
-  }
- ],
- "_git_root": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "str"
-  }
- ],
  "collocation.Collocation": [
   {
    "is_class": true,
@@ -81,6 +63,22 @@
    "module": "builtins",
    "module_short": "builtins",
    "name": "float"
+  }
+ ],
+ "find_repo_root": [
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "builtins",
+   "module_short": "builtins",
+   "name": "function"
+  },
+  {
+   "is_class": false,
+   "is_explicit": false,
+   "module": "biosym.utils.paths",
+   "module_short": "biosym.utils.paths",
+   "name": "find_repo_root"
   }
  ],
  "i": [
@@ -323,70 +321,6 @@
    "name": "chdir"
   }
  ],
- "os.getcwd": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "builtin_function_or_method"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "os",
-   "module_short": "os",
-   "name": "getcwd"
-  }
- ],
- "os.path.abspath": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "function"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "os.path",
-   "module_short": "os.path",
-   "name": "abspath"
-  }
- ],
- "os.path.dirname": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "function"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "os.path",
-   "module_short": "os.path",
-   "name": "dirname"
-  }
- ],
- "os.path.isdir": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "function"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "os.path",
-   "module_short": "os.path",
-   "name": "isdir"
-  }
- ],
  "os.path.join": [
   {
    "is_class": false,
@@ -565,15 +499,6 @@
    "name": "float"
   }
  ],
- "start_path": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "str"
-  }
- ],
  "start_time": [
   {
    "is_class": false,
@@ -597,38 +522,6 @@
    "module": "biosym.visualization.stickfigure",
    "module_short": "biosym.visualization.stickfigure",
    "name": "plot_stick_figure"
-  }
- ],
- "sys.path": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "list"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "sys",
-   "module_short": "sys",
-   "name": "path"
-  }
- ],
- "sys.path.insert": [
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "builtins",
-   "module_short": "builtins",
-   "name": "builtin_function_or_method"
-  },
-  {
-   "is_class": false,
-   "is_explicit": false,
-   "module": "sys.path",
-   "module_short": "sys.path",
-   "name": "insert"
   }
  ],
  "time.time": [

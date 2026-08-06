@@ -7,45 +7,17 @@ This is a recreation of "gait2d", or 2D gait simulations in general
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-# sphinx_gallery_start_ignore
-import sys
 import os
-
-# Add parent directory to path for importing biosym
-import os
-import sys
-# For documentation builds, handle __file__ not being defined
-
-# Find the .git root directory, then set that as current dir
-def _find_git_root(start_path):
-    p = os.path.abspath(start_path)
-    while True:
-        if os.path.isdir(os.path.join(p, ".git")):
-            return p
-        parent = os.path.dirname(p)
-        if parent == p:
-            return None
-        p = parent
-
-try:
-    start_path = os.path.dirname(os.path.abspath(__file__))
-except NameError:
-    # __file__ may not be defined (e.g., in some doc builds); fall back to cwd
-    start_path = os.path.abspath(os.getcwd())
-
-_git_root = _find_git_root(start_path)
-if _git_root:
-    current_dir = _git_root
-else:
-    current_dir = start_path
-
-# Set working directory and ensure repository root is on sys.path for imports
-os.chdir(current_dir)
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-# sphinx_gallery_end_ignore
 
 from biosym.model.model import load_model
+from biosym.utils.paths import find_repo_root
+
+# sphinx_gallery_start_ignore
+# biosym is importable regardless of CWD, but example data/model paths below
+# are given relative to the repo root, so chdir there for reproducibility.
+current_dir = find_repo_root()
+os.chdir(current_dir)
+# sphinx_gallery_end_ignore
 
 ###############################################################################
 # Load 2D Gait Model
@@ -101,7 +73,7 @@ collocation:
 
   constraints:
     - name: dynamics
-      weight: "1/BW"
+      weight: 1.0  # dynamics constraint self-normalizes by body weight (N) internally
 
   #initial_guess:
   #  type: random
@@ -119,12 +91,15 @@ collocation:
 # to run an optimization problem to find a standing posture.
 # Usually, you would see IPOPT's log as well, but it gets redirected when building the documentation.
 
-# sphinx_gallery_start_ignore
-os.chdir(current_dir)
-# sphinx_gallery_end_ignore
 from biosym.ocp import collocation
 
-ocp = collocation.Collocation(current_dir+"/examples/standing2d.yaml", force_rebuild=True)
+# sphinx_gallery_start_ignore
+# sphinx-gallery resets the CWD to this script's own directory before each
+# code block below, so re-establish the repo root before any relative model
+# paths inside the YAML configs get resolved.
+os.chdir(current_dir)
+# sphinx_gallery_end_ignore
+ocp = collocation.Collocation(os.path.join(current_dir, "examples", "standing2d.yaml"), force_rebuild=True)
 start_ = time.time()
 solution = ocp.solve(visualize=True)
 end_ = time.time()
@@ -218,7 +193,7 @@ collocation:
 # sphinx_gallery_start_ignore
 os.chdir(current_dir)
 # sphinx_gallery_end_ignore
-ocp_walking = collocation.Collocation(current_dir+"/examples/walking2d.yaml")
+ocp_walking = collocation.Collocation(os.path.join(current_dir, "examples", "walking2d.yaml"))
 # The solve method returns x (the optimal solution) and info (ipopt information)
 start = time.time()
 solution = ocp_walking.solve(visualize=False)
