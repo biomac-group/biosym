@@ -3,6 +3,8 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 
 from biosym.constraints.dynamics import calc_forces
 from biosym.objectives.base_objective import BaseObjective
@@ -42,6 +44,25 @@ class Objective(BaseObjective):
             grf_mean_df = gait_grfs.filter(like="_mean")
             grf_var_df = gait_grfs.filter(like="_var")
 
+        # No variance columns present (e.g. reference data that intentionally
+        # doesn't track variance) -- fall back to uniform (unweighted) error.
+        if grf_var_df.shape[1] == 0:
+            grf_var_df = pd.DataFrame(
+                np.ones_like(grf_mean_df.values),
+                columns=[c.replace("_mean", "_var") for c in grf_mean_df.columns],
+                index=grf_mean_df.index,
+            )
+
+        # The tracking data is always laid out left-foot-then-right-foot
+        # (see segment_gait_cycles.create_averaged_gait_forces), but the
+        # model's ext_forces slots are ordered by contact-body definition
+        # order in the model file, which need not be left-then-right (e.g.
+        # gait2d test models define the right foot's contact points first).
+        # Reindex the data columns to match the model's actual body order
+        # so each ext_forces slot is compared against the correct foot.
+        grf_mean_df = grf_mean_df[self._matching_columns(grf_mean_df.columns)]
+        grf_var_df = grf_var_df[self._matching_columns(grf_var_df.columns)]
+
         # number of rows (time points) must match n_nodes
         if grf_mean_df.shape[0] != int(self.n_nodes):
             raise NotImplementedError(
@@ -57,6 +78,36 @@ class Objective(BaseObjective):
             "grf_var": self.grf_var,
             "constants": self.model.default_constants,
         }
+
+    def _matching_columns(self, columns):
+        """
+        Reorder tracking-data columns (named '<1_ground_force|ground_force>_v<dim>_<mean|var>')
+        so they line up with self.model.ext_forces.names ('f_<body>_<dim>'), body by body,
+        instead of assuming the data's left-then-right layout matches the model's contact-body
+        order.
+        """
+        suffix = "_mean" if any(c.endswith("_mean") for c in columns) else "_var"
+        available = set(columns)
+        ordered = []
+        for name in self.model.ext_forces.names[::3]:
+            body = name[2:-2]  # strip "f_" prefix and "_x" dim suffix
+            if body.endswith(("_l", "_L")):
+                prefix = "1_ground_force"
+            elif body.endswith(("_r", "_R")):
+                prefix = "ground_force"
+            else:
+                raise NotImplementedError(
+                    f"Cannot infer left/right side of contact body '{body}' from its name; "
+                    "expected it to end with '_r'/'_l' (case-insensitive)."
+                )
+            for dim in ["x", "y", "z"]:
+                col = f"{prefix}_v{dim}{suffix}"
+                if col not in available:
+                    raise NotImplementedError(
+                        f"Tracking data is missing expected column '{col}' for contact body '{body}'."
+                    )
+                ordered.append(col)
+        return ordered
 
     def _get_info(self):
         # Provide info used by objfun and gradient builder
